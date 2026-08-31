@@ -1,0 +1,352 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ApiError, del, post, qs } from '../api/client';
+import { useResource } from '../api/useResource';
+import { useAuth } from '../auth/AuthContext';
+import { useCompanies } from '../auth/CompanyContext';
+import type { Applicability, Company, SyncResult } from '../api/types';
+import {
+  AuthorityTag, Badge, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
+  SeverityDot, Spinner, fmtDate, fmtINR,
+} from '../components/ui';
+
+function ApplicabilityDrawer({ company, onClose }: { company: Company; onClose: () => void }) {
+  const { data, initial, error } = useResource<Applicability[]>(`/compliance/companies/${company.id}/applicability`);
+  const [showAll, setShowAll] = useState(false);
+
+  const rows = (data ?? []).filter((r) => showAll || r.applicable);
+
+  return (
+    <Drawer onClose={onClose}>
+      <header className="drawer-head">
+        <div className="stack" style={{ flex: 1, gap: 4 }}>
+          <h2 style={{ fontSize: 16 }}>{company.legalName}</h2>
+          <span className="tiny dim">
+            {data ? `${data.filter((r) => r.applicable).length} of ${data.length} rules apply` : 'Evaluating…'}
+          </span>
+        </div>
+        <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
+      </header>
+
+      <div className="drawer-body">
+        {error && <ErrorNote error={error} />}
+        {initial && <Loading />}
+
+        <label className="check">
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+          Show rules that do not apply, and why
+        </label>
+
+        {rows.map((r) => {
+          // Only the conditions that actually decided a "no" are worth showing.
+          const deciding = r.reasons.filter((x) => (x.negated ? x.passed : !x.passed));
+          return (
+            <div key={r.ruleCode} className="card">
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="row" style={{ gap: 7 }}>
+                  {r.severity && <SeverityDot value={r.severity} />}
+                  {r.authority && <AuthorityTag value={r.authority} />}
+                  {r.form && <span className="auth-tag">{r.form}</span>}
+                  <span className="spacer" style={{ marginLeft: 'auto' }}>
+                    <Badge value={r.applicable ? 'COMPLETED' : 'WAIVED'}>
+                      {r.applicable ? 'Applies' : 'Not applicable'}
+                    </Badge>
+                  </span>
+                </div>
+                <span style={{ fontWeight: 550 }}>{r.title}</span>
+                <div className="reasons">
+                  {(r.applicable ? r.reasons : deciding).map((x, i) => {
+                    const ok = x.negated ? !x.passed : x.passed;
+                    return (
+                      <div key={i} className="reason">
+                        <span className={`reason-mark ${ok ? 'reason-pass' : 'reason-fail'}`}>{ok ? '✓' : '✕'}</span>
+                        <span className={ok ? '' : 'muted'}>{x.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Drawer>
+  );
+}
+
+interface Impact {
+  company: { id: string; legalName: string; isActive: boolean };
+  items: number; completed: number; documents: number; tasks: number;
+}
+
+/**
+ * Permanent deletion destroys a company's entire compliance history, so it is
+ * gated behind seeing exactly what will go and typing the name back.
+ */
+function DeleteDialog({ company, onClose, onDeleted }: {
+  company: Company; onClose: () => void; onDeleted: (name: string) => void;
+}) {
+  const { data: impact, initial } = useResource<Impact>(`/companies/${company.id}/deletion-impact`);
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const matches = confirmation.trim() === company.legalName;
+
+  return (
+    <Drawer onClose={onClose}>
+      <header className="drawer-head">
+        <div className="stack" style={{ flex: 1, gap: 4 }}>
+          <h2 style={{ fontSize: 16 }}>Delete {company.legalName}</h2>
+          <span className="tiny dim">This cannot be undone.</span>
+        </div>
+        <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
+      </header>
+
+      <div className="drawer-body">
+        {error && <ErrorNote error={error} />}
+        {initial && <Loading />}
+
+        {impact && (
+          <div className="alert alert-error">
+            <strong>This permanently destroys:</strong>
+            <div style={{ marginTop: 6 }}>
+              · {impact.items} obligations, {impact.completed} of them already completed<br />
+              · {impact.tasks} tasks<br />
+              · {impact.documents} evidence files, deleted from storage as well<br />
+              · the company's score history and applicability record
+            </div>
+            <div style={{ marginTop: 8 }}>
+              The audit log entry recording this deletion is kept against the organization.
+            </div>
+          </div>
+        )}
+
+        <div className="alert alert-warn">
+          Archiving instead keeps all of the above and hides the company from every view. Prefer it unless the
+          record genuinely must not exist.
+        </div>
+
+        <div className="field">
+          <label>Type <strong>{company.legalName}</strong> to confirm</label>
+          <input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} placeholder={company.legalName} />
+        </div>
+
+        <div className="row">
+          <button
+            className="btn-danger"
+            disabled={busy || !matches}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await post(`/companies/${company.id}/permanent-delete`, { confirmation: confirmation.trim() });
+                onDeleted(company.legalName);
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : 'Delete failed');
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <><Spinner /> Deleting…</> : 'Permanently delete'}
+          </button>
+          <button onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+export function Companies() {
+  const { can } = useAuth();
+  const { companies, loading, reload, select, canOn } = useCompanies();
+  const [showArchived, setShowArchived] = useState(false);
+  const [deleting, setDeleting] = useState<Company | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Onboarding is the only company action with no company in hand, so it is the
+  // only one gated on the base role. Everything else is decided per company,
+  // because the grant is authoritative.
+  const canCreate = can('company.create');
+
+  // Archived companies are excluded from every org-wide view, so they need a
+  // deliberate way back into sight.
+  const { data: archived, reload: reloadArchived } = useResource<Company[]>(
+    showArchived ? `/companies${qs({ includeInactive: true })}` : null,
+    [showArchived],
+  );
+  const archivedOnly = (archived ?? []).filter((c) => !c.isActive);
+
+  async function act(label: string, fn: () => Promise<unknown>) {
+    setError(null);
+    try {
+      await fn();
+      reload();
+      reloadArchived();
+      setNotice(label);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'That did not work');
+    }
+  }
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [result, setResult] = useState<{ name: string; sync: SyncResult } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [inspect, setInspect] = useState<Company | null>(null);
+
+  async function sync(company: Company) {
+    setSyncing(company.id);
+    setError(null);
+    try {
+      const sync = await post<SyncResult>(`/compliance/companies/${company.id}/sync`);
+      setResult({ name: company.legalName, sync });
+      reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Sync failed');
+    } finally {
+      setSyncing(null);
+    }
+  }
+
+  if (loading && companies.length === 0) return <Loading label="Loading companies" />;
+
+  return (
+    <>
+      <div className="row">
+        <span className="muted tiny">
+          The engine reads these profiles. Turnover, headcount and the flags below move real statutory thresholds.
+        </span>
+        <span className="row" style={{ marginLeft: 'auto' }}>
+          {can('company.archive') && (
+            <label className="check tiny">
+              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+              Show archived
+            </label>
+          )}
+          {canCreate && <Link className="btn btn-primary" to="/companies/new">Onboard a company</Link>}
+        </span>
+      </div>
+
+      {error && <ErrorNote error={error} />}
+      {notice && <div className="alert alert-info">{notice}</div>}
+      {result && (
+        <div className="alert alert-info">
+          <strong>{result.name} re-synced.</strong>{' '}
+          {result.sync.applicableRules} rules apply, {result.sync.inapplicableRules} do not ·{' '}
+          {result.sync.created} new obligations, {result.sync.updated} updated, {result.sync.removed} withdrawn.
+        </div>
+      )}
+
+      {companies.length === 0 ? (
+        <Card><Empty>No companies yet. Onboard one to build its compliance calendar.</Empty></Card>
+      ) : (
+        <div className="grid grid-2">
+          {companies.map((c) => (
+            <Card key={c.id} title={c.legalName} note={ENTITY_LABEL[c.entityType] ?? c.entityType}>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <dl className="kv">
+                  <dt>{c.entityType === 'LLP' ? 'LLPIN' : 'CIN'}</dt>
+                  <dd className="mono">{c.llpin ?? c.cin ?? '—'}</dd>
+                  <dt>PAN / TAN</dt>
+                  <dd className="mono">{c.pan ?? '—'} {c.tan ? `· ${c.tan}` : ''}</dd>
+                  <dt>Turnover</dt>
+                  <dd><strong>{fmtINR(c.annualTurnover)}</strong> · capital {fmtINR(c.paidUpCapital)}</dd>
+                  <dt>People</dt>
+                  <dd>{c.employeeCount} employees · {c.directors.length} director{c.directors.length === 1 ? '' : 's'}</dd>
+                  <dt>State</dt>
+                  <dd>{c.stateCode}{c.industry ? ` · ${c.industry}` : ''}</dd>
+                  <dt>Incorporated</dt>
+                  <dd>{fmtDate(c.incorporationDate)}{c.agmDate ? ` · AGM ${fmtDate(c.agmDate)}` : ''}</dd>
+                </dl>
+
+                <div className="row row-wrap" style={{ gap: 6 }}>
+                  {c.gstRegistrations.map((g) => (
+                    <span key={g.id} className="auth-tag" title={`${g.stateCode} · ${g.filingFrequency}`}>
+                      {g.gstin} · {g.filingFrequency}
+                    </span>
+                  ))}
+                  {c.msmeRegistration && <span className="auth-tag">Udyam · {c.msmeRegistration.category}</span>}
+                  {c.hasForeignTransactions && <span className="auth-tag">Transfer pricing</span>}
+                  {c.acceptsDeposits && <span className="auth-tag">DPT-3</span>}
+                  {c.buysFromMsmeSuppliers && <span className="auth-tag">MSME suppliers</span>}
+                </div>
+
+                <div className="row row-wrap">
+                  <button className="btn-sm" onClick={() => setInspect(c)}>Which rules apply?</button>
+                  {canOn(c.id, 'company.sync') && (
+                    <button className="btn-sm" disabled={syncing === c.id} onClick={() => sync(c)}>
+                      {syncing === c.id ? <><Spinner /> Syncing</> : 'Re-run engine'}
+                    </button>
+                  )}
+                  {canOn(c.id, 'company.edit') && (
+                    <Link className="btn btn-sm" to={`/companies/${c.id}/edit`}>Edit</Link>
+                  )}
+                  {canOn(c.id, 'company.archive') && (
+                    <button
+                      className="btn-sm btn-ghost btn-danger"
+                      onClick={() => act(`${c.legalName} archived. Its history is kept and it can be restored.`,
+                        () => del(`/companies/${c.id}`))}
+                    >
+                      Archive
+                    </button>
+                  )}
+                  <Link className="btn btn-sm" to="/calendar" onClick={() => select(c.id)} style={{ marginLeft: 'auto' }}>
+                    Calendar →
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {showArchived && (
+        <Card title="Archived" note={`${archivedOnly.length} hidden from every other view`}>
+          {archivedOnly.length === 0 ? (
+            <Empty>Nothing archived.</Empty>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <tbody>
+                  {archivedOnly.map((c) => (
+                    <tr key={c.id}>
+                      <td>
+                        <div className="stack">
+                          <span style={{ fontWeight: 500 }}>{c.legalName}</span>
+                          <span className="tiny dim">{ENTITY_LABEL[c.entityType]} · {c.cin ?? c.llpin ?? '—'}</span>
+                        </div>
+                      </td>
+                      <td className="right" style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn-sm" onClick={() => act(`${c.legalName} restored.`,
+                          () => post(`/companies/${c.id}/restore`))}>Restore</button>
+                        {canOn(c.id, 'company.delete') && (
+                          <button className="btn-sm btn-ghost btn-danger" onClick={() => setDeleting(c)}>
+                            Delete permanently
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {inspect && <ApplicabilityDrawer company={inspect} onClose={() => setInspect(null)} />}
+      {deleting && (
+        <DeleteDialog
+          company={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={(name) => {
+            setDeleting(null);
+            setNotice(`${name} was permanently deleted.`);
+            reload();
+            reloadArchived();
+          }}
+        />
+      )}
+    </>
+  );
+}

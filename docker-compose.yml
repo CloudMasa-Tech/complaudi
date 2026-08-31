@@ -1,0 +1,23 @@
+# Local Postgres for development when you are not pointing at Supabase.
+# Swap DATABASE_URL / DIRECT_URL in .env to your Supabase strings for staging and production.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: compliance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: compliance
+    ports:
+      - '5433:5432'
+    volumes:
+      - compliance-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d compliance']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  compliance-pgdata:

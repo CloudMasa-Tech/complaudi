@@ -1,0 +1,14 @@
+{
+  // Production build. `rootDir` is src (not the project root) so the entrypoint
+  // lands at dist/index.js rather than dist/src/index.js, and tests and the
+  // seed script — both run through tsx — stay out of the shipped image.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": false,
+    "removeComments": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests", "prisma/seed.ts"]
+}
