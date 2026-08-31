@@ -1,0 +1,109 @@
+# Supabase CLI configuration.
+#
+# Scope: this file configures the **local** Supabase stack (`supabase start`) and
+# the storage settings this project depends on. It is not a substitute for the
+# hosted project's dashboard settings — see DEPLOYMENT.md, Step 1.
+#
+# Two things to know before you run the CLI against anything:
+#
+#   1. Prisma owns the schema. Migrations live in prisma/migrations and are
+#      applied with `npx prisma migrate deploy`. Do NOT use `supabase db push`
+#      or `supabase db diff` for application tables — the two migration
+#      histories would fight, and `supabase db reset` drops the database.
+#      Use the CLI here for the local stack, storage and auxiliary SQL only.
+#
+#   2. This app does not use Supabase Auth. It has its own JWT auth
+#      (src/lib/jwt.ts) and connects to Postgres as a privileged role, so the
+#      [auth] block below exists only to keep the local stack quiet.
+#
+# Bring the local stack up:
+#   supabase start
+#   psql "$DIRECT_URL" -f supabase/setup.sql   # or: npm run supabase:bootstrap
+#   npx prisma migrate deploy
+#
+# Ports are the CLI defaults (543xx) and deliberately do not collide with the
+# bundled docker-compose Postgres on 5433 or the API on 4000.
+
+project_id = "india-compliance-toolkit"
+
+[api]
+enabled = true
+port = 54321
+# Only the storage schema is reachable over the REST API. The application
+# schema is reached through Prisma over a direct Postgres connection, and
+# exposing it here would publish tenant tables to anyone holding the anon key.
+schemas = ["storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# Match the hosted project so local behaviour is representative.
+major_version = 17
+
+[db.pooler]
+# Mirrors the hosted transaction pooler, so a local DATABASE_URL can carry the
+# same ?pgbouncer=true shape the production one must have.
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[inbucket]
+# Local SMTP catch-all. Leave SMTP_HOST unset in .env to use the app's console
+# mail driver instead; point SMTP_HOST at 127.0.0.1:54325 to inspect the real
+# rendered reminder emails in the web UI on 54324.
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+# Matches the API's own per-file cap in src/modules/documents/documents.routes.ts.
+# Raising it here without raising that has no effect.
+file_size_limit = "25MiB"
+
+[auth]
+# Unused by this application — see the note at the top of this file.
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:4000"]
+jwt_expiry = 3600
+enable_signup = false
+
+[analytics]
+enabled = false
+
+# ── Declarative bucket (newer CLI versions only) ──────────────────────────────
+#
+# CLI 1.187+ can create the evidence bucket for the local stack from config.
+# Older versions reject unknown keys and fail `supabase start`, so it ships
+# commented out — supabase/setup.sql provisions the bucket on every version and
+# on the hosted project too. Uncomment if your CLI supports it.
+#
+# [storage.buckets.compliance-evidence]
+# public = false
+# file_size_limit = "25MiB"
+# allowed_mime_types = [
+#   "application/pdf",
+#   "image/png",
+#   "image/jpeg",
+#   "image/webp",
+#   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#   "application/vnd.ms-excel",
+#   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+#   "application/msword",
+#   "text/csv",
+#   "text/plain",
+#   "application/zip",
+#   "application/xml",
+#   "text/xml",
+# ]

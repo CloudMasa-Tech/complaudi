@@ -172,6 +172,18 @@ failed migration would crash-loop the service instead of failing the deploy
 where you can see it.
 
 ```bash
+npm run migrate:prod:check    # what is pending, changes nothing
+npm run migrate:prod          # apply, then provision the storage bucket
+npm run migrate:prod -- --yes # no prompt, for a pipeline step
+```
+
+`scripts/migrate-production.sh` wraps the two Prisma commands below and adds the
+checks that are easy to skip by hand: it refuses a `DIRECT_URL` pointing at the
+transaction pooler, refuses to run unattended without `--yes`, stops on a failed
+migration rather than deploying over it, and finishes by running
+`supabase/setup.sql` for the evidence bucket. Use the raw commands if you prefer:
+
+```bash
 npx prisma migrate status     # what is pending
 npx prisma migrate deploy     # apply — uses DIRECT_URL, additive only
 ```
@@ -192,6 +204,11 @@ you about data loss. A rename must ship as: add the new column → backfill →
 deploy code writing both → deploy code reading the new one → drop the old
 column in a later release. Dropping in one step breaks every replica still
 running the previous image during the rollout.
+
+**Storage bucket.** Not a Prisma migration — it lives in the `storage` schema,
+outside the migration history. `npm run supabase:bootstrap` applies
+`supabase/setup.sql`, which upserts the private `compliance-evidence` bucket and
+warns if anything has opened it up. `npm run migrate:prod` calls it for you.
 
 **Seed data.** `npm run seed` creates the *demo* organization. Do not run it in
 production. Create the first real account through `POST /api/v1/auth/register`,
@@ -328,6 +345,17 @@ for a daily sweep and not for anything tighter.
 ### Option C — Supabase pg_cron
 
 Keeps the schedule next to the data, with no extra infrastructure.
+`supabase/pg_cron.sql` does all of the below in one idempotent run:
+
+```bash
+psql "$DIRECT_URL" \
+  -v app_base_url='https://compliance.example.com' \
+  -v job_secret='<JOB_TRIGGER_SECRET>' \
+  -v cron_schedule='30 2 * * *' \
+  -f supabase/pg_cron.sql
+```
+
+What it does, if you would rather paste it into the SQL editor:
 
 ```sql
 -- once per project

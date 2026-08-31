@@ -1,0 +1,31 @@
+# ── secrets ──────────────────────────────────────────────────────────────────
+# .env carries the Supabase service_role key and the JWT signing secrets.
+# .env.example is the committed template.
+.env
+.env.*
+!.env.example
+
+# ── dependencies & build output ──────────────────────────────────────────────
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ── evidence uploaded by the local-disk storage driver ───────────────────────
+# Tenant documents. Never committed, whatever LOCAL_STORAGE_DIR points at.
+storage/
+
+# ── supabase cli ─────────────────────────────────────────────────────────────
+# Local stack state and the CLI's generated temp files.
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ── logs, coverage, editor & os cruft ────────────────────────────────────────
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+.DS_Store
+.idea/
+.vscode/
+!.vscode/settings.json
