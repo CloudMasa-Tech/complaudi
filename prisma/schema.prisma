@@ -214,6 +214,7 @@ model Company {
   isListed               Boolean @default(false)
   buysFromMsmeSuppliers  Boolean @default(true)        // MSME-1 half-yearly
   financialYearEndMonth  Int     @default(3)           // 3 = March (Indian FY)
+  profileConfirmedAt     DateTime?  // set when user confirms/edits their profile
 
   /// Registrations the entity holds rather than obligations it owes. They drive
   /// no rules today — they are what a reviewer asks for first, so the dashboard

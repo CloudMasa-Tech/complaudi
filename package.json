@@ -9,9 +9,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "node scripts/dev-banner.js && concurrently -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "tsx watch src/index.ts",
     "dev:web": "npm --prefix web run dev",
-    "dev:all": "concurrently -n api,web -c cyan,magenta \"npm run dev\" \"npm run dev:web\"",
+    "dev:all": "npm run dev",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "job:daily": "node dist/jobs/daily.js",
@@ -46,11 +47,11 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.6.0",
     "node-forge": "^1.4.0",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^9.1.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "^6.3.289",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
     "prisma": "^5.22.0",
@@ -70,6 +71,6 @@
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.5"
+    "vitest": "^4.1.11"
   }
 }

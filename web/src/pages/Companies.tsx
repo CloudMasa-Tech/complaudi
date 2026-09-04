@@ -4,7 +4,9 @@ import { ApiError, del, post, qs } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useAuth } from '../auth/AuthContext';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Applicability, Company, SyncResult } from '../api/types';
+import { InviteMemberModal } from '../components/InviteMemberModal';
+import type { Applicability, Company, CompanyMember, OnboardedCompany, SyncResult, UserRole } from '../api/types';
+import { ROLE_LABEL } from '../api/types';
 import {
   AuthorityTag, Badge, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
   SeverityDot, Spinner, fmtDate, fmtINR,
@@ -158,8 +160,160 @@ function DeleteDialog({ company, onClose, onDeleted }: {
   );
 }
 
+/**
+ * Platform-wide onboarding view, shown only to the SUPER_ADMIN.
+ *
+ * Feeds off a deliberately slim endpoint that carries none of a company's
+ * private profile — just who onboarded it, when, and which organisation it
+ * landed in.
+ */
+function OnboardingOverview() {
+  const { data, initial, error, reload } = useResource<OnboardedCompany[]>('/companies/onboarded-overview');
+
+  return (
+    <Card title="Onboarded (all organisations)" note={`${data?.length ?? 0} companies`}>
+      {error && <ErrorNote error={error} />}
+      {initial && <Loading />}
+      {data && data.length === 0 && <Empty>No companies have onboarded yet.</Empty>}
+      {data && data.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Organisation</th>
+                <th>Onboarded by</th>
+                <th>When</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <span style={{ fontWeight: 500 }}>{c.legalName}</span>
+                    <div className="tiny dim">{ENTITY_LABEL[c.entityType] ?? c.entityType}</div>
+                  </td>
+                  <td>
+                    {c.organization.name}
+                    <div className="tiny dim">{c.organization.slug}</div>
+                  </td>
+                  <td>
+                    {c.onboardedBy ? (
+                      <>
+                        <span>{c.onboardedBy.name}</span>
+                        <div className="tiny dim">{c.onboardedBy.email}</div>
+                      </>
+                    ) : (
+                      <span className="dim">—</span>
+                    )}
+                  </td>
+                  <td>{fmtDate(c.onboardedAt)}</td>
+                  <td><Badge value={c.status}>{c.status === 'ACTIVE' ? 'Active' : 'Archived'}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn-sm" onClick={reload}>Refresh</button>
+      </div>
+    </Card>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0]!.toUpperCase())
+    .slice(0, 2)
+    .join('');
+}
+
+/**
+ * The company's own team — everyone with a grant on it. The owner can invite a
+ * CA or admin straight from here; during a trial the action is locked with a
+ * note to upgrade first.
+ */
+function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean }) {
+  const { data: members, initial, error, reload } = useResource<CompanyMember[]>(
+    `/companies/${company.id}/members`,
+    [company.id],
+  );
+  const [inviting, setInviting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const { canOn } = useCompanies();
+
+  const mayInvite = canOn(company.id, 'work.write');
+
+  return (
+    <div className="team">
+      <div className="team-head">
+        <span className="team-title">Team</span>
+        {notice && <span className="tiny dim team-notice">{notice}</span>}
+        <span className="spacer" style={{ marginLeft: 'auto' }}>
+          {mayInvite && (
+            <button
+              className="btn-sm btn-ghost"
+              disabled={onTrial}
+              title={onTrial ? 'Available after upgrade' : 'Invite a CA or admin to work this company'}
+              onClick={() => setInviting(true)}
+            >
+              + Invite CA/Admin
+            </button>
+          )}
+        </span>
+      </div>
+
+      {error && <ErrorNote error={error} />}
+      {initial && <div className="tiny dim" style={{ padding: '4px 0' }}>Loading team…</div>}
+
+      {members && members.length === 0 && (
+        <div className="tiny dim" style={{ padding: '4px 0' }}>
+          No team members yet{onTrial ? '. Inviting is available after upgrade.' : '.'}
+        </div>
+      )}
+
+      {members && members.length > 0 && (
+        <div className="team-list">
+          {members.map((m) => (
+            <div key={m.member.id} className="team-row">
+              <span className="avatar team-avatar">{initials(m.member.name)}</span>
+              <div className="stack" style={{ flex: 1, minWidth: 0 }}>
+                <span className="truncate" style={{ fontWeight: 550 }}>
+                  {m.member.name}
+                  {!m.member.isActive && <span className="dim"> · deactivated</span>}
+                </span>
+                <span className="tiny dim truncate">{m.member.email}</span>
+              </div>
+              <span className="tiny">{ROLE_LABEL[m.role as UserRole] ?? m.role}</span>
+              {m.member.isActive
+                ? <span className="team-status team-active" title="Active">✓</span>
+                : <span className="team-status team-inactive" title="Inactive">—</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {inviting && (
+        <InviteMemberModal
+          companyId={company.id}
+          onInvited={() => {
+            setNotice('Invite sent');
+            setInviting(false);
+            reload();
+          }}
+          onClose={() => setInviting(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function Companies() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { companies, loading, reload, select, canOn } = useCompanies();
   const [showArchived, setShowArchived] = useState(false);
   const [deleting, setDeleting] = useState<Company | null>(null);
@@ -271,6 +425,8 @@ export function Companies() {
                   {c.buysFromMsmeSuppliers && <span className="auth-tag">MSME suppliers</span>}
                 </div>
 
+                <TeamSection company={c} onTrial={user?.trialDaysLeft !== null && user?.trialDaysLeft !== undefined} />
+
                 <div className="row row-wrap">
                   <button className="btn-sm" onClick={() => setInspect(c)}>Which rules apply?</button>
                   {canOn(c.id, 'company.sync') && (
@@ -299,6 +455,8 @@ export function Companies() {
           ))}
         </div>
       )}
+
+      {user?.seesEveryCompany && <OnboardingOverview />}
 
       {showArchived && (
         <Card title="Archived" note={`${archivedOnly.length} hidden from every other view`}>

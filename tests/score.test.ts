@@ -111,7 +111,7 @@ describe('compliance score', () => {
 describe('obligations that predate onboarding', () => {
   const ONBOARDED = parseDate('2025-11-01');
 
-  it('does not blame a new account for filings that fell due before it existed', () => {
+  it('scores pre-onboarding obligations as missed when never completed', () => {
     const result = computeComplianceScore(
       [
         item({ dueDate: parseDate('2025-06-20'), onboardedAt: ONBOARDED }),
@@ -119,10 +119,10 @@ describe('obligations that predate onboarding', () => {
       ],
       { asOf: ASOF },
     );
-    expect(result.score).toBe(100);
+    expect(result.score).toBe(0);
     expect(result.preOnboarding).toBe(2);
-    expect(result.assessed).toBe(0);
-    expect(result.missed).toBe(0);
+    expect(result.assessed).toBe(2);
+    expect(result.missed).toBe(2);
   });
 
   it('scores a pre-onboarding obligation once someone says what happened to it', () => {
@@ -135,16 +135,46 @@ describe('obligations that predate onboarding', () => {
     expect(result.score).toBe(50);
   });
 
-  it('still scores everything that fell due after onboarding', () => {
+  it('scores pre-onboarding items as missed alongside post-onboarding items', () => {
     const result = computeComplianceScore(
       [
-        item({ dueDate: parseDate('2025-06-20'), onboardedAt: ONBOARDED }), // ignored
-        item({ dueDate: parseDate('2025-12-20'), onboardedAt: ONBOARDED }), // missed
+        item({ dueDate: parseDate('2025-06-20'), onboardedAt: ONBOARDED }), // pre-onboarding, missed
+        item({ dueDate: parseDate('2025-12-20'), onboardedAt: ONBOARDED }), // post-onboarding, missed
       ],
       { asOf: ASOF },
     );
     expect(result.preOnboarding).toBe(1);
-    expect(result.assessed).toBe(1);
+    expect(result.assessed).toBe(2);
+    expect(result.missed).toBe(2);
     expect(result.score).toBe(0);
+  });
+
+  it('gives 0 score for 23 pre-onboarding missed obligations with 0 completed', () => {
+    const items = Array.from({ length: 23 }, (_, i) =>
+      item({ dueDate: parseDate(`2025-02-${String(i + 1).padStart(2, '0')}`), onboardedAt: ONBOARDED }),
+    );
+    const result = computeComplianceScore(items, { asOf: ASOF });
+    expect(result.score).toBe(0);
+    expect(result.assessed).toBe(23);
+    expect(result.missed).toBe(23);
+    expect(result.preOnboarding).toBe(23);
+  });
+
+  it('scores pre-onboarding missed alongside post-onboarding on-time at 50%', () => {
+    const result = computeComplianceScore(
+      [
+        item({ dueDate: parseDate('2025-06-20'), onboardedAt: ONBOARDED }), // pre-onboarding, missed → 0
+        item({ dueDate: parseDate('2025-12-20'), onboardedAt: ONBOARDED }), // post-onboarding, missed → 0
+        item({ dueDate: parseDate('2025-12-20'), completedAt: parseDate('2025-12-19') }), // on-time → weight
+        item({ dueDate: parseDate('2026-01-10'), completedAt: parseDate('2026-01-10') }), // on-time → weight
+      ],
+      { asOf: ASOF },
+    );
+    // All HIGH severity → weight 6 each. earned = 12, possible = 24 → 50%
+    expect(result.score).toBe(50);
+    expect(result.preOnboarding).toBe(1);
+    expect(result.assessed).toBe(4);
+    expect(result.onTime).toBe(2);
+    expect(result.missed).toBe(2);
   });
 });

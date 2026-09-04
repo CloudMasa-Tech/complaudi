@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    strictPort: true,
+    host: true,
     // Proxying keeps the browser on one origin, so there is no CORS
     // preflight and no absolute API URL baked into the bundle.
     proxy: {

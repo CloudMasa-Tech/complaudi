@@ -485,3 +485,24 @@ tbody tr.clickable:hover { background: var(--surface-2); }
   border-bottom: 1px solid var(--border); position: sticky; top: 57px; z-index: 5;
 }
 .month-name { font-weight: 650; font-size: 13px; }
+
+/* ── team list (invited CA/Admin) ──────────────────────────────────────── */
+.team {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.team-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.team-title { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+.team-notice { margin-left: 8px; }
+.team-list { display: flex; flex-direction: column; gap: 4px; }
+.team-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 5px 6px; border-radius: 6px;
+  background: var(--surface);
+}
+.team-avatar { width: 24px; height: 24px; font-size: 11px; flex: none; }
+.team-status { font-size: 12px; font-weight: 700; flex: none; }
+.team-active { color: var(--good); }
+.team-inactive { color: var(--text-3); }

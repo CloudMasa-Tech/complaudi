@@ -1,19 +1,26 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, UserRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import {
   accessSummary,
   assertCan,
   capabilitiesOf,
   companyScope,
+  effectiveRole,
   seesEveryCompany,
   type Actor,
 } from '../../lib/access';
-import { BadRequestError, NotFoundError } from '../../lib/errors';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors';
 import { parseDate } from '../../lib/dates';
 import { stateCodeFromGstin, validateGstin } from '../../lib/india';
 import { parseMcaMasterData } from '../../lib/mcaMasterData';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { storage } from '../../lib/storage';
+import { env } from '../../config/env';
+import { generateTemporaryPassword } from '../../lib/jwt';
+import { sendMail } from '../../lib/mailer';
+import { inviteHtml, inviteSubject, inviteText } from '../notifications/templates';
+import { canInviteAs, INVITER_ROLES } from './company-invite';
 import type { CreateCompanyInput, UpdateCompanyInput } from './companies.schemas';
 
 const d = (v?: string | null): Date | null => (v ? parseDate(v) : null);
@@ -162,6 +169,180 @@ export async function listCompanies(
   });
 }
 
+/**
+ * Platform-wide onboarding view for the SUPER_ADMIN.
+ *
+ * The SUPER_ADMIN owns the installation, not one firm, so this lists every
+ * self-onboarded company across every organisation without any tenant filter.
+ * It is a pure read: access for this role is role-based, never row-based, so
+ * no membership rows are created and nothing here can duplicate on re-run.
+ *
+ * `onboardedBy` is derived, not stored: the first user to grant themselves on
+ * the company is the one who enrolled it. `onboardedAt` is the company's own
+ * creation timestamp and `status` its `isActive` flag.
+ */
+export async function listSuperAdminCompanies(actor: Actor) {
+  if (!seesEveryCompany(actor.role)) {
+    throw new ForbiddenError('Only the platform super admin can browse every onboarded company.');
+  }
+
+  const companies = await prisma.company.findMany({
+    select: {
+      id: true,
+      legalName: true,
+      entityType: true,
+      isActive: true,
+      createdAt: true,
+      organization: { select: { id: true, name: true, slug: true } },
+      memberships: {
+        // The earliest self-grant identifies who onboarded the company.
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+        select: {
+          createdAt: true,
+          grantedBy: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return companies.map((c) => {
+    const first = c.memberships[0];
+    const onboardedBy = first?.grantedBy ?? first?.user ?? null;
+    return {
+      id: c.id,
+      legalName: c.legalName,
+      entityType: c.entityType,
+      status: c.isActive ? 'ACTIVE' : 'ARCHIVED',
+      onboardedAt: c.createdAt,
+      organization: c.organization,
+      onboardedBy: onboardedBy
+        ? { id: onboardedBy.id, name: onboardedBy.name, email: onboardedBy.email }
+        : null,
+    };
+  });
+}
+
+/**
+ * Invite someone into a single company.
+ *
+ * Strictly company-scoped: the inviter must already hold the company (via the
+ * same scope every other company read uses), the invitee lands in the inviter's
+ * organisation with a grant on that one company alone, and the target role can
+ * never exceed what the inviter is entitled to grant. This deliberately does not
+ * reach the org-wide `users.manage` path — a COMPANY_OWNER added to a shared
+ * organisation later will still only shape their own company's team.
+ */
+export async function inviteToCompany(
+  actor: Actor,
+  companyId: string,
+  input: { email: string; name: string; role: UserRole },
+): Promise<{
+  user: { id: string; name: string; email: string; role: string };
+  companies: string[];
+}> {
+  // Resolves only a company the inviter can see — org + membership scoped.
+  const company = await getCompanyOrThrow(actor, companyId);
+
+  // Inviting a team is a full-account feature. The organisation's trial status
+  // is authoritative — while a self-service trial is running there is no room
+  // to grow the team, so refuse before any user is created.
+  const organization = await prisma.organization.findUnique({
+    where: { id: actor.organizationId },
+    select: { trialEndsAt: true },
+  });
+  const trialEndsAt = organization?.trialEndsAt ?? null;
+  if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
+    throw new ForbiddenError('Inviting team members is available after upgrading from the trial.');
+  }
+
+  const inviterRole = await effectiveRole(actor, companyId);
+  if (!inviterRole || !INVITER_ROLES.includes(inviterRole)) {
+    throw new ForbiddenError('You do not have permission to invite people into this company.');
+  }
+  if (!canInviteAs(inviterRole, input.role)) {
+    throw new ForbiddenError(
+      `A ${inviterRole} cannot grant the ${input.role} role in this company.`,
+    );
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: { email: input.email.toLowerCase(), organizationId: actor.organizationId },
+    select: { id: true },
+  });
+  if (existing) throw new ConflictError('An account with this email already exists in your organisation.');
+
+  const password = generateTemporaryPassword();
+  const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
+
+  const created = await prisma.user.create({
+    data: {
+      organizationId: actor.organizationId,
+      email: input.email.toLowerCase(),
+      name: input.name,
+      passwordHash,
+      role: input.role,
+      memberships: {
+        // Unique (userId, companyId), so re-inviting the same person/company can
+        // never create a duplicate grant.
+        create: [{ companyId: company.id, role: input.role, grantedById: actor.userId }],
+      },
+    },
+    select: { id: true, name: true, email: true, role: true },
+  });
+
+  // Deliver the invite out of band: email the signup link rather than printing
+  // the temporary password on any screen. The password itself is never shown.
+  const inviter = await prisma.user.findUnique({
+    where: { id: actor.userId },
+    select: { name: true },
+  });
+  const signupUrl = `${env.APP_BASE_URL}/register?invite=${encodeURIComponent(created.email)}`;
+  const inviteData = {
+    inviterName: inviter?.name || 'A colleague',
+    companyName: company.legalName,
+    role: created.role,
+    signupUrl,
+  };
+  try {
+    await sendMail({
+      to: created.email,
+      subject: inviteSubject(created.name, company.legalName),
+      text: inviteText(created.name, inviteData),
+      html: inviteHtml(created.name, inviteData),
+    });
+  } catch (err) {
+    // The member is created but delivery failed — do not fail the whole request,
+    // but log it so an operator can resend. The UI confirms the invite regardless.
+    logger.error({ err, invitationEmail: created.email }, 'failed to send company invite email');
+  }
+
+  return { user: created, companies: [company.id] };
+}
+
+/** People already inside a company — the inviter's own team views. */
+export async function listCompanyMembers(actor: Actor, companyId: string) {
+  const company = await getCompanyOrThrow(actor, companyId);
+  const members = await prisma.companyMembership.findMany({
+    where: { companyId: company.id },
+    select: {
+      role: true,
+      createdAt: true,
+      user: { select: { id: true, name: true, email: true, isActive: true } },
+      grantedBy: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+  return members.map((m) => ({
+    role: m.role,
+    since: m.createdAt,
+    member: m.user,
+    invitedBy: m.grantedBy,
+  }));
+}
+
 export async function updateCompany(
   actor: Actor,
   companyId: string,
@@ -179,6 +360,9 @@ export async function updateCompany(
       (data as Record<string, unknown>)[key] = value;
     }
   }
+
+  // User has now reviewed and confirmed their profile data
+  data.profileConfirmedAt = new Date();
 
   return prisma.company.update({ where: { id: companyId }, data, include: companyInclude });
 }

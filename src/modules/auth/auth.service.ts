@@ -140,11 +140,12 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
         phone,
         passwordHash,
         // A self-service signup owns the entity they just described, so they
-        // arrive as its admin: they can complete the profile, run the engine and
-        // attach evidence. A viewer could do none of that, which left a trial
-        // showing an empty company and no way to fill it in — and the profile is
-        // what the entire calendar is computed from.
-        role: 'ADMIN',
+        // arrive as its COMPANY_OWNER: they can complete the profile, run the
+        // engine and attach evidence, plus invite their CA/ADMIN into their own
+        // company. (Previously ADMIN.) A viewer could do none of that, which
+        // left a trial showing an empty company and no way to fill it in — and
+        // the profile is what the entire calendar is computed from.
+        role: 'COMPANY_OWNER',
       },
     });
 
@@ -158,7 +159,7 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
         incorporationDate: parseDate(input.incorporationDate),
         isListed: decoded?.listed ?? false,
         industry: decoded?.industry ?? null,
-        memberships: { create: [{ userId: created.id, role: 'ADMIN', grantedById: created.id }] },
+        memberships: { create: [{ userId: created.id, role: 'COMPANY_OWNER', grantedById: created.id }] },
       },
       select: { id: true },
     });

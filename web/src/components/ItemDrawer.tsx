@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useCompanies } from '../auth/CompanyContext';
+import { useAuth } from '../auth/AuthContext';
 import { ApiError, del, download, patch, post, upload } from '../api/client';
 import { useResource } from '../api/useResource';
 import type { ComplianceItem, DocumentRow, EvidenceLevel, Reason, Task } from '../api/types';
@@ -7,6 +8,7 @@ import {
   AuthorityTag, Badge, Drawer, ErrorNote, Loading, SeverityDot,
   fmtBytes, fmtDate, fmtDateTime, relativeDue, titleise,
 } from './ui';
+import { InviteMemberModal } from './InviteMemberModal';
 
 interface Detail extends ComplianceItem {
   company: { id: string; legalName: string };
@@ -46,12 +48,17 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
 }) {
   const { data: item, error, initial, reload } = useResource<Detail>(`/compliance/items/${itemId}`);
   const { canOn } = useCompanies();
+  const { user } = useAuth();
+  // Inviting a team member is a full-account feature.
+  const onTrial = user?.trialDaysLeft !== null && user?.trialDaysLeft !== undefined;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [waiving, setWaiving] = useState(false);
   const [waiveReason, setWaiveReason] = useState('');
   const [attestation, setAttestation] = useState('');
   const [signatory, setSignatory] = useState('');
+  // Set when the user picks "+ Invite CA/Admin" from the assignee dropdown.
+  const [inviting, setInviting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { data: explain } = useResource<Explanation>(
@@ -61,7 +68,7 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
 
   // Scoped to the company this obligation belongs to, so the picker never
   // offers a colleague who cannot open it.
-  const { data: people } = useResource<{ id: string; name: string }[]>(
+  const { data: people, reload: reloadPeople } = useResource<{ id: string; name: string }[]>(
     item ? `/tasks/assignable?companyId=${item.company.id}` : null,
     [item?.company.id],
   );
@@ -221,11 +228,20 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
                 <select
                   value={task.assigneeId ?? task.assignee?.id ?? ''}
                   disabled={busy || !mayWork}
-                  onChange={(e) => run(() => patch(`/tasks/${task.id}`, { assigneeId: e.target.value || null }))}
+                  onChange={(e) => {
+                    if (e.target.value === 'invite') {
+                      setInviting(true);
+                    } else {
+                      void run(() => patch(`/tasks/${task.id}`, { assigneeId: e.target.value || null }));
+                    }
+                  }}
                   style={{ flex: 1 }}
                 >
                   <option value="">Unassigned</option>
                   {(people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  <option value="invite" disabled={onTrial} title={onTrial ? 'Available after upgrade' : 'Invite a CA or admin to work this company'}>
+                    + Invite CA/Admin
+                  </option>
                 </select>
               </div>
 
@@ -430,6 +446,21 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
           </div>
         )}
       </div>
+
+      {inviting && (
+        <InviteMemberModal
+          companyId={item.company.id}
+          onInvited={(member) => {
+            reloadPeople();
+            if (member.member.id) {
+              void run(() => patch(`/tasks/${task!.id}`, { assigneeId: member.member.id })).finally(() => setInviting(false));
+            } else {
+              setInviting(false);
+            }
+          }}
+          onClose={() => setInviting(false)}
+        />
+      )}
     </Drawer>
   );
 }

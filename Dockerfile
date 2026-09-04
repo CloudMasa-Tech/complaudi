@@ -9,7 +9,7 @@ RUN apk add --no-cache openssl
 
 COPY package*.json ./
 COPY web/package*.json ./web/
-RUN npm ci --ignore-scripts && npm ci --ignore-scripts --prefix web
+RUN npm ci --ignore-scripts --legacy-peer-deps && npm ci --ignore-scripts --legacy-peer-deps --prefix web
 
 COPY prisma ./prisma
 RUN npx prisma generate
@@ -27,7 +27,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm ci --omit=dev --ignore-scripts && npx prisma generate
+RUN npm ci --omit=dev --ignore-scripts --legacy-peer-deps && npx prisma generate
 
 # ─── runtime ──────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime

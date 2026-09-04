@@ -35,13 +35,22 @@ export const seesEveryCompany = (role: UserRole): boolean => role === 'SUPER_ADM
  * With no `companyId` this is the list they may browse — active companies only.
  * With one, it resolves that company *if they hold it*, which is what makes an
  * unauthorised id return 404 rather than leak its existence with a 403.
+ *
+ * Tenant isolation is normally by organisation and is never crossed — except by
+ * the platform SUPER_ADMIN, who owns the installation rather than a single firm
+ * and so sees every company in every organisation.
  */
 export function companyScope(actor: Actor, companyId?: string | null): Prisma.CompanyWhereInput {
+  // The platform SUPER_ADMIN sees every company in every organisation. Only
+  // this role bypasses tenant isolation; everyone else stays org-scoped below.
+  if (seesEveryCompany(actor.role)) {
+    return companyId ? { id: companyId } : { isActive: true };
+  }
+
   const base: Prisma.CompanyWhereInput = companyId
     ? { organizationId: actor.organizationId, id: companyId }
     : { organizationId: actor.organizationId, isActive: true };
 
-  if (seesEveryCompany(actor.role)) return base;
   return { ...base, memberships: { some: { userId: actor.userId } } };
 }
 

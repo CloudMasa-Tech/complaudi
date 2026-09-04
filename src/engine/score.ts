@@ -126,10 +126,10 @@ export function computeComplianceScore(
 
     if (item.dueDate < windowStart) continue; // older than the scoring window
 
-    // Predates onboarding and nobody has said what happened to it.
+    // Track items that predate onboarding for informational display, but still
+    // score them — uncompleted pre-onboarding obligations are real gaps.
     if (item.onboardedAt && item.dueDate < item.onboardedAt && !item.completedAt) {
       preOnboarding += 1;
-      continue;
     }
 
     const weight = SEVERITY_WEIGHT[item.severity];

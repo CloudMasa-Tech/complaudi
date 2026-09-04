@@ -82,3 +82,49 @@ export function digestHtml(recipientName: string, lines: ReminderLine[], appUrl:
   </div>
 </body></html>`;
 }
+
+// ------------------------------------------------------------------ company invite
+
+export interface InviteEmail {
+  inviterName: string;
+  companyName: string;
+  role: string;
+  signupUrl: string;
+}
+
+export function inviteSubject(inviteeName: string, companyName: string): string {
+  return `${inviteeName}, you've been invited to ${companyName} on Compliance Toolkit`;
+}
+
+export function inviteText(inviteeName: string, data: InviteEmail): string {
+  return `Hello ${inviteeName},
+
+${data.inviterName} has invited you to ${data.companyName} on Compliance Toolkit as a ${data.role}.
+
+To accept, open the link below and set your own password. You will then be able to sign in and see the compliance calendar for ${data.companyName}.
+
+${data.signupUrl}
+
+If you were not expecting this invitation, you can safely ignore this email.
+
+— Compliance Toolkit`;
+}
+
+export function inviteHtml(inviteeName: string, data: InviteEmail): string {
+  return `<!doctype html><html><body style="margin:0;padding:24px;background:#f9fafb;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
+  <div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:28px">
+    <h1 style="margin:0 0 4px;font-size:18px;color:#101828">You've been invited</h1>
+    <p style="margin:0 0 20px;color:#667085;font-size:14px">Hello ${escapeHtml(inviteeName)},</p>
+    <p style="margin:0 0 14px;color:#101828;font-size:14px;line-height:1.55">
+      ${escapeHtml(data.inviterName)} has invited you to <strong>${escapeHtml(data.companyName)}</strong>
+      on Compliance Toolkit as a <strong>${escapeHtml(data.role)}</strong>.
+    </p>
+    <p style="margin:0 0 22px;color:#667085;font-size:14px;line-height:1.55">
+      To accept, open the link below and set your own password. You will then be able to sign in and
+      see the compliance calendar for ${escapeHtml(data.companyName)}.
+    </p>
+    <a href="${escapeHtml(data.signupUrl)}" style="display:inline-block;background:#3538cd;color:#fff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600">Accept invitation</a>
+    <p style="margin:22px 0 0;color:#98a2b3;font-size:12px;line-height:1.5">If you were not expecting this invitation, you can safely ignore this email.</p>
+  </div>
+</body></html>`;
+}

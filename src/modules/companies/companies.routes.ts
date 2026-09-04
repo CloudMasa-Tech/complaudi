@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../../lib/async';
-import { BadRequestError } from '../../lib/errors';
+import { BadRequestError, ForbiddenError } from '../../lib/errors';
 import { previewCompanyImport } from '../../lib/companyDocumentImport';
 import { serialiseBigInt } from '../../lib/prisma';
 import { auth, requireAuth, requireCapability } from '../../middleware/auth';
 import { z } from 'zod';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
+import { seesEveryCompany } from '../../lib/access';
 import { recordAudit } from '../audit/audit.service';
 import { syncCompany } from '../compliance/compliance.service';
 import {
@@ -90,6 +91,27 @@ companiesRouter.post(
   }),
 );
 
+/**
+ * Platform-wide onboarding view for the SUPER_ADMIN.
+ *
+ * Deliberately slim: only who onboarded each company, when, and which
+ * organisation it landed in. It exposes none of a company's private profile
+ * (GSTIN, PAN, CIN, directors, evidence) and no per-company membership rows are
+ * created — access for this role is role-based, so nothing can duplicate on
+ * re-run. Declared before the `/:id` routes so "onboarded-overview" is never
+ * read as a company id.
+ */
+companiesRouter.get(
+  '/onboarded-overview',
+  asyncHandler(async (req, res) => {
+    const me = auth(req);
+    if (!seesEveryCompany(me.role)) {
+      throw new ForbiddenError('Only the platform super admin can browse every onboarded company.');
+    }
+    res.json(serialiseBigInt(await service.listSuperAdminCompanies(me)));
+  }),
+);
+
 companiesRouter.get(
   '/:id',
   validateParams(idParamSchema),
@@ -148,6 +170,52 @@ companiesRouter.post(
     const company = await service.restoreCompany(me, req.params.id!);
     await recordAudit({ organizationId: me.organizationId, action: 'company.restore', entityType: 'Company', entityId: company.id, req });
     res.json(serialiseBigInt(company));
+  }),
+);
+
+/**
+ * Company-scoped invite: brings a new person into this one company only.
+ *
+ * Deliberately separate from the org-wide users.manage path — a COMPANY_OWNER
+ * may grow their own company's team (a CA or an admin) but never touch anyone
+ * outside it, even if they are later added to a shared organisation.
+ */
+companiesRouter.post(
+  '/:id/invite',
+  validateParams(idParamSchema),
+  validateBody(
+    z.object({
+      email: z.string().email().toLowerCase(),
+      name: z.string().min(2).max(120),
+      role: z.enum(['ADMIN', 'CA', 'VIEWER']).default('CA'),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const me = auth(req);
+    const result = await service.inviteToCompany(me, req.params.id!, {
+      email: req.body.email,
+      name: req.body.name,
+      role: req.body.role,
+    });
+    await recordAudit({
+      organizationId: me.organizationId,
+      actorId: me.userId,
+      action: 'company.invite',
+      entityType: 'Company',
+      entityId: req.params.id!,
+      after: { email: result.user.email, role: result.user.role, company: req.params.id },
+      req,
+    });
+    res.status(201).json(result);
+  }),
+);
+
+/** The team already inside a company, for the inviter's own company view. */
+companiesRouter.get(
+  '/:id/members',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await service.listCompanyMembers(auth(req), req.params.id!));
   }),
 );
 

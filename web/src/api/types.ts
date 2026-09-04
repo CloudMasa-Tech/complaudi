@@ -34,6 +34,14 @@ export interface TeamMember {
   companies: { companyId: string; role: UserRole; legalName: string; isActive: boolean }[];
 }
 
+/** One row of a company's own team — returned by GET /companies/:id/members. */
+export interface CompanyMember {
+  role: UserRole;
+  since: string;
+  member: { id: string; name: string; email: string; isActive: boolean };
+  invitedBy: { id: string; name: string };
+}
+
 export interface GstRegistration {
   id: string; gstin: string; stateCode: string;
   filingFrequency: 'MONTHLY' | 'QRMP' | 'COMPOSITION';
@@ -64,6 +72,23 @@ export interface Company {
   directors: Director[];
   gstRegistrations: GstRegistration[];
   msmeRegistration: { udyamNumber: string; category: string; registeredOn: string | null } | null;
+  /** Platform-wide onboarding metadata, present only for a SUPER_ADMIN. */
+  status?: 'ACTIVE' | 'ARCHIVED';
+  onboardedAt?: string | null;
+  profileConfirmedAt?: string | null;
+  onboardedBy?: { id: string; name: string; email: string } | null;
+  organization?: { id: string; name: string; slug: string } | null;
+}
+
+/** One row of the SUPER_ADMIN platform-wide onboarding view. */
+export interface OnboardedCompany {
+  id: string;
+  legalName: string;
+  entityType: EntityType;
+  status: 'ACTIVE' | 'ARCHIVED';
+  onboardedAt: string;
+  organization: { id: string; name: string; slug: string };
+  onboardedBy: { id: string; name: string; email: string } | null;
 }
 
 export interface ComplianceItem {

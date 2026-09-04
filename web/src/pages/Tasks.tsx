@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError, patch, qs } from '../api/client';
 import { useResource } from '../api/useResource';
+import { useAuth } from '../auth/AuthContext';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Paged, Task, TaskStatus } from '../api/types';
+import type { CompanyMember, Paged, Task, TaskStatus } from '../api/types';
 import { ItemDrawer } from '../components/ItemDrawer';
+import { InviteMemberModal } from '../components/InviteMemberModal';
 import {
   AuthorityTag, Card, Empty, ErrorNote, Loading, SeverityDot,
   Spinner, fmtDate, relativeDue, titleise,
@@ -14,6 +16,9 @@ const STATUSES: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCE
 
 export function Tasks() {
   const { selectedId, canOn } = useCompanies();
+  const { user } = useAuth();
+  // Inviting a team member is a full-account feature.
+  const onTrial = user?.trialDaysLeft !== null && user?.trialDaysLeft !== undefined;
   // The dashboard tiles link here with the filter they were counting, so the
   // list that opens is the same work the number named. Read once, on arrival:
   // from then on the controls own the filter.
@@ -30,12 +35,13 @@ export function Tasks() {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [gateError, setGateError] = useState<{ task: Task; message: string } | null>(null);
+  // Which company the user is inviting into, driving the shared invite modal.
+  const [invite, setInvite] = useState<{ companyId: string; task?: Task } | null>(null);
 
   // Only people who can actually reach this company — not the whole organisation.
-  const { data: people } = useResource<{ id: string; name: string; role: string }[]>(
-    `/tasks/assignable${qs({ companyId: selectedId ?? undefined })}`,
-    [selectedId],
-  );
+  const { data: people, reload: reloadPeople } = useResource<
+    { id: string; name: string; role: string }[]
+  >(`/tasks/assignable${qs({ companyId: selectedId ?? undefined })}`, [selectedId]);
 
   const path = `/tasks${qs({
     companyId: selectedId ?? undefined,
@@ -73,6 +79,20 @@ export function Tasks() {
     } finally {
       setSavingId(null);
     }
+  }
+
+  async function onInvited(member: CompanyMember) {
+    reloadPeople();
+    if (invite?.task && member.member.id) {
+      try {
+        await patch(`/tasks/${invite.task.id}`, { assigneeId: member.member.id });
+        reload();
+        reloadWorkload();
+      } catch {
+        reload();
+      }
+    }
+    setInvite(null);
   }
 
   return (
@@ -193,10 +213,19 @@ export function Tasks() {
                           <select
                             value={t.assignee?.id ?? ''}
                             disabled={savingId === t.id || !canOn(t.companyId, 'work.write')}
-                            onChange={(e) => change(t, { assigneeId: e.target.value || null })}
+                            onChange={(e) => {
+                              if (e.target.value === 'invite') {
+                                setInvite({ companyId: t.companyId, task: t });
+                              } else {
+                                change(t, { assigneeId: e.target.value || null });
+                              }
+                            }}
                           >
                             <option value="">Unassigned</option>
                             {(people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            <option value="invite" disabled={onTrial} title={onTrial ? 'Available after upgrade' : 'Invite a CA or admin to work this company'}>
+                              + Invite CA/Admin
+                            </option>
                           </select>
                         </td>
                         <td style={{ width: 108 }} className="tiny muted">
@@ -237,6 +266,14 @@ export function Tasks() {
       {openItemId && (
         <ItemDrawer itemId={openItemId} onClose={() => setOpenItemId(null)}
                     onChanged={() => { reload(); reloadWorkload(); }} />
+      )}
+
+      {invite && (
+        <InviteMemberModal
+          companyId={invite.companyId}
+          onInvited={onInvited}
+          onClose={() => setInvite(null)}
+        />
       )}
     </>
   );

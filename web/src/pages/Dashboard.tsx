@@ -199,6 +199,31 @@ export function Dashboard() {
         </div>
       )}
 
+      {selected
+        && !selected.profileConfirmedAt && (
+        <div className="alert alert-info"
+            style={{ marginBottom: 16, marginTop: 8 }}>
+          <p>
+            Complete your company profile for accurate compliance tracking.
+            Adding turnover, employee count, and GST status ensures the engine
+            shows obligations that actually apply to you.
+          </p>
+          <Link to={`/companies/${selected.id}/edit`}
+            style={{
+              display: 'inline-block',
+              marginTop: 8,
+              padding: '6px 12px',
+              background: 'var(--primary)',
+              color: 'white',
+              borderRadius: '4px',
+              fontSize: '12px',
+              fontWeight: 500,
+            }}>
+            Update Profile
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-4">
         <div className="card stat">
           <span className="stat-label">Compliance score</span>
