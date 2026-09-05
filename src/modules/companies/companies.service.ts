@@ -32,7 +32,9 @@ export const companyInclude = {
   msmeRegistration: true,
 } satisfies Prisma.CompanyInclude;
 
-export type CompanyWithProfile = Prisma.CompanyGetPayload<{ include: typeof companyInclude }>;
+export type CompanyWithProfile = Prisma.CompanyGetPayload<{ include: typeof companyInclude }> & {
+  events?: Array<{ eventType: string; eventDate: Date; metadata: unknown }>;
+};
 
 /**
  * Every read is scoped by organization id, not just company id — an id guessed
@@ -697,4 +699,61 @@ export async function importMcaMasterData(
     unrecognisedColumns: parsed.unrecognisedColumns,
     rowsInFile: parsed.rowCount,
   };
+}
+
+/**
+ * Log a compliance event for event-based rule triggering.
+ *
+ * Validates the eventType against the four recognised MCA event types and
+ * stores the event in the CompanyEvent table. Triggers a subsequent
+ * syncCompany() call so the EVENT_BASED rules recompute due dates.
+ */
+export async function logComplianceEvent(
+  actor: Actor,
+  companyId: string,
+  body: { eventType: string; eventDate: string; metadata?: unknown },
+): Promise<CompanyWithProfile> {
+  // Validate eventType
+  const validEventTypes = ['DIR-12', 'PAS-3', 'CHG-1', 'MGT-14'] as const;
+  if (!validEventTypes.includes(body.eventType as any)) {
+    throw new BadRequestError(
+      `Invalid eventType: ${body.eventType}. Must be one of: ${validEventTypes.join(', ')}`,
+    );
+  }
+
+  // Validate eventDate is a proper ISO date
+  const eventDate = new Date(body.eventDate);
+  if (isNaN(eventDate.getTime())) {
+    throw new BadRequestError('Invalid eventDate: must be a valid ISO date string');
+  }
+
+  // Persist the event
+  const event = await prisma.companyEvent.create({
+    data: {
+      companyId,
+      eventType: body.eventType,
+      eventDate: eventDate,
+      metadata: body.metadata as any,
+    },
+  });
+
+  // Refresh the company profile with the new event attached
+  const company = await getCompanyOrThrow(actor, companyId);
+  ;(company as any).events = [
+    ...((company as any).events || []),
+    { eventType: event.eventType, eventDate: event.eventDate, metadata: event.metadata },
+  ];
+
+  return company;
+}
+
+/**
+ * Retrieve all logged compliance events for a company.
+ */
+export async function getComplianceEvents(
+  actor: Actor,
+  companyId: string,
+): Promise<Array<{ eventType: string; eventDate: Date; metadata: unknown }>> {
+  const company = await getCompanyOrThrow(actor, companyId);
+  return (company as any).events || [];
 }

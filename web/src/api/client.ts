@@ -24,6 +24,26 @@ export const tokens = {
 let onSessionLost: () => void = () => {};
 export const setSessionLostHandler = (fn: () => void) => { onSessionLost = fn; };
 
+
+function isTokenExpired(token: string): boolean {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window
+        .atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    // 10 seconds of slack
+    return payload.exp * 1000 < Date.now() + 10000;
+  } catch {
+    return true;
+  }
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 /**
@@ -33,7 +53,7 @@ let refreshing: Promise<boolean> | null = null;
  */
 async function refreshSession(): Promise<boolean> {
   const token = tokens.refresh();
-  if (!token) return false;
+  if (!token || isTokenExpired(token)) return false;
 
   refreshing ??= (async () => {
     try {
@@ -66,7 +86,23 @@ interface RequestOptions {
 
 async function send(path: string, opts: RequestOptions, isRetry = false): Promise<Response> {
   const headers: Record<string, string> = {};
-  const access = tokens.access();
+  let access = tokens.access();
+  if (access && !isRetry) {
+    if (isTokenExpired(access)) {
+      if (tokens.refresh() && (await refreshSession())) {
+        access = tokens.access();
+      } else {
+        tokens.clear();
+        onSessionLost();
+        // Return a fake 401 to avoid the browser logging a real failed HTTP request
+        return new Response(JSON.stringify({ error: { code: 'UNAUTHORIZED', message: 'Session expired' } }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    }
+  }
+
   if (access) headers.authorization = `Bearer ${access}`;
 
   let body: BodyInit | undefined;

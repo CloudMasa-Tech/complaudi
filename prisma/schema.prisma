@@ -244,6 +244,19 @@ model Company {
   @@map("companies")
 }
 
+model CompanyEvent {
+  id          String   @id @default(uuid())
+  companyId   String
+  eventType   String    // "DIR-12", "PAS-3", "CHG-1", "MGT-14"
+  eventDate   DateTime  // the triggering event date
+  metadata    Json?     // optional rule-specific data (director name, share class, charge amount, etc.)
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@unique([companyId, eventType, eventDate])
+  @@map("company_events")
+}
+
 model Director {
   id        String   @id @default(uuid())
   companyId String

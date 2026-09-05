@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useResource } from '../api/useResource';
+import { useAuth } from './AuthContext';
 import type { Capability, Company } from '../api/types';
 
 const KEY = 'ct.company';
@@ -28,6 +29,7 @@ interface CompanyState {
 const Ctx = createContext<CompanyState | null>(null);
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const { data, loading, error, reload } = useResource<Company[]>('/companies');
   const [selectedId, setSelectedId] = useState<string | null>(() => localStorage.getItem(KEY));
 
@@ -78,11 +80,13 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const autoSelected = useRef(false);
   useEffect(() => {
     if (autoSelected.current || loading || error) return;
-    if (!effectiveId && companies.length === 1) {
-      autoSelected.current = true;
-      select(companies[0]!.id);
+    if (!effectiveId && companies.length > 0) {
+      if (companies.length === 1 || user?.role !== 'SUPER_ADMIN') {
+        autoSelected.current = true;
+        select(companies[0]!.id);
+      }
     }
-  }, [companies, effectiveId, loading, select]);
+  }, [companies, effectiveId, loading, select, user]);
 
   const canOn = useCallback(
     (companyId: string | null | undefined, capability: Capability) => {

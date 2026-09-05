@@ -1,18 +1,18 @@
-import { useState, type FormEvent } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useResource } from '../api/useResource';
 import { qs } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useCompanies } from '../auth/CompanyContext';
+
 import { ROLE_LABEL, type Capability, type Paged, type Task } from '../api/types';
-import { ApiError, post, tokens } from '../api/client';
-import { Drawer, ErrorNote, Field, Spinner, initials } from './ui';
+import { initials } from './ui';
 
 /** One source for the wordmark, so the sidebar and the header cannot disagree. */
 export const BRAND = 'Complaudi';
 export const BRAND_TAGLINE = 'A platform for compliance Audit';
 
-const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capability?: Capability }> = [
+const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capability?: Capability; adminOnly?: boolean }> = [
   { to: '/', label: 'Dashboard', icon: '◈', end: true },
   { to: '/calendar', label: 'Calendar', icon: '▤' },
   { to: '/tasks', label: 'Tasks', icon: '✓' },
@@ -21,6 +21,7 @@ const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capab
   { to: '/copilot', label: 'Copilot', icon: '✦' },
   { to: '/rules', label: 'Rule engine', icon: '§', capability: 'rules.read' as const },
   { to: '/team', label: 'People & access', icon: '◍', capability: 'users.manage' as const },
+  { to: '/subscriptions', label: 'Subscriptions', icon: '★', adminOnly: true },
 ];
 
 const TITLES: Record<string, { title: string; sub: string }> = {
@@ -33,80 +34,16 @@ const TITLES: Record<string, { title: string; sub: string }> = {
   '/copilot': { title: 'AI Copilot', sub: 'Answers grounded in the rule engine, with citations' },
   '/rules': { title: 'Rule engine', sub: 'Every rule the engine knows, with its statutory reference' },
   '/team': { title: 'People & access', sub: 'Who works here, and which companies they can reach' },
+  '/profile': { title: 'Profile', sub: 'Your personal information and account settings' },
+  '/subscriptions': { title: 'Subscriptions', sub: 'Platform-wide overview of organizations and their plan status' },
 };
 
-/** Anyone can change their own password, which is what a temporary one is for. */
-function ChangePasswordDrawer({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (form.newPassword !== form.confirm) {
-      setError('The two new passwords do not match.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      // The server ends every other session and hands back a fresh pair for
-      // this one, so changing a password does not sign you out of the tab you
-      // are sitting in.
-      const next = await post<{ accessToken: string; refreshToken: string }>('/auth/change-password', {
-        currentPassword: form.currentPassword,
-        newPassword: form.newPassword,
-      });
-      tokens.set(next.accessToken, next.refreshToken);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change the password');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Drawer onClose={onClose}>
-      <header className="drawer-head">
-        <div className="stack" style={{ flex: 1, gap: 4 }}>
-          <h2 style={{ fontSize: 16 }}>Change your password</h2>
-          <span className="tiny dim">Your other devices will be signed out.</span>
-        </div>
-        <button className="btn-ghost btn-sm" onClick={onClose}>✕</button>
-      </header>
-
-      <form className="drawer-body" onSubmit={submit}>
-        {error && <ErrorNote error={error} />}
-        <Field label="Current password">
-          <input type="password" required autoFocus value={form.currentPassword}
-                 onChange={(e) => setForm({ ...form, currentPassword: e.target.value })} />
-        </Field>
-        <Field label="New password" hint="At least 10 characters, with an uppercase letter and a digit">
-          <input type="password" required value={form.newPassword}
-                 onChange={(e) => setForm({ ...form, newPassword: e.target.value })} />
-        </Field>
-        <Field label="Confirm new password">
-          <input type="password" required value={form.confirm}
-                 onChange={(e) => setForm({ ...form, confirm: e.target.value })} />
-        </Field>
-        <div className="row">
-          <button className="btn-primary" type="submit" disabled={busy}>
-            {busy ? <><Spinner /> Changing…</> : 'Change password'}
-          </button>
-          <button type="button" onClick={onClose}>Cancel</button>
-        </div>
-      </form>
-    </Drawer>
-  );
-}
 
 export function Layout() {
-  const { user, logout, can } = useAuth();
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [passwordChanged, setPasswordChanged] = useState(false);
+  const { user, can } = useAuth();
   const { companies, selectedId, select, error: companiesError, reload: reloadCompanies } = useCompanies();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   // A live count of open work, so the nav doubles as a nudge.
   const { data: openTasks } = useResource<Paged<Task>>(
@@ -137,7 +74,7 @@ export function Layout() {
         </div>
 
         <nav className="nav">
-          {NAV.filter((n) => !n.capability || can(n.capability)).map((n) => (
+          {NAV.filter((n) => (!n.capability || can(n.capability)) && (!n.adminOnly || user?.role === 'SUPER_ADMIN')).map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end}>
               <span className="nav-icon">{n.icon}</span>
               {n.label}
@@ -149,7 +86,11 @@ export function Layout() {
         </nav>
 
         <div className="sidebar-foot">
-          <div className="who">
+          <div
+            className={`who ${pathname === '/profile' ? 'active' : ''}`}
+            onClick={() => navigate('/profile')}
+            style={{ cursor: user ? 'pointer' : 'default' }}
+          >
             <div className="avatar">{initials(user?.name ?? '?')}</div>
             <div className="stack" style={{ minWidth: 0 }}>
               <span className="tiny truncate" style={{ fontWeight: 550 }}>{user?.name}</span>
@@ -159,13 +100,8 @@ export function Layout() {
               </span>
             </div>
           </div>
-          <button className="btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }}
-                  onClick={() => setChangingPassword(true)}>
-            Change password
-          </button>
-          <button className="btn-ghost btn-sm" style={{ width: '100%', marginTop: 2 }} onClick={logout}>
-            Sign out
-          </button>
+
+
         </div>
       </aside>
 
@@ -191,7 +127,9 @@ export function Layout() {
                 style={{ width: 250 }}
                 aria-label="Company"
               >
-                <option value="">All companies ({companies.length})</option>
+                {user?.role === 'SUPER_ADMIN' && (
+                  <option value="">All companies ({companies.length})</option>
+                )}
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>{c.legalName}</option>
                 ))}
@@ -212,21 +150,12 @@ export function Layout() {
               evidence. Nothing you enter is lost when the trial ends.
             </div>
           )}
-          {passwordChanged && (
-            <div className="alert alert-info">
-              Your password has been changed. Any other devices you were signed in on have been signed out.
-            </div>
-          )}
+
           <Outlet />
         </main>
       </div>
 
-      {changingPassword && (
-        <ChangePasswordDrawer
-          onClose={() => setChangingPassword(false)}
-          onDone={() => { setChangingPassword(false); setPasswordChanged(true); }}
-        />
-      )}
+
     </div>
   );
 }

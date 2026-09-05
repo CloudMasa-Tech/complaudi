@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { qs } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
-import type { CompanyProfile, Overview } from '../api/types';
+import type { Company, CompanyProfile, Overview } from '../api/types';
 import {
   AUTHORITY_LABEL, Badge, Card, Empty, ENTITY_LABEL, ErrorNote, Loading,
   SeverityDot, Stat, fmtDate, titleise, initials,
@@ -167,6 +167,61 @@ function EntityCard({ profile }: { profile: CompanyProfile }) {
   );
 }
 
+function PortfolioOverview({ companies }: { companies: Company[] }) {
+  if (companies.length === 0) return null;
+
+  const entityTypes = companies.reduce((acc, c) => {
+    acc[c.entityType] = (acc[c.entityType] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const withGst = companies.filter((c) => c.gstRegistrations && c.gstRegistrations.length > 0).length;
+  const withMsme = companies.filter((c) => !!c.msmeRegistration).length;
+  const totalDirectors = companies.reduce((sum, c) => sum + (c.directors?.length || 0), 0);
+  const activeCount = companies.filter(c => c.isActive).length;
+
+  return (
+    <Card title="Portfolio Analytics">
+      <div className="card-body">
+        <div className="grid grid-4" style={{ gap: 16 }}>
+          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+            <span className="stat-label">Total Companies</span>
+            <span className="stat-value">{companies.length}</span>
+            <span className="stat-foot">{activeCount} active · {companies.length - activeCount} archived</span>
+          </div>
+          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+            <span className="stat-label">Total Directors</span>
+            <span className="stat-value">{totalDirectors}</span>
+            <span className="stat-foot">Across all entities</span>
+          </div>
+          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+            <span className="stat-label">GST Registered</span>
+            <span className="stat-value">{withGst}</span>
+            <span className="stat-foot">{Math.round((withGst / companies.length) * 100)}% coverage</span>
+          </div>
+          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+            <span className="stat-label">MSME Registered</span>
+            <span className="stat-value">{withMsme}</span>
+            <span className="stat-foot">{Math.round((withMsme / companies.length) * 100)}% coverage</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          <span className="label" style={{ marginBottom: 12, display: 'block' }}>Entity Types Breakdown</span>
+          <div className="grid grid-4" style={{ gap: 12 }}>
+            {Object.entries(entityTypes).map(([type, count]) => (
+              <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-1)' }}>
+                <span style={{ fontSize: 14 }}>{ENTITY_LABEL[type] || titleise(type)}</span>
+                <span style={{ fontWeight: 600 }}>{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function Dashboard() {
   const { companies, selectedId, selected } = useCompanies();
   const { data, error, initial } = useResource<Overview>(
@@ -193,10 +248,7 @@ export function Dashboard() {
       {data.profile ? (
         <EntityCard profile={data.profile} />
       ) : companies.length > 1 && (
-        <div className="alert alert-info">
-          Showing all {companies.length} companies. Pick one at the top to see its
-          registrations, directors, DSC and KYC standing.
-        </div>
+        <PortfolioOverview companies={companies} />
       )}
 
       {selected

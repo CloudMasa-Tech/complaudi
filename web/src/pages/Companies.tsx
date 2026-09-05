@@ -347,6 +347,11 @@ export function Companies() {
   const [result, setResult] = useState<{ name: string; sync: SyncResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inspect, setInspect] = useState<Company | null>(null);
+  const [showEvents, setShowEvents] = useState<boolean>(false);
+  const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
+  const [selectedEventDate, setSelectedEventDate] = useState<string | null>(null);
+  const [selectedMetadata, setSelectedMetadata] = useState<string>('');
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
   async function sync(company: Company) {
     setSyncing(company.id);
@@ -359,6 +364,27 @@ export function Companies() {
       setError(err instanceof ApiError ? err.message : 'Sync failed');
     } finally {
       setSyncing(null);
+    }
+  }
+
+  async function submitEvent() {
+    if (!selectedEventType || !selectedEventDate) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await post(`/companies/${showEvents}/events`, {
+        eventType: selectedEventType,
+        eventDate: selectedEventDate,
+        metadata: selectedMetadata,
+      });
+      setShowEvents(false);
+      setSelectedEventType(null);
+      setSelectedEventDate(null);
+      setSelectedMetadata('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to log event');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -429,6 +455,12 @@ export function Companies() {
 
                 <div className="row row-wrap">
                   <button className="btn-sm" onClick={() => setInspect(c)}>Which rules apply?</button>
+                  <button
+                    className="btn-sm"
+                    onClick={() => setShowEvents(true)}
+                  >
+                    Events
+                  </button>
                   {canOn(c.id, 'company.sync') && (
                     <button className="btn-sm" disabled={syncing === c.id} onClick={() => sync(c)}>
                       {syncing === c.id ? <><Spinner /> Syncing</> : 'Re-run engine'}
@@ -493,7 +525,83 @@ export function Companies() {
       )}
 
       {inspect && <ApplicabilityDrawer company={inspect} onClose={() => setInspect(null)} />}
-      {deleting && (
+
+  {showEvents && (
+    <div style={{
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '92%',
+      maxWidth: '520px',
+      background: 'white',
+      border: '1px solid #ddd',
+      borderRadius: '8px',
+      boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
+      zIndex: 1000,
+      padding: '24px',
+      color: 'black',
+      overflowY: 'auto'
+    }}>
+      <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', borderBottom: '1px solid #e0e0e0', paddingBottom: '8px' }}>
+        Log Compliance Event
+      </h3>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Event Type</label>
+        <select
+          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+          onChange={(e) => setSelectedEventType(e.target.value)}
+        >
+          <option value="">Select event type</option>
+          <option value="DIR-12">DIR-12 — Director/KMP change</option>
+          <option value="PAS-3">PAS-3 — Share allotment</option>
+          <option value="CHG-1">CHG-1 — Charge creation/modification</option>
+          <option value="MGT-14">MGT-14 — Resolution filing</option>
+        </select>
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Event Date</label>
+        <input
+          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+          type="date"
+          onChange={(e) => setSelectedEventDate(e.target.value)}
+        />
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Metadata (optional)</label>
+        <input
+          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+          placeholder="e.g. director name, share class, charge amount"
+          value={selectedMetadata || ''}
+          onChange={(e) => setSelectedMetadata(e.target.value)}
+        />
+      </div>
+
+      <div style={{ textAlign: 'right', marginTop: '20px' }}>
+        <button
+          style={{ marginRight: '8px', background: '#fafafa', border: '1px solid #ddd', padding: '8px 16px', fontSize: '14px' }}
+          onClick={() => setShowEvents(false)}
+        >
+          Cancel
+        </button>
+        <button
+          style={{ background: '#0066ff', color: 'white', border: 'none', padding: '8px 16px', fontSize: '14px' }}
+          onClick={() => submitEvent()}
+        >
+          {submitting ? 'Logging…' : 'Log Event'}
+        </button>
+      </div>
+
+      <div style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
+        Due in 30 days: <span style={{ color: '#0066ff' }}>calculated from event date</span>
+      </div>
+    </div>
+  )}
+
+  {deleting && (
         <DeleteDialog
           company={deleting}
           onClose={() => setDeleting(null)}

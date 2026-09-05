@@ -11,8 +11,10 @@ import { Copilot } from './pages/Copilot';
 import { Dashboard } from './pages/Dashboard';
 import { Documents } from './pages/Documents';
 import { Login } from './pages/Login';
+import { Profile } from './pages/Profile';
 import { Register } from './pages/Register';
 import { Rules } from './pages/Rules';
+import { Subscriptions } from './pages/Subscriptions';
 import { Tasks } from './pages/Tasks';
 import { Team } from './pages/Team';
 
@@ -83,6 +85,8 @@ export default function App() {
           <Route path="copilot" element={<Copilot />} />
           <Route path="rules" element={<Rules />} />
           <Route path="team" element={<Team />} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

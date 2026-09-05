@@ -9,6 +9,9 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import ws from 'ws';
+
+(globalThis as any).WebSocket = ws;
 import { env } from '../config/env';
 import { AppError } from './errors';
 import { logger } from './logger';

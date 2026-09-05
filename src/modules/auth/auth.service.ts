@@ -19,7 +19,7 @@ import type { InviteInput, LoginInput, RegisterInput, TrialSignupInput } from '.
 export interface AuthResult {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; name: string; email: string; role: string; organizationId: string };
+  user: { id: string; name: string; email: string; role: string; organizationId: string; phone?: string };
 }
 
 function slugify(name: string): string {
@@ -446,6 +446,7 @@ export async function getProfile(userId: string) {
       name: true,
       email: true,
       role: true,
+      phone: true,
       createdAt: true,
       lastLoginAt: true,
       organization: { select: { id: true, name: true, slug: true, trialEndsAt: true } },

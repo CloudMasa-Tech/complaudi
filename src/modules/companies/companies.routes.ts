@@ -411,3 +411,41 @@ companiesRouter.delete(
     res.json({ sync });
   }),
 );
+
+/**
+ * Event logging for compliance event-based rules.
+ *
+ * Log a triggering event (director change, share allotment, charge creation,
+ * resolution passage). The deadline is computed as N days from this date
+ * when the sync runs and the EVENT_BASED rules evaluate.
+ *
+ * @body eventType one of: DIR-12, PAS-3, CHG-1, MGT-14
+ * @body eventDate ISO date string (the date of the triggering event)
+ * @body metadata optional rule-specific data
+ */
+companiesRouter.post(
+  '/:id/events',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    const me = auth(req);
+    const company = await service.logComplianceEvent(me, req.params.id!, req.body);
+    const sync = await syncCompany(me, req.params.id!);
+    res.json({ event: company.events![company.events!.length - 1], sync });
+  }),
+
+);
+
+/**
+ * List all logged compliance events for a company.
+ * Useful for the UI "Events" tab to show what deadlines are active.
+ */
+companiesRouter.get(
+  '/:id/events',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    const me = auth(req);
+    const events = await service.getComplianceEvents(me, req.params.id!);
+    res.json(events);
+  }),
+);
+// ---------------------------------------------------------------- directors

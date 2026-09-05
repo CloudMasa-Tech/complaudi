@@ -11,6 +11,8 @@ interface Profile extends User {
   /** Null on a full account; set while a self-service trial is running. */
   trialEndsAt: string | null;
   trialDaysLeft: number | null;
+  phone?: string;
+  createdAt: string;
 }
 
 interface AuthState {

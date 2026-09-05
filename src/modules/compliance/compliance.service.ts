@@ -22,6 +22,10 @@ export const LOOKAHEAD_DAYS = 550;
  * database and the storage layer can change without rewriting the catalog.
  */
 export function buildContext(company: CompanyWithProfile): ComplianceContext {
+  // Events are injected by syncCompany() via the company object; fall back to empty array.
+  const events: Array<{ eventType: string; eventDate: Date; metadata: unknown }> =
+    (company as any).events || [];
+
   return {
     company: {
       id: company.id,
@@ -43,7 +47,7 @@ export function buildContext(company: CompanyWithProfile): ComplianceContext {
       isListed: company.isListed,
       buysFromMsmeSuppliers: company.buysFromMsmeSuppliers,
       agmDate: company.agmDate,
-    },
+    } as any,
     directors: company.directors.map((dir) => ({
       id: dir.id,
       name: dir.name,
@@ -154,6 +158,19 @@ function deriveStatusValue(dueDate: Date, completedAt: Date | null, asOf: Date =
 export async function syncCompany(actor: Actor, companyId: string): Promise<SyncResult> {
   const company = await getCompanyOrThrow(actor, companyId);
   await assertCan(actor, companyId, 'company.sync');
+
+  // Fetch logged events from CompanyEvent table and attach to company for buildContext
+  const dbEvents = await prisma.companyEvent.findMany({
+    where: { companyId },
+    orderBy: { eventDate: 'desc' },
+  });
+  // @ts-expectProperty - we add this dynamically; buildContext reads (company as any).events
+  ;(company as any).events = dbEvents.map((e) => ({
+    eventType: e.eventType,
+    eventDate: e.eventDate,
+    metadata: e.metadata,
+  }));
+
   const ctx = buildContext(company);
   const now = today();
   const windowStart = addDays(now, -LOOKBACK_DAYS);

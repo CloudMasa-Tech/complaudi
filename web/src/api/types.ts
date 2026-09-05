@@ -24,7 +24,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
 };
 
 export interface User {
-  id: string; name: string; email: string; role: UserRole; organizationId: string;
+  id: string; name: string; email: string; role: UserRole; organizationId: string; phone?: string;
 }
 
 export interface TeamMember {
@@ -87,7 +87,7 @@ export interface OnboardedCompany {
   entityType: EntityType;
   status: 'ACTIVE' | 'ARCHIVED';
   onboardedAt: string;
-  organization: { id: string; name: string; slug: string };
+  organization: { id: string; name: string; slug: string; trialEndsAt?: string | null };
   onboardedBy: { id: string; name: string; email: string } | null;
 }
 
