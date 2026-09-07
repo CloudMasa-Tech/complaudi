@@ -87,7 +87,7 @@ export function Register() {
     <div className="login-page">
       <form className="login-card" style={{ maxWidth: 620 }} onSubmit={submit}>
         <div className="login-head">
-          <img src="/logo.png" alt="Complaudi" style={{ height: 40, objectFit: 'contain' }} />
+          <img src="/logo.png" alt="Complaudi" style={{ height: 80, objectFit: 'contain' }} />
           <span className="brand-tagline wide" style={{ marginTop: 6 }}>{BRAND_TAGLINE}</span>
           <h1 style={{ marginTop: 4 }}>See what your company has to file</h1>
           <p className="muted tiny">

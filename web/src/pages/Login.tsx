@@ -29,7 +29,7 @@ export function Login() {
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
         <div className="login-head">
-          <img src="/logo.png" alt="Complaudi" style={{ height: 46, objectFit: 'contain' }} />
+          <img src="/logo.png" alt="Complaudi" style={{ height: 80, objectFit: 'contain' }} />
           <span className="brand-tagline wide" style={{ marginTop: 8 }}>{BRAND_TAGLINE}</span>
           <p className="tiny dim" style={{ marginTop: 6 }}>MCA · GST · Income Tax · MSME · Labour</p>
         </div>
