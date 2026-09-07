@@ -1,7 +1,6 @@
 # ── secrets ──────────────────────────────────────────────────────────────────
 # .env carries the Supabase service_role key and the JWT signing secrets.
 # .env.example is the committed template.
-.env
 .env.*
 !.env.example
 
