@@ -318,6 +318,7 @@ export function Companies() {
   const [showArchived, setShowArchived] = useState(false);
   const [deleting, setDeleting] = useState<Company | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   // Onboarding is the only company action with no company in hand, so it is the
   // only one gated on the base role. Everything else is decided per company,
@@ -390,15 +391,24 @@ export function Companies() {
 
   if (loading && companies.length === 0) return <Loading label="Loading companies" />;
 
+  const filteredCompanies = companies.filter(c => c.legalName.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <>
       <div className="row">
         <span className="muted tiny">
           The engine reads these profiles. Turnover, headcount and the flags below move real statutory thresholds.
         </span>
-        <span className="row" style={{ marginLeft: 'auto' }}>
+        <span className="row" style={{ marginLeft: 'auto', gap: 16 }}>
+          <input 
+            type="text" 
+            placeholder="Search companies..." 
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)} 
+            style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 4, width: 220 }} 
+          />
           {can('company.archive') && (
-            <label className="check tiny">
+            <label className="check tiny" style={{ margin: 0 }}>
               <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
               Show archived
             </label>
@@ -419,9 +429,11 @@ export function Companies() {
 
       {companies.length === 0 ? (
         <Card><Empty>No companies yet. Onboard one to build its compliance calendar.</Empty></Card>
+      ) : filteredCompanies.length === 0 ? (
+        <Empty>No companies found matching "{search}".</Empty>
       ) : (
         <div className="grid grid-2">
-          {companies.map((c) => (
+          {filteredCompanies.map((c) => (
             <Card key={c.id} title={c.legalName} note={ENTITY_LABEL[c.entityType] ?? c.entityType}>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <dl className="kv">
@@ -534,23 +546,23 @@ export function Companies() {
       transform: 'translate(-50%, -50%)',
       width: '92%',
       maxWidth: '520px',
-      background: 'white',
-      border: '1px solid #ddd',
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
       borderRadius: '8px',
-      boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
+      boxShadow: 'var(--shadow-lg)',
       zIndex: 1000,
       padding: '24px',
-      color: 'black',
+      color: 'var(--text)',
       overflowY: 'auto'
     }}>
-      <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', borderBottom: '1px solid #e0e0e0', paddingBottom: '8px' }}>
+      <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
         Log Compliance Event
       </h3>
 
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Event Type</label>
         <select
-          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+          style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '14px', background: 'var(--surface)' }}
           onChange={(e) => setSelectedEventType(e.target.value)}
         >
           <option value="">Select event type</option>
@@ -564,7 +576,7 @@ export function Companies() {
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Event Date</label>
         <input
-          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+          style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '14px', background: 'var(--surface)' }}
           type="date"
           onChange={(e) => setSelectedEventDate(e.target.value)}
         />
@@ -573,7 +585,7 @@ export function Companies() {
       <div style={{ marginBottom: '16px' }}>
         <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Metadata (optional)</label>
         <input
-          style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' }}
+          style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '14px', background: 'var(--surface)' }}
           placeholder="e.g. director name, share class, charge amount"
           value={selectedMetadata || ''}
           onChange={(e) => setSelectedMetadata(e.target.value)}
@@ -582,21 +594,22 @@ export function Companies() {
 
       <div style={{ textAlign: 'right', marginTop: '20px' }}>
         <button
-          style={{ marginRight: '8px', background: '#fafafa', border: '1px solid #ddd', padding: '8px 16px', fontSize: '14px' }}
+          style={{ marginRight: '8px', background: 'var(--surface-2)', border: '1px solid var(--border)', padding: '8px 16px', fontSize: '14px', color: 'var(--text)' }}
           onClick={() => setShowEvents(false)}
         >
           Cancel
         </button>
         <button
-          style={{ background: '#0066ff', color: 'white', border: 'none', padding: '8px 16px', fontSize: '14px' }}
+          className="btn-primary"
+          style={{ padding: '8px 16px', fontSize: '14px' }}
           onClick={() => submitEvent()}
         >
           {submitting ? 'Logging…' : 'Log Event'}
         </button>
       </div>
 
-      <div style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
-        Due in 30 days: <span style={{ color: '#0066ff' }}>calculated from event date</span>
+      <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-2)' }}>
+        Due in 30 days: <span style={{ color: 'var(--medium)' }}>calculated from event date</span>
       </div>
     </div>
   )}

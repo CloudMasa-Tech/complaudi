@@ -14,7 +14,7 @@ import { Login } from './pages/Login';
 import { Profile } from './pages/Profile';
 import { Register } from './pages/Register';
 import { Rules } from './pages/Rules';
-import { Subscriptions } from './pages/Subscriptions';
+import { Billing } from './pages/Billing';
 import { Tasks } from './pages/Tasks';
 import { Team } from './pages/Team';
 
@@ -25,7 +25,7 @@ function TrialEnded({ endedAt, organization, onSignOut }: {
     <div className="login-page">
       <div className="login-card" style={{ maxWidth: 460 }}>
         <div className="login-head">
-          <div className="brand-mark" style={{ width: 38, height: 38, fontSize: 17 }}>C</div>
+          <img src="/logo.png" alt="Complaudi" style={{ height: 38, objectFit: 'contain' }} />
           <h1 style={{ marginTop: 8 }}>Your trial has ended</h1>
           <p className="muted tiny">
             The 14 days for {organization} finished on {new Date(endedAt).toLocaleDateString()}.
@@ -86,7 +86,7 @@ export default function App() {
           <Route path="rules" element={<Rules />} />
           <Route path="team" element={<Team />} />
           <Route path="profile" element={<Profile />} />
-          <Route path="subscriptions" element={<Subscriptions />} />
+          <Route path="billing" element={<Billing />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

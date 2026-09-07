@@ -56,7 +56,7 @@ export interface Director {
 }
 
 export interface Company {
-  id: string; legalName: string; brandName: string | null; entityType: EntityType;
+  id: string; legalName: string; brandName: string | null; logoStorageKey: string | null; entityType: EntityType;
   cin: string | null; llpin: string | null; pan: string | null; tan: string | null;
   incorporationDate: string | null; stateCode: string; industry: string | null;
   employeeCount: number; annualTurnover: string; paidUpCapital: string;

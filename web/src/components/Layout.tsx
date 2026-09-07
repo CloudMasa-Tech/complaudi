@@ -1,4 +1,4 @@
-
+import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useResource } from '../api/useResource';
 import { qs } from '../api/client';
@@ -21,7 +21,7 @@ const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capab
   { to: '/copilot', label: 'Copilot', icon: '✦' },
   { to: '/rules', label: 'Rule engine', icon: '§', capability: 'rules.read' as const },
   { to: '/team', label: 'People & access', icon: '◍', capability: 'users.manage' as const },
-  { to: '/subscriptions', label: 'Subscriptions', icon: '★', adminOnly: true },
+  { to: '/billing', label: 'Billing', icon: '₹' },
 ];
 
 const TITLES: Record<string, { title: string; sub: string }> = {
@@ -35,9 +35,88 @@ const TITLES: Record<string, { title: string; sub: string }> = {
   '/rules': { title: 'Rule engine', sub: 'Every rule the engine knows, with its statutory reference' },
   '/team': { title: 'People & access', sub: 'Who works here, and which companies they can reach' },
   '/profile': { title: 'Profile', sub: 'Your personal information and account settings' },
-  '/subscriptions': { title: 'Subscriptions', sub: 'Platform-wide overview of organizations and their plan status' },
+  '/billing': { title: 'Billing', sub: 'Plan details and payment settings' },
 };
 
+function CompanySwitcher({ companies, selectedId, select, userRole }: { companies: any[], selectedId: string | null, select: (id: string | null) => void, userRole?: string }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [ref]);
+
+  const filtered = companies.filter(c => c.legalName.toLowerCase().includes(search.toLowerCase()));
+  const selectedName = selectedId 
+    ? companies.find(c => c.id === selectedId)?.legalName 
+    : (userRole === 'SUPER_ADMIN' ? `All companies (${companies.length})` : 'Select company');
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: 280, fontSize: 14 }}>
+      <button 
+        className="btn-ghost" 
+        style={{ width: '100%', justifyContent: 'space-between', border: '1px solid var(--border)', background: 'var(--surface)' }} 
+        onClick={() => setOpen(!open)}
+      >
+        <span className="truncate">{selectedName}</span>
+        <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, 
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, 
+          boxShadow: 'var(--shadow)', zIndex: 100, 
+          display: 'flex', flexDirection: 'column', maxHeight: 400
+        }}>
+          <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
+            <input 
+              type="text" 
+              placeholder="Search companies..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+              style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, boxSizing: 'border-box', outline: 'none' }}
+              autoFocus
+            />
+          </div>
+          <div style={{ overflowY: 'auto', padding: '4px 0', display: 'flex', flexDirection: 'column' }}>
+            {userRole === 'SUPER_ADMIN' && (!search || "all companies".includes(search.toLowerCase())) && (
+              <div 
+                onClick={() => { select(null); setOpen(false); setSearch(''); }} 
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === null ? 'var(--bg-card-alt)' : 'transparent' }}
+              >
+                <span style={{ width: 16, display: 'inline-block' }}>{selectedId === null ? '✓' : ''}</span>
+                <span className="truncate">All companies ({companies.length})</span>
+              </div>
+            )}
+            {filtered.map(c => (
+              <div 
+                key={c.id}
+                onClick={() => { select(c.id); setOpen(false); setSearch(''); }} 
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === c.id ? 'var(--bg-card-alt)' : 'transparent' }}
+              >
+                <span style={{ width: 16, display: 'inline-block' }}>{selectedId === c.id ? '✓' : ''}</span>
+                <span className="truncate" title={c.legalName}>{c.legalName}</span>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+                No matches found
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Layout() {
   const { user, can } = useAuth();
@@ -66,9 +145,8 @@ export function Layout() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-row">
-            <div className="brand-mark">C</div>
-            <span className="brand-name">{BRAND}</span>
+          <div className="brand-row" style={{ width: '100%', padding: '0 8px', boxSizing: 'border-box' }}>
+            <img src="/logo.png" alt="Complaudi" style={{ width: '100%', maxWidth: 200, height: 'auto', objectFit: 'contain', display: 'block' }} />
           </div>
           <span className="brand-tagline">{BRAND_TAGLINE}</span>
         </div>
@@ -91,7 +169,11 @@ export function Layout() {
             onClick={() => navigate('/profile')}
             style={{ cursor: user ? 'pointer' : 'default' }}
           >
-            <div className="avatar">{initials(user?.name ?? '?')}</div>
+            {user?.email === 'info@cloudmasa.com' ? (
+              <img src="/superadmin.png" alt="Superadmin" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            ) : (
+              <div className="avatar">{initials(user?.name ?? '?')}</div>
+            )}
             <div className="stack" style={{ minWidth: 0 }}>
               <span className="tiny truncate" style={{ fontWeight: 550 }}>{user?.name}</span>
               <span className="tiny dim truncate">
@@ -121,19 +203,12 @@ export function Layout() {
               </button>
             )}
             {showCompanySwitcher && !companiesError && (
-              <select
-                value={selectedId ?? ''}
-                onChange={(e) => select(e.target.value || null)}
-                style={{ width: 250 }}
-                aria-label="Company"
-              >
-                {user?.role === 'SUPER_ADMIN' && (
-                  <option value="">All companies ({companies.length})</option>
-                )}
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>{c.legalName}</option>
-                ))}
-              </select>
+              <CompanySwitcher 
+                companies={companies} 
+                selectedId={selectedId} 
+                select={select} 
+                userRole={user?.role} 
+              />
             )}
           </div>
         </header>

@@ -29,3 +29,7 @@ coverage/
 .idea/
 .vscode/
 !.vscode/settings.json
+
+# docker archives
+*.tar.gz
+complaudi-app/

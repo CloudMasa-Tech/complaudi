@@ -82,7 +82,11 @@ export function Profile() {
           {/* Profile Card */}
           <Card>
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '32px 16px 24px' }}>
-              <div className="avatar" style={{ width: 80, height: 80, fontSize: 32, marginBottom: 16 }}>{initials(user.name)}</div>
+              {user.email === 'info@cloudmasa.com' ? (
+                <img src="/superadmin.png" alt="Superadmin" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, marginBottom: 16 }} />
+              ) : (
+                <div className="avatar" style={{ width: 80, height: 80, fontSize: 32, marginBottom: 16 }}>{initials(user.name)}</div>
+              )}
               <h2 style={{ margin: 0, fontSize: 20 }}>{user.name}</h2>
               <span className="dim" style={{ marginBottom: 16 }}>{user.email}</span>
               <Badge value={user.role === 'SUPER_ADMIN' ? 'critical' : 'info'}>{ROLE_LABEL[user.role]}</Badge>

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { BRAND, BRAND_TAGLINE } from '../components/Layout';
+import { BRAND_TAGLINE } from '../components/Layout';
 import { Field, Spinner } from '../components/ui';
 
 export function Login() {
@@ -29,9 +29,8 @@ export function Login() {
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
         <div className="login-head">
-          <div className="brand-mark" style={{ width: 46, height: 46, fontSize: 20, borderRadius: 13 }}>C</div>
-          <h1 className="brand-name" style={{ marginTop: 10, fontSize: 30 }}>{BRAND}</h1>
-          <span className="brand-tagline wide" style={{ marginTop: 4 }}>{BRAND_TAGLINE}</span>
+          <img src="/logo.png" alt="Complaudi" style={{ height: 46, objectFit: 'contain' }} />
+          <span className="brand-tagline wide" style={{ marginTop: 8 }}>{BRAND_TAGLINE}</span>
           <p className="tiny dim" style={{ marginTop: 6 }}>MCA · GST · Income Tax · MSME · Labour</p>
         </div>
 

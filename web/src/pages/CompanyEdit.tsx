@@ -143,6 +143,37 @@ export function CompanyEdit() {
       )}
 
       <form id="company-profile" onSubmit={saveProfile} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <Card title="Brand Logo" note="Optional — displayed on the company profile">
+          <div className="card-body row" style={{ gap: 24, alignItems: 'center' }}>
+            <div style={{
+              width: 80, height: 80, borderRadius: 8, border: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--surface-2)'
+            }}>
+              {company.logoStorageKey ? (
+                <img src={`/api/v1/companies/${company.id}/logo`} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              ) : (
+                <span className="tiny dim">No logo</span>
+              )}
+            </div>
+            <div className="stack" style={{ flex: 1 }}>
+              <input type="file" accept="image/*" disabled={busy} onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const form = new FormData();
+                  form.append('file', file);
+                  await upload(`/companies/${company.id}/logo`, form);
+                  reload();
+                  reloadCompanies();
+                } catch (err) {
+                  setSaveError(err instanceof ApiError ? err.message : 'Could not upload logo');
+                }
+              }} />
+              <span className="tiny dim">JPEG, PNG, GIF or WebP up to 5MB.</span>
+            </div>
+          </div>
+        </Card>
+
         <Card title="Identity">
           <div className="card-body grid grid-3">
             <Field label="Legal name" error={errors.legalName}>

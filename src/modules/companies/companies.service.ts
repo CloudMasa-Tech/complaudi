@@ -15,7 +15,7 @@ import { stateCodeFromGstin, validateGstin } from '../../lib/india';
 import { parseMcaMasterData } from '../../lib/mcaMasterData';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
-import { storage } from '../../lib/storage';
+import { storage, buildStorageKey } from '../../lib/storage';
 import { env } from '../../config/env';
 import { generateTemporaryPassword } from '../../lib/jwt';
 import { sendMail } from '../../lib/mailer';
@@ -195,7 +195,7 @@ export async function listSuperAdminCompanies(actor: Actor) {
       entityType: true,
       isActive: true,
       createdAt: true,
-      organization: { select: { id: true, name: true, slug: true } },
+      organization: { select: { id: true, name: true, slug: true, trialEndsAt: true } },
       memberships: {
         // The earliest self-grant identifies who onboarded the company.
         orderBy: { createdAt: 'asc' },
@@ -756,4 +756,54 @@ export async function getComplianceEvents(
 ): Promise<Array<{ eventType: string; eventDate: Date; metadata: unknown }>> {
   const company = await getCompanyOrThrow(actor, companyId);
   return (company as any).events || [];
+}
+
+export async function uploadLogo(companyId: string, file: Express.Multer.File, actor: Actor): Promise<string> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { organizationId: true, logoStorageKey: true },
+  });
+  if (!company) throw new NotFoundError('Company not found');
+
+  const key = buildStorageKey({
+    organizationId: company.organizationId,
+    companyId,
+    fileName: `logo-${file.originalname}`,
+  });
+
+  await storage.upload(key, file.buffer, file.mimetype);
+
+  await prisma.company.update({
+    where: { id: companyId },
+    data: { logoStorageKey: key },
+  });
+  
+  if (company.logoStorageKey) {
+    try {
+      await storage.remove(company.logoStorageKey);
+    } catch (err) {
+      logger.warn({ key: company.logoStorageKey, err }, 'Failed to remove old logo');
+    }
+  }
+
+  return `/api/v1/companies/${companyId}/logo`;
+}
+
+export async function getLogoStream(companyId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { logoStorageKey: true },
+  });
+  if (!company || !company.logoStorageKey) return null;
+
+  try {
+    const buffer = await storage.download(company.logoStorageKey);
+    const mimeType = company.logoStorageKey.endsWith('.png') ? 'image/png' 
+      : company.logoStorageKey.endsWith('.gif') ? 'image/gif' 
+      : company.logoStorageKey.endsWith('.webp') ? 'image/webp'
+      : 'image/jpeg';
+    return { buffer, mimeType };
+  } catch (err) {
+    return null;
+  }
 }

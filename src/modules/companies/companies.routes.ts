@@ -7,7 +7,7 @@ import { serialiseBigInt } from '../../lib/prisma';
 import { auth, requireAuth, requireCapability } from '../../middleware/auth';
 import { z } from 'zod';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
-import { seesEveryCompany } from '../../lib/access';
+import { assertCan, seesEveryCompany } from '../../lib/access';
 import { recordAudit } from '../audit/audit.service';
 import { syncCompany } from '../compliance/compliance.service';
 import {
@@ -27,6 +27,7 @@ import * as service from './companies.service';
 // service resolves it. Authorisation happens there, via assertCan().
 /** MCA extracts are plain CSV; a few megabytes covers a whole state. */
 const mcaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 1 } });
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 
 export const companiesRouter = Router();
 companiesRouter.use(requireAuth);
@@ -449,3 +450,31 @@ companiesRouter.get(
   }),
 );
 // ---------------------------------------------------------------- directors
+
+companiesRouter.post(
+  '/:id/logo',
+  validateParams(idParamSchema),
+  logoUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw new BadRequestError('Attach the logo under the "file" field.');
+    const me = auth(req);
+    await assertCan(me, req.params.id!, 'company.edit');
+    const url = await service.uploadLogo(req.params.id!, req.file, me);
+    res.json({ url });
+  })
+);
+
+companiesRouter.get(
+  '/:id/logo',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    const result = await service.getLogoStream(req.params.id!);
+    if (!result) {
+      res.status(404).send('Not found');
+      return;
+    }
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.send(result.buffer);
+  })
+);

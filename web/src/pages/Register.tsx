@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError, post, tokens } from '../api/client';
 import type { EntityType } from '../api/types';
-import { BRAND, BRAND_TAGLINE } from '../components/Layout';
+import { BRAND_TAGLINE } from '../components/Layout';
 import { Field, Spinner } from '../components/ui';
 
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
@@ -87,11 +87,8 @@ export function Register() {
     <div className="login-page">
       <form className="login-card" style={{ maxWidth: 620 }} onSubmit={submit}>
         <div className="login-head">
-          <div className="brand-mark" style={{ width: 40, height: 40, fontSize: 18, borderRadius: 11 }}>C</div>
-          {/* The mark alone is not a name — someone arriving here cold should be
-              told whose product this is before being asked for their details. */}
-          <span className="brand-name" style={{ marginTop: 8, fontSize: 20 }}>{BRAND}</span>
-          <span className="brand-tagline wide" style={{ marginTop: 2 }}>{BRAND_TAGLINE}</span>
+          <img src="/logo.png" alt="Complaudi" style={{ height: 40, objectFit: 'contain' }} />
+          <span className="brand-tagline wide" style={{ marginTop: 6 }}>{BRAND_TAGLINE}</span>
           <h1 style={{ marginTop: 4 }}>See what your company has to file</h1>
           <p className="muted tiny">
             Free for 14 days. Tell us about the entity and we will build its compliance calendar —

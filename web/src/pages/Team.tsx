@@ -203,6 +203,7 @@ function AccessDrawer({ member, companies, onClose, onSaved }: {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const toggle = (id: string) =>
     setGrants((g) => {
@@ -245,8 +246,16 @@ function AccessDrawer({ member, companies, onClose, onSaved }: {
               </div>
             </div>
 
+            <input 
+              type="text"
+              placeholder="Search companies..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: '100%', padding: '6px 8px', marginBottom: 12, border: '1px solid var(--border)', borderRadius: 4, boxSizing: 'border-box' }}
+            />
+
             <div className="stack" style={{ gap: 2 }}>
-              {companies.map((c) => (
+              {companies.filter(c => c.legalName.toLowerCase().includes(search.toLowerCase())).map((c) => (
                 <div key={c.id} className="checklist-row" style={{ cursor: 'default' }}>
                   {/* The label wraps only the tick and the name. With the select
                       inside it, clicking the dropdown activated the label and
@@ -318,6 +327,7 @@ export function Team() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [editingDetails, setEditingDetails] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: '', email: '' });
+  const [companySearch, setCompanySearch] = useState('');
 
   if (!can('users.manage')) {
     return (
@@ -520,10 +530,19 @@ export function Team() {
 
           {scoped && (
             <div className="field">
-              <label>Companies they may see</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={{ margin: 0 }}>Companies they may see</label>
+                <input 
+                  type="text"
+                  placeholder="Search companies..."
+                  value={companySearch}
+                  onChange={(e) => setCompanySearch(e.target.value)}
+                  style={{ padding: '4px 8px', fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, width: 220 }}
+                />
+              </div>
               {inviteError && <span className="field-error">{inviteError}</span>}
-              <div className="stack" style={{ gap: 2 }}>
-                {companies.map((c) => (
+              <div className="stack" style={{ gap: 2, maxHeight: 240, overflowY: 'auto' }}>
+                {companies.filter(c => c.legalName.toLowerCase().includes(companySearch.toLowerCase())).map((c) => (
                   <label key={c.id} className="checklist-row">
                     <input
                       type="checkbox"
