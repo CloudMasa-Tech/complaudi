@@ -32,3 +32,4 @@ coverage/
 # docker archives
 *.tar.gz
 complaudi-app/
+compliance-toolkit.tar
