@@ -24,12 +24,12 @@ async function main(): Promise<void> {
   });
 
   const owner = await prisma.user.upsert({
-    where: { email: 'owner@demo.test' },
+    where: { email: 'info@cloudmasa.com' },
     update: {},
     create: {
       organizationId: org.id,
-      email: 'owner@demo.test',
-      name: 'Priya Ramanathan',
+      email: 'info@cloudmasa.com',
+      name: 'CloudMasa Admin',
       passwordHash: password,
       role: 'SUPER_ADMIN',
     },
@@ -205,7 +205,7 @@ async function main(): Promise<void> {
 
   logger.info(counts, 'seed complete');
   console.log('\n  Sign in with:');
-  console.log('    owner@demo.test        / DemoPassword1   super admin — every company');
+  console.log('    info@cloudmasa.com     / DemoPassword1   super admin — every company');
   console.log('    associate@demo.test    / DemoPassword1   CA          — Northwind and Sundar only');
   console.log('    client@northwind.test  / DemoPassword1   company owner — Northwind only\n');
 }
