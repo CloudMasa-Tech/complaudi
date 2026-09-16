@@ -47,6 +47,8 @@ export function buildContext(company: CompanyWithProfile): ComplianceContext {
       isListed: company.isListed,
       buysFromMsmeSuppliers: company.buysFromMsmeSuppliers,
       agmDate: company.agmDate,
+      epfoCode: company.epfoCode,
+      esicCode: company.esicCode,
     } as any,
     directors: company.directors.map((dir) => ({
       id: dir.id,

@@ -14,6 +14,7 @@ import {
   fyMonths,
   fyQuarters,
   monthName,
+  today,
   utcDate,
   type FinancialYear,
   type Period,
@@ -215,5 +216,34 @@ export function perGstin(inner: (freq: string, stateCode: string) => OccurrenceF
 
 /** Emits nothing on a schedule — the obligation is triggered by an event. */
 export const eventDriven: OccurrenceFn = () => [];
+
+/** How far out a registration reminder due date sits from the day it is made. */
+export const REGISTRATION_GRACE_DAYS = 30;
+
+/**
+ * A rolling "complete this registration" reminder. Emits one occurrence in the
+ * financial year that contains today, due 30 days from the most recent sync.
+ *
+ * The periodKey is a fixed `REGISTER` token rather than the FY key, so repeated
+ * syncs keep updating one row instead of stacking duplicates — and as the due
+ * date rolls forward the reminder reads as "action needed now" instead of
+ * tipping into OVERDUE. Once the company registers, the rule stops applying and
+ * the next sync removes the row entirely.
+ */
+export function registrationReminder(): OccurrenceFn {
+  return (fy) => {
+    const now = today();
+    if (now < fy.start || now > fy.end) return [];
+    return [
+      {
+        periodKey: 'REGISTER',
+        periodLabel: 'Registration',
+        periodStart: fy.start,
+        periodEnd: fy.end,
+        dueDate: addDaysTo(now, REGISTRATION_GRACE_DAYS),
+      },
+    ];
+  };
+}
 
 export { monthName };

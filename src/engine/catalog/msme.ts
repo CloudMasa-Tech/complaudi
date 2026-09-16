@@ -66,12 +66,12 @@ export const msmeRules: ComplianceRule[] = [
   },
   {
     code: 'MSME_UDYAM_REGISTRATION',
-    title: 'Consider registering on Udyam',
+    title: 'Register for Udyam (MSME)',
     authority: 'MSME',
     category: 'Registration',
     legalReference: 'Section 8, MSMED Act 2006',
     description:
-      'The entity is within the MSME turnover limits but has no Udyam registration on record. Registration is free and unlocks the 45-day payment protection, priority-sector lending, public-procurement preference and interest-subvention schemes. This is an opportunity rather than a statutory obligation.',
+      'The entity is within the MSME turnover limits but has no Udyam registration on record. Registration is free and unlocks the 45-day payment protection, priority-sector lending, public-procurement preference and interest-subvention schemes. Register on the Udyam portal and record the certificate to open the MSME-1 and 45-day payment rules — without a Udyam number on file, those obligations cannot be tracked accurately.',
     severity: 'LOW',
     penalty: 'None — but the MSME protections and benefits are unavailable until the entity registers.',
     evidenceRequired: ['Udyam registration certificate'],

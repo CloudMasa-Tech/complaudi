@@ -35,9 +35,27 @@ export const always = (label = 'Applies to every registered entity'): Condition 
   test: () => true,
 });
 
+/**
+ * Every constitution the toolkit knows. Used as the universe for derived
+ * entity-type metadata (see engine/entityApplicability.ts).
+ */
+export const ALL_ENTITY_TYPES: EntityType[] = [
+  'PRIVATE_LIMITED',
+  'PUBLIC_LIMITED',
+  'OPC',
+  'LLP',
+  'PARTNERSHIP',
+  'PROPRIETORSHIP',
+  'SECTION_8',
+];
+
+const asSet = (types: EntityType[]): EntityType[] => [...new Set(types)];
+
 export const entityIs = (...types: EntityType[]): Condition => ({
   label: `Entity is a ${types.map(entityLabel).join(' or ')}`,
   test: (ctx) => types.includes(ctx.company.entityType),
+  entityScope: asSet(types),
+  entityOnly: true,
 });
 
 /** Companies Act entities — everything registered with the RoC under the 2013 Act. */
@@ -88,6 +106,27 @@ export const hasMsmeRegistration = (): Condition => ({
   label: 'Holds a Udyam (MSME) registration',
   test: (ctx) => ctx.msme !== null,
 });
+
+/**
+ * Mandatory GST registration: a supplier of goods or services must register
+ * once turnover crosses the threshold. The engine holds only total turnover,
+ * not the goods-vs-services split, so the strictest services threshold (₹20
+ * lakh) drives the reminder; the rule's description carries the goods nuance.
+ */
+export const crossesGstRegistrationThreshold = (): Condition => ({
+  label: 'Annual turnover is ₹20 lakh or more — the mandatory GST registration threshold for services',
+  test: (ctx) => ctx.company.annualTurnover >= 20 * LAKH,
+});
+
+/** The other side of the gate — a company the engine is warning, not tracking. */
+export const hasNoGstRegistration = (): Condition =>
+  not(hasGstRegistration(), 'Has no active GST registration');
+
+export const hasNoEpfoEnrollment = (): Condition =>
+  custom('No EPFO establishment code on record', (ctx) => !ctx.company.epfoCode);
+
+export const hasNoEsicEnrollment = (): Condition =>
+  custom('No ESIC employer code on record', (ctx) => !ctx.company.esicCode);
 
 export const hasTan = (): Condition => ({
   label: 'Holds a TAN (deducts tax at source)',
@@ -143,9 +182,20 @@ export const custom = (label: string, test: Condition['test']): Condition => ({ 
 export const not = (c: Condition, label?: string): Condition => ({
   label: label ?? `NOT — ${c.label}`,
   test: (ctx) => !c.test(ctx),
+  ...(c.entityScope
+    ? { entityScope: ALL_ENTITY_TYPES.filter((t) => !c.entityScope!.includes(t)) }
+    : {}),
 });
 
-export const anyOf = (label: string, ...conditions: Condition[]): Condition => ({
-  label,
-  test: (ctx) => conditions.some((c) => c.test(ctx)),
-});
+export const anyOf = (label: string, ...conditions: Condition[]): Condition => {
+  // A branch without an entityScope is agnostic — it could be satisfied by any
+  // constitution (e.g. isSmallCompany). One such branch makes the whole
+  // condition agnostic too; only when every branch names its scope does the
+  // union narrow to something a reviewer can act on.
+  const allScoped = conditions.every((c) => c.entityScope !== undefined);
+  return {
+    label,
+    test: (ctx) => conditions.some((c) => c.test(ctx)),
+    ...(allScoped ? { entityScope: asSet(conditions.flatMap((c) => c.entityScope!)) } : {}),
+  };
+};

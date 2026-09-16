@@ -519,3 +519,32 @@ tbody tr.clickable:hover { background: var(--surface-2); }
 .team-status { font-size: 12px; font-weight: 700; flex: none; }
 .team-active { color: var(--good); }
 .team-inactive { color: var(--text-3); }
+
+/* ── rule catalog entity-type tabs ─────────────────────────────────────── */
+.entity-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 2px;
+}
+.entity-tabs button {
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  padding: 5px 12px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--surface-2); cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s;
+}
+.entity-tabs button:hover { color: var(--text); border-color: var(--border-strong); }
+.entity-tabs button.active {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent);
+}
+.entity-tab-count {
+  opacity: .7; font-variant-numeric: tabular-nums; margin-left: 2px;
+}
+.entity-tab-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px;
+  padding: 10px 0 2px; font-size: 12.5px; color: var(--text-2);
+}
+.entity-tab-row .sep { color: var(--border-strong); }
+
+/* CONTINGENT — the rule can apply to this type only for some of its members. */
+.badge-VARIES { background: var(--high-soft); color: var(--high); }
+.badge-NEVER { opacity: .8; }

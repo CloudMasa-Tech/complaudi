@@ -4,8 +4,8 @@
  * Returns fan out per GSTIN: a company registered in three states files three
  * sets of GSTR-1 and GSTR-3B, on state-dependent due dates under QRMP.
  */
-import { CRORE, anyGstFrequencyIs, anyGstIsEcommerceOperator, anyGstDeductsTds, hasGstRegistration, turnoverAtLeast } from '../conditions';
-import { annual, monthly, perGstin, quarterly, shiftMonths } from '../schedule';
+import { CRORE, anyGstFrequencyIs, anyGstIsEcommerceOperator, anyGstDeductsTds, hasGstRegistration, turnoverAtLeast, crossesGstRegistrationThreshold, hasNoGstRegistration } from '../conditions';
+import { annual, monthly, perGstin, quarterly, registrationReminder, shiftMonths } from '../schedule';
 import type { ComplianceRule, Occurrence } from '../types';
 
 /**
@@ -289,5 +289,23 @@ export const gstRules: ComplianceRule[] = [
     periodKind: 'ANNUAL',
     applicableWhen: [hasGstRegistration(), turnoverAtLeast(5 * CRORE)],
     occurrences: annual({ month: 4, day: 30, anchor: 'within' }),
+  },
+  // ------------------------------------------------------------- registration
+  {
+    code: 'GST_REGISTER',
+    title: 'Register for GST',
+    authority: 'GST',
+    category: 'Registration',
+    legalReference: 'Section 22(1), CGST Act 2017 — mandatory registration from ₹20 lakh turnover (goods: ₹40 lakh)',
+    description:
+      'Turnover has crossed the mandatory registration threshold but no GSTIN is on record. Without registration the business cannot charge GST, issue valid invoices or claim input tax credit — and once turnover crosses the limit, registration is required regardless of the entities actual filing. The ₹20 lakh figure is the services threshold; the goods threshold is ₹40 lakh (both lower for the special-category states). Register once registered with the GSTIN it is added to the company profile and this reminder retires. This reminder also fires for a business that intends to register voluntarily before crossing the limit.',
+    severity: 'HIGH',
+    penalty:
+      'Without registration the business must still pay GST from the date liability arose, cannot pass on credit, and is exposed to penalty of ₹10,000 or the tax evaded, whichever is higher, under s.122(1)(xvii).',
+    evidenceRequired: [],
+    evidenceLevel: 'NONE',
+    periodKind: 'ONE_TIME',
+    applicableWhen: [crossesGstRegistrationThreshold(), hasNoGstRegistration()],
+    occurrences: registrationReminder(),
   },
 ];

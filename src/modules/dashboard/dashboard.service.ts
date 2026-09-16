@@ -2,6 +2,7 @@ import type { Authority, ItemStatus, Severity } from '@prisma/client';
 import { addDays, today } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { computeComplianceScore, type ScorableItem, type ScoreResult } from '../../engine/score';
+import { REGISTRATION_RULE_CODES } from '../../engine/catalog';
 import { getCompanyOrThrow } from '../companies/companies.service';
 import { assertCan, companyScope, type Actor } from '../../lib/access';
 
@@ -41,6 +42,12 @@ export interface Overview {
   byAuthority: Array<{ authority: Authority; total: number; overdue: number; completed: number; upcoming: number }>;
   overdue: unknown[];
   dueSoon: unknown[];
+  /**
+   * Open registration-first reminders (GST_REGISTER, MSME_UDYAM_REGISTRATION,
+   * PF_REGISTER, ESI_REGISTER). Served apart from the filing lists so the
+   * dashboard can surface "register first" ahead of the work it unlocks.
+   */
+  registrations: unknown[];
   taskCounts: Record<string, number>;
   evidence: { itemsRequiringEvidence: number; itemsWithEvidence: number; coveragePct: number };
   /** Only with one company in view — there is no single entity to describe otherwise. */
@@ -194,6 +201,7 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
     authorityGroups,
     overdue,
     dueSoon,
+    registrations,
     taskGroups,
     evidenceTotals,
     score,
@@ -220,6 +228,18 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
       where: { ...itemScope, status: { in: ['UPCOMING', 'DUE'] }, dueDate: { gte: now, lte: soon } },
       orderBy: { dueDate: 'asc' },
       take: 25,
+      include: {
+        company: { select: { id: true, legalName: true } },
+        task: { select: { id: true, status: true, assignee: { select: { id: true, name: true } } } },
+      },
+    }),
+    prisma.complianceItem.findMany({
+      where: {
+        ...itemScope,
+        ruleCode: { in: [...REGISTRATION_RULE_CODES] },
+        status: { notIn: ['COMPLETED', 'WAIVED'] },
+      },
+      orderBy: [{ ruleCode: 'asc' }],
       include: {
         company: { select: { id: true, legalName: true } },
         task: { select: { id: true, status: true, assignee: { select: { id: true, name: true } } } },
@@ -264,6 +284,7 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
     byAuthority: [...authorityMap.values()].sort((a, b) => b.overdue - a.overdue || a.authority.localeCompare(b.authority)),
     overdue,
     dueSoon,
+    registrations,
     taskCounts,
     evidence: {
       itemsRequiringEvidence: requiring.length,

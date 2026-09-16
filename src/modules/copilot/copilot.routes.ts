@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { asyncHandler } from '../../lib/async';
 import { allRules, getRule, rulesByAuthority } from '../../engine/catalog';
+import { applicableEntityTypes } from '../../engine/entityApplicability';
 import { NotFoundError } from '../../lib/errors';
 import { auth, requireAuth, requireCapability } from '../../middleware/auth';
 import { validateBody, validateParams, validateQuery } from '../../middleware/validate';
@@ -65,6 +66,7 @@ rulesRouter.get(
         evidenceLevel: r.evidenceLevel,
         signatoryRequired: Boolean(r.signatoryRequired),
         periodKind: r.periodKind,
+        entityTypes: applicableEntityTypes(r),
         conditions: r.applicableWhen.map((c) => c.label),
         exemptions: (r.excludeWhen ?? []).map((c) => c.label),
       })),
@@ -92,6 +94,7 @@ rulesRouter.get(
       evidenceLevel: rule.evidenceLevel,
       signatoryRequired: Boolean(rule.signatoryRequired),
       periodKind: rule.periodKind,
+      entityTypes: applicableEntityTypes(rule),
       conditions: rule.applicableWhen.map((c) => c.label),
       exemptions: (rule.excludeWhen ?? []).map((c) => c.label),
     });

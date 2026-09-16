@@ -31,4 +31,16 @@ export function rulesByAuthority(authority: Authority): ComplianceRule[] {
   return allRules.filter((r) => r.authority === authority);
 }
 
+/**
+ * Registration-first reminders. A company that still needs to enrol for GST,
+ * Udyam, EPF or ESI sees these as the entry point — they must not be buried
+ * among filing obligations, so the dashboard lifts them into their own band.
+ */
+export const REGISTRATION_RULE_CODES: readonly string[] = [
+  'GST_REGISTER',
+  'MSME_UDYAM_REGISTRATION',
+  'PF_REGISTER',
+  'ESI_REGISTER',
+];
+
 export { gstRules, incomeTaxRules, labourRules, mcaRules, msmeRules };

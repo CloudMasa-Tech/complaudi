@@ -5,11 +5,19 @@ import { useCompanies } from '../auth/CompanyContext';
 import type { Company, CompanyProfile, Overview } from '../api/types';
 import {
   AUTHORITY_LABEL, Badge, Card, Empty, ENTITY_LABEL, ErrorNote, Loading,
-  SeverityDot, Stat, fmtDate, titleise, initials,
+  SeverityDot, Stat, fmtDate, relativeDue, titleise, initials,
 } from '../components/ui';
 
 const SEVERITY_COLOUR: Record<string, string> = {
   CRITICAL: 'var(--critical)', HIGH: 'var(--high)', MEDIUM: 'var(--medium)', LOW: 'var(--text-3)',
+};
+
+/** What completing each reminder means, by rule code — the band's CTA label. */
+const REGISTER_CTA: Record<string, string> = {
+  GST_REGISTER: 'Add GST registration',
+  MSME_UDYAM_REGISTRATION: 'Add Udyam number',
+  PF_REGISTER: 'Add EPFO code',
+  ESI_REGISTER: 'Add ESIC code',
 };
 
 /** One registration. Held ones are marked; the rest say so and step back. */
@@ -232,7 +240,7 @@ export function Dashboard() {
   if (error) return <ErrorNote error={error} />;
   if (initial || !data) return <Loading label="Building the compliance picture" />;
 
-  const { score, statusCounts, severityCounts, evidence } = data;
+  const { score, statusCounts, severityCounts, evidence, registrations } = data;
   // The same window the tile counts, handed to the task list so the two agree.
   const isoToday = new Date().toISOString().slice(0, 10);
   const isoIn30Days = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
@@ -274,6 +282,32 @@ export function Dashboard() {
             Update Profile
           </Link>
         </div>
+      )}
+
+      {registrations.length > 0 && (
+        <Card
+          title="Action needed — register first"
+          note={`${registrations.length} pending`}
+          action={<span className="tiny dim">The filing calendar can’t begin until these are on record.</span>}
+        >
+          <div className="card-body stack" style={{ gap: 10 }}>
+            {registrations.map((r) => (
+              <div key={r.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
+                <SeverityDot value={r.severity} />
+                <div className="stack" style={{ minWidth: 0, gap: 1, flex: 1 }}>
+                  <span style={{ fontWeight: 550 }}>{r.title}</span>
+                  <span className="tiny dim">
+                    {AUTHORITY_LABEL[r.authority]} · due {relativeDue(r.dueDate)}
+                    {r.company && r.company.id !== selectedId && ` · ${r.company.legalName}`}
+                  </span>
+                </div>
+                <Link className="btn btn-sm btn-primary" to={`/companies/${r.company?.id ?? selectedId}/edit`}>
+                  {REGISTER_CTA[r.ruleCode] ?? 'Complete registration'}
+                </Link>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       <div className="grid grid-4">

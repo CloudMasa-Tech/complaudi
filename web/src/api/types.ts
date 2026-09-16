@@ -4,6 +4,12 @@ export type ItemStatus = 'UPCOMING' | 'DUE' | 'OVERDUE' | 'COMPLETED' | 'WAIVED'
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE' | 'CANCELLED';
 export type EvidenceLevel = 'REQUIRED' | 'ATTEST' | 'NONE';
 
+/** How a rule relates to one entity type on the reference page. */
+export type RuleEntityStatus = 'ALWAYS' | 'CONTINGENT' | 'NEVER';
+
+/** Bookkeeping per constitution, served on every rule by GET /rules. */
+export type RuleEntityApplicability = Record<EntityType, RuleEntityStatus>;
+
 export type EntityType =
   | 'PRIVATE_LIMITED' | 'PUBLIC_LIMITED' | 'OPC' | 'LLP'
   | 'PARTNERSHIP' | 'PROPRIETORSHIP' | 'SECTION_8';
@@ -180,6 +186,8 @@ export interface Overview {
                  completed: number; upcoming: number }[];
   overdue: ComplianceItem[];
   dueSoon: ComplianceItem[];
+  /** Open registration-first reminders — surfaced above the filing lists. */
+  registrations: ComplianceItem[];
   taskCounts: Record<string, number>;
   evidence: { itemsRequiringEvidence: number; itemsWithEvidence: number; coveragePct: number };
   /** Null org-wide — there is no single entity to describe. */

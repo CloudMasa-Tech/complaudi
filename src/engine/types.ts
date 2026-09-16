@@ -83,6 +83,9 @@ export interface CompanyProfile {
   isListed: boolean;
   buysFromMsmeSuppliers: boolean;
   agmDate: Date | null;
+  /** Enrolment numbers — only meaningful for the labour rules that require them. */
+  epfoCode: string | null;
+  esicCode: string | null;
 }
 
 /** Everything a rule is allowed to look at. Nothing else. */
@@ -103,6 +106,19 @@ export interface ComplianceContext {
 export interface Condition {
   label: string;
   test: (ctx: ComplianceContext) => boolean;
+  /**
+   * Display-only metadata for the entity-type reference view: the entity types
+   * this condition can ever be true for. Set by the composable builders that
+   * constrain on constitution — entityIs, isCompaniesActEntity, anyOf, not.
+   * evaluateRule never reads it, so it has no effect on runtime behaviour.
+   */
+  entityScope?: EntityType[];
+  /**
+   * True only for entityIs(...) itself: a condition that tests nothing but the
+   * entity type. In `excludeWhen` that carves the type out categorically, where
+   * a value-dependent exemption is merely a contingent carve-out.
+   */
+  entityOnly?: boolean;
 }
 
 export interface ConditionResult {
