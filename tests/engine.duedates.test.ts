@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getRule } from '../src/engine/catalog';
 import { generateCalendar } from '../src/engine/generator';
 import { financialYearFromStartYear, firstFinancialYearEnd, formatDate, parseDate } from '../src/lib/dates';
-import { CRORE, makeCompany, makeContext } from './helpers';
+import { CRORE, LAKH, makeCompany, makeContext } from './helpers';
 
 const FY = financialYearFromStartYear(2025); // FY2025-26
 
@@ -146,6 +146,22 @@ describe('Income tax due dates', () => {
     expect(applicable(tp, 'IT_ITR_AUDITED')).toBe(false);
     expect(applicable(tp, 'IT_ITR_TP')).toBe(true);
     expect(dueDates('IT_ITR_TP', tp)).toEqual(['2026-11-30']);
+  });
+
+  it('splits unregistered businesses on the tax-audit threshold like proprietorships', () => {
+    const below = makeContext({ company: makeCompany({ entityType: 'UNREGISTERED', annualTurnover: 50 * LAKH }) });
+    const above = makeContext({
+      company: makeCompany({ entityType: 'UNREGISTERED', annualTurnover: 3 * CRORE, cashTransactionRatioBelow5Pct: false }),
+    });
+    const applicable = (ctx: typeof below, code: string) =>
+      generateCalendar(ctx, { from: parseDate('2025-04-01'), to: parseDate('2027-03-31') }).items.some((i) => i.ruleCode === code);
+
+    expect(applicable(below, 'IT_ITR_NON_AUDITED')).toBe(true);
+    expect(applicable(below, 'IT_ITR_AUDITED')).toBe(false);
+    expect(applicable(above, 'IT_ITR_AUDITED')).toBe(true);
+    expect(applicable(above, 'IT_ITR_NON_AUDITED')).toBe(false);
+    expect(dueDates('IT_ITR_NON_AUDITED', below)).toEqual(['2026-07-31']);
+    expect(dueDates('IT_ITR_AUDITED', above)).toEqual(['2026-10-31']);
   });
 });
 

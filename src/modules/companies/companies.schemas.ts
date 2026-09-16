@@ -32,6 +32,7 @@ export const entityTypeSchema = z.enum([
   'PARTNERSHIP',
   'PROPRIETORSHIP',
   'SECTION_8',
+  'UNREGISTERED',
 ]);
 
 export const stateCodeSchema = z

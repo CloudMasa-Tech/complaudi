@@ -789,6 +789,26 @@ export async function uploadLogo(companyId: string, file: Express.Multer.File, a
   return `/api/v1/companies/${companyId}/logo`;
 }
 
+export async function removeLogo(companyId: string, actor: Actor): Promise<void> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { logoStorageKey: true },
+  });
+  if (!company) throw new NotFoundError('Company not found');
+
+  if (company.logoStorageKey) {
+    try {
+      await storage.remove(company.logoStorageKey);
+    } catch (err) {
+      logger.warn({ key: company.logoStorageKey, err }, 'Failed to remove logo from storage');
+    }
+    await prisma.company.update({
+      where: { id: companyId },
+      data: { logoStorageKey: null },
+    });
+  }
+}
+
 export async function getLogoStream(companyId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
   const company = await prisma.company.findUnique({
     where: { id: companyId },

@@ -26,16 +26,16 @@ const noTransferPricing = not(hasForeignTransactions(), 'Has no international or
 const isAlwaysAudited = entityIs('PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'SECTION_8');
 
 const isUnauditedFirm = custom(
-  'Is a firm or proprietorship below the tax-audit threshold',
+  'Is a firm, proprietorship or unregistered business below the tax-audit threshold',
   (ctx) =>
-    ['LLP', 'PARTNERSHIP', 'PROPRIETORSHIP'].includes(ctx.company.entityType) &&
+    ['LLP', 'PARTNERSHIP', 'PROPRIETORSHIP', 'UNREGISTERED'].includes(ctx.company.entityType) &&
     !crossesTaxAuditThreshold().test(ctx),
 );
 
 const isAuditedFirm = custom(
-  'Is a firm or proprietorship above the tax-audit threshold',
+  'Is a firm, proprietorship or unregistered business above the tax-audit threshold',
   (ctx) =>
-    ['LLP', 'PARTNERSHIP', 'PROPRIETORSHIP'].includes(ctx.company.entityType) &&
+    ['LLP', 'PARTNERSHIP', 'PROPRIETORSHIP', 'UNREGISTERED'].includes(ctx.company.entityType) &&
     crossesTaxAuditThreshold().test(ctx),
 );
 
@@ -224,12 +224,12 @@ export const incomeTaxRules: ComplianceRule[] = [
   },
   {
     code: 'IT_ITR_NON_AUDITED',
-    title: 'File the income tax return (non-audited firm or proprietorship)',
+    title: 'File the income tax return (non-audited firm, proprietorship or unregistered business)',
     authority: 'INCOME_TAX',
     category: 'Annual return',
     form: 'ITR-3 / ITR-4 / ITR-5',
     legalReference: 'Section 139(1), Income-tax Act 1961',
-    description: 'Firms and proprietorships not subject to audit file their return by 31 July.',
+    description: 'Firms, proprietorships and unregistered businesses not subject to audit file their return by 31 July.',
     severity: 'CRITICAL',
     penalty: 'Late fee of up to ₹5,000 under s.234F and interest at 1% per month under s.234A.',
     evidenceRequired: ['ITR-V acknowledgement', 'Computation of income', 'Form 26AS / AIS reconciliation'],

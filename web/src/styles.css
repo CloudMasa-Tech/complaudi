@@ -210,6 +210,10 @@ button:disabled:hover { background: var(--surface-2); filter: none; }
 .btn-ghost:hover { background: var(--surface-2); }
 .btn-danger { color: var(--critical); border-color: var(--border-strong); }
 
+/* A quiet tertiary "register via <service>" link under a dashboard reminder. */
+.reg-ext-link { color: var(--accent); text-decoration: none; }
+.reg-ext-link:hover { text-decoration: underline; }
+
 input, select, textarea {
   font: inherit; font-size: 13px; color: var(--text);
   padding: 7px 10px; border-radius: 7px;
@@ -316,9 +320,9 @@ tbody tr.clickable:hover { background: var(--surface-2); }
   border-bottom: 1px solid var(--border);
 }
 .entity-mark {
-  width: 44px; height: 44px; border-radius: 12px; flex: none;
+  width: 64px; height: 64px; border-radius: 12px; flex: none;
   background: var(--accent); color: #fff;
-  display: grid; place-items: center; font-weight: 700; font-size: 15px;
+  display: grid; place-items: center; font-weight: 700; font-size: 20px;
   box-shadow: var(--shadow);
 }
 .entity-name { font-size: 17px; font-weight: 650; line-height: 1.25; }
@@ -347,6 +351,7 @@ tbody tr.clickable:hover { background: var(--surface-2); }
   border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 13px;
   display: flex; flex-direction: column; gap: 3px; min-width: 0;
   transition: border-color .12s, box-shadow .12s;
+  position: relative; overflow: hidden;
 }
 /* Held registrations carry a quiet accent edge; the rest stay out of the way,
    so the eye lands on what the entity actually has. */

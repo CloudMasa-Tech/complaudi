@@ -10,7 +10,8 @@ const LLP: EntityType = 'LLP';
 const PART: EntityType = 'PARTNERSHIP';
 const PROP: EntityType = 'PROPRIETORSHIP';
 const S8: EntityType = 'SECTION_8';
-const ALL: EntityType[] = [PL, PUB, OPC, LLP, PART, PROP, S8];
+const UREG: EntityType = 'UNREGISTERED';
+const ALL: EntityType[] = [PL, PUB, OPC, LLP, PART, PROP, S8, UREG];
 
 const applicability = (code: string): RuleEntityApplicability => {
   const rule = getRule(code);
@@ -182,9 +183,32 @@ describe('GST, MSME and labour', () => {
 });
 
 describe('registration reminders', () => {
-  it('every registration reminder is possible for and contingent to all seven types', () => {
+  it('every registration reminder is possible for and contingent to all eight types', () => {
     for (const code of ['GST_REGISTER', 'MSME_UDYAM_REGISTRATION', 'PF_REGISTER', 'ESI_REGISTER']) {
       for (const t of ALL) expect(statusAt(code, t), `${code} @ ${t}`).toBe('CONTINGENT');
     }
+  });
+});
+
+describe('unregistered businesses', () => {
+  it('never get MCA company or LLP filings', () => {
+    for (const code of ['MCA_AOC4', 'MCA_MGT7', 'MCA_AGM', 'MCA_DIR12', 'LLP_FORM11', 'LLP_FORM8']) {
+      expect(statusAt(code, UREG), code).toBe('NEVER');
+    }
+  });
+
+  it('reach registration reminders and GST/labour obligations like any business', () => {
+    for (const code of [
+      'GST_REGISTER', 'MSME_UDYAM_REGISTRATION', 'PF_REGISTER', 'ESI_REGISTER',
+      'GST_GSTR3B_MONTHLY', 'LABOUR_SHOPS_ESTABLISHMENT', 'LABOUR_EPF_ECR',
+    ]) {
+      expect(statusAt(code, UREG), code).toBe('CONTINGENT');
+    }
+  });
+
+  it('gets the same ITR guidance as firms, contingent on turnover', () => {
+    expect(statusAt('IT_ITR_AUDITED', UREG)).toBe('CONTINGENT');
+    expect(statusAt('IT_ITR_NON_AUDITED', UREG)).toBe('CONTINGENT');
+    expect(statusAt('IT_TAX_AUDIT', UREG)).toBe('CONTINGENT');
   });
 });

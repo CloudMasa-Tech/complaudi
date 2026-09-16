@@ -1,0 +1,1 @@
+ALTER TABLE "company_events" ENABLE ROW LEVEL SECURITY;

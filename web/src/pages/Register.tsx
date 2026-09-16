@@ -13,6 +13,7 @@ const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PARTNERSHIP', label: 'Partnership Firm' },
   { value: 'PROPRIETORSHIP', label: 'Sole Proprietorship' },
   { value: 'SECTION_8', label: 'Section 8 Company' },
+  { value: 'UNREGISTERED', label: 'Unregistered Business' },
 ];
 
 const STATES = [

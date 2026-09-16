@@ -96,7 +96,6 @@ model Company {
   organizationId                String
   legalName                     String
   brandName                     String?
-  logoStorageKey                String?
   entityType                    EntityType
   cin                           String?
   llpin                         String?
@@ -126,6 +125,7 @@ model Company {
   epfoCode                      String?
   esicCode                      String?
   profileConfirmedAt            DateTime?
+  logoStorageKey                String?
   organization                  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships                   CompanyMembership[]
   applicabilities               ComplianceApplicability[]
@@ -410,6 +410,7 @@ enum EntityType {
   PARTNERSHIP
   PROPRIETORSHIP
   SECTION_8
+  UNREGISTERED
 }
 
 /// Roles within one organisation. Tenant isolation is by organisation and is

@@ -3,6 +3,7 @@ import { qs } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
 import type { Company, CompanyProfile, Overview } from '../api/types';
+import { REGISTRATION_SERVICE_LINKS } from '../lib/registrationLinks';
 import {
   AUTHORITY_LABEL, Badge, Card, Empty, ENTITY_LABEL, ErrorNote, Loading,
   SeverityDot, Stat, fmtDate, relativeDue, titleise, initials,
@@ -21,12 +22,19 @@ const REGISTER_CTA: Record<string, string> = {
 };
 
 /** One registration. Held ones are marked; the rest say so and step back. */
-function Reg({ label, value, foot }: { label: string; value: string | null; foot?: string }) {
+function Reg({ label, value, foot, badgeUrl, badgeStyle }: { label: string; value: string | null; foot?: string; badgeUrl?: string; badgeStyle?: React.CSSProperties }) {
   return (
     <div className={`reg-tile ${value ? 'held' : 'empty'}`}>
       <span className="reg-label">{label}</span>
       <span className={`reg-value${value ? '' : ' na'}`}>{value ?? 'Not held'}</span>
       {foot && <span className="reg-foot">{foot}</span>}
+      {badgeUrl && (
+        <img src={badgeUrl} alt={label} style={{
+          position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', width: 64, height: 64, objectFit: 'contain',
+          opacity: value ? 1 : 0.4, filter: value ? 'none' : 'grayscale(100%)', mixBlendMode: 'multiply',
+          ...badgeStyle
+        }} />
+      )}
     </div>
   );
 }
@@ -70,7 +78,7 @@ const KYC_VIEW = {
  * answered all three at the same volume — and gave a blank the same weight as
  * a registration number.
  */
-function EntityCard({ profile }: { profile: CompanyProfile }) {
+function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logoStorageKey?: string | null }) {
   const { dsc, mcaKyc, msme, gstins, dpiit } = profile;
   const live = gstins.filter((g) => g.isActive);
   const dscView = DSC_VIEW[dsc.status];
@@ -79,7 +87,13 @@ function EntityCard({ profile }: { profile: CompanyProfile }) {
   return (
     <div className="card">
       <header className="entity-head">
-        <div className="entity-mark">{initials(profile.legalName)}</div>
+        <div className="entity-mark" style={logoStorageKey ? { background: 'transparent', boxShadow: 'none' } : undefined}>
+          {logoStorageKey ? (
+            <img src={`/api/v1/companies/${profile.id}/logo`} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'inherit' }} />
+          ) : (
+            initials(profile.legalName)
+          )}
+        </div>
         <div className="stack" style={{ minWidth: 0, gap: 3 }}>
           <span className="entity-name">{profile.legalName}</span>
           <span className="entity-sub">
@@ -130,19 +144,24 @@ function EntityCard({ profile }: { profile: CompanyProfile }) {
             live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more state${live.length === 2 ? '' : 's'}`
               : live.length === 1 ? live[0]!.stateCode : 'Not registered'
           }
+          badgeUrl="/gst.webp?v=3"
+          badgeStyle={{ width: 88, height: 88, right: 4 }}
         />
         <Reg
           label="MSME · Udyam"
           value={msme?.udyamNumber ?? null}
           foot={msme ? `${titleise(msme.category)}${msme.registeredOn ? ` · ${fmtDate(msme.registeredOn)}` : ''}` : 'Not registered'}
+          badgeUrl="/msme.webp?v=3"
+          badgeStyle={{ width: 88, height: 88, right: 4 }}
         />
         <Reg
           label="DPIIT · Startup India"
           value={dpiit?.number ?? null}
           foot={dpiit?.recognisedOn ? `Recognised ${fmtDate(dpiit.recognisedOn)}` : dpiit ? undefined : 'Not recognised'}
+          badgeUrl="/dpiit.webp?v=3"
         />
-        <Reg label="PF · EPFO" value={profile.epfoCode} foot={profile.epfoCode ? undefined : 'Not enrolled'} />
-        <Reg label="ESI · ESIC" value={profile.esicCode} foot={profile.esicCode ? undefined : 'Not enrolled'} />
+        <Reg label="PF · EPFO" value={profile.epfoCode} foot={profile.epfoCode ? undefined : 'Not enrolled'} badgeUrl="/epfo.png?v=3" />
+        <Reg label="ESI · ESIC" value={profile.esicCode} foot={profile.esicCode ? undefined : 'Not enrolled'} badgeUrl="/esic.png?v=3" />
       </div>
 
       <div className="row" style={{ padding: '0 18px 8px' }}>
@@ -254,7 +273,7 @@ export function Dashboard() {
           describe, and the stat row above answers a different question. Say so,
           rather than leaving the card's absence to be read as a missing feature. */}
       {data.profile ? (
-        <EntityCard profile={data.profile} />
+        <EntityCard profile={data.profile} logoStorageKey={selected?.logoStorageKey} />
       ) : companies.length > 1 && (
         <PortfolioOverview companies={companies} />
       )}
@@ -291,21 +310,29 @@ export function Dashboard() {
           action={<span className="tiny dim">The filing calendar can’t begin until these are on record.</span>}
         >
           <div className="card-body stack" style={{ gap: 10 }}>
-            {registrations.map((r) => (
-              <div key={r.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
-                <SeverityDot value={r.severity} />
-                <div className="stack" style={{ minWidth: 0, gap: 1, flex: 1 }}>
-                  <span style={{ fontWeight: 550 }}>{r.title}</span>
-                  <span className="tiny dim">
-                    {AUTHORITY_LABEL[r.authority]} · due {relativeDue(r.dueDate)}
-                    {r.company && r.company.id !== selectedId && ` · ${r.company.legalName}`}
-                  </span>
+            {registrations.map((r) => {
+              const ext = REGISTRATION_SERVICE_LINKS[r.ruleCode];
+              return (
+                <div key={r.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
+                  <SeverityDot value={r.severity} />
+                  <div className="stack" style={{ minWidth: 0, gap: 1, flex: 1 }}>
+                    <span style={{ fontWeight: 550 }}>{r.title}</span>
+                    <span className="tiny dim">
+                      {AUTHORITY_LABEL[r.authority]} · due {relativeDue(r.dueDate)}
+                      {r.company && r.company.id !== selectedId && ` · ${r.company.legalName}`}
+                    </span>
+                    {ext && (
+                      <a className="reg-ext-link tiny" href={ext.url} target="_blank" rel="noopener noreferrer">
+                        Don't have this yet? Register via {ext.label} →
+                      </a>
+                    )}
+                  </div>
+                  <Link className="btn btn-sm btn-primary" to={`/companies/${r.company?.id ?? selectedId}/edit`}>
+                    {REGISTER_CTA[r.ruleCode] ?? 'Complete registration'}
+                  </Link>
                 </div>
-                <Link className="btn btn-sm btn-primary" to={`/companies/${r.company?.id ?? selectedId}/edit`}>
-                  {REGISTER_CTA[r.ruleCode] ?? 'Complete registration'}
-                </Link>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

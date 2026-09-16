@@ -30,6 +30,23 @@ const mcaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 
 const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 
 export const companiesRouter = Router();
+
+// Allow public access to company logos so standard <img> tags can render them
+companiesRouter.get(
+  '/:id/logo',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    const result = await service.getLogoStream(req.params.id!);
+    if (!result) {
+      res.status(404).send('Not found');
+      return;
+    }
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.send(result.buffer);
+  })
+);
+
 companiesRouter.use(requireAuth);
 
 /**
@@ -464,17 +481,15 @@ companiesRouter.post(
   })
 );
 
-companiesRouter.get(
+companiesRouter.delete(
   '/:id/logo',
   validateParams(idParamSchema),
   asyncHandler(async (req, res) => {
-    const result = await service.getLogoStream(req.params.id!);
-    if (!result) {
-      res.status(404).send('Not found');
-      return;
-    }
-    res.setHeader('Content-Type', result.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-    res.send(result.buffer);
+    const me = auth(req);
+    await assertCan(me, req.params.id!, 'company.edit');
+    await service.removeLogo(req.params.id!, me);
+    res.status(204).end();
   })
 );
+
+

@@ -276,6 +276,15 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
   const requiring = evidenceTotals.filter((i) => i.evidenceRequired.length > 0);
   const withEvidence = requiring.filter((i) => i._count.documents > 0);
 
+  const uniqueRegistrations = [];
+  const seenRegRules = new Set<string>();
+  for (const r of registrations.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())) {
+    if (!seenRegRules.has(r.ruleCode)) {
+      seenRegRules.add(r.ruleCode);
+      uniqueRegistrations.push(r);
+    }
+  }
+
   return {
     score,
     companies,
@@ -284,7 +293,7 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
     byAuthority: [...authorityMap.values()].sort((a, b) => b.overdue - a.overdue || a.authority.localeCompare(b.authority)),
     overdue,
     dueSoon,
-    registrations,
+    registrations: uniqueRegistrations,
     taskCounts,
     evidence: {
       itemsRequiringEvidence: requiring.length,

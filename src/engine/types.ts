@@ -10,7 +10,8 @@ export type EntityType =
   | 'LLP'
   | 'PARTNERSHIP'
   | 'PROPRIETORSHIP'
-  | 'SECTION_8';
+  | 'SECTION_8'
+  | 'UNREGISTERED';
 
 export type GstFilingFrequency = 'MONTHLY' | 'QRMP' | 'COMPOSITION';
 export type MsmeCategory = 'MICRO' | 'SMALL' | 'MEDIUM';

@@ -12,7 +12,7 @@ export type RuleEntityApplicability = Record<EntityType, RuleEntityStatus>;
 
 export type EntityType =
   | 'PRIVATE_LIMITED' | 'PUBLIC_LIMITED' | 'OPC' | 'LLP'
-  | 'PARTNERSHIP' | 'PROPRIETORSHIP' | 'SECTION_8';
+  | 'PARTNERSHIP' | 'PROPRIETORSHIP' | 'SECTION_8' | 'UNREGISTERED';
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'CA' | 'COMPANY_OWNER' | 'VIEWER';
 

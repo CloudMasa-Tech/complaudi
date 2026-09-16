@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Severity } from '../api/types';
+import type { RegistrationServiceLink } from '../lib/registrationLinks';
 
 // ── formatting ──────────────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ export const ENTITY_LABEL: Record<string, string> = {
   PARTNERSHIP: 'Partnership Firm',
   PROPRIETORSHIP: 'Proprietorship',
   SECTION_8: 'Section 8 Company',
+  UNREGISTERED: 'Unregistered Business',
 };
 
 /**
@@ -106,6 +108,8 @@ export const ENTITY_OFFICERS: Record<string, {
                      note: 'A sole proprietorship has a single proprietor.' },
   SECTION_8:       { singular: 'director', plural: 'Directors', designation: 'Director', min: 2,
                      note: 'A Section 8 company needs at least two directors.' },
+  UNREGISTERED:    { singular: 'owner', plural: 'Owners', designation: 'Owner', min: 1,
+                     note: 'An unregistered business is run by a single owner; add rows if it is owned by more than one person.' },
 };
 
 export const officersFor = (entityType: string) =>
@@ -209,7 +213,7 @@ export function Stat({ label, value, foot, tone, to }: {
 }
 
 export function Field({ label, hint, error, children }: {
-  label: string; hint?: string; error?: string; children: ReactNode;
+  label: string; hint?: ReactNode; error?: string; children: ReactNode;
 }) {
   return (
     <div className="field">
@@ -217,6 +221,16 @@ export function Field({ label, hint, error, children }: {
       {children}
       {error ? <span className="field-error">{error}</span> : hint ? <span className="field-hint">{hint}</span> : null}
     </div>
+  );
+}
+
+/** A partner external link in the quiet helper style, e.g. "Don't have this yet? Register via GST →". */
+export function ServiceLink({ service }: { service: RegistrationServiceLink }) {
+  const prefix = service.kind === 'file' ? 'File via' : "Don't have this yet? Register via";
+  return (
+    <a className="reg-ext-link tiny" href={service.url} target="_blank" rel="noopener noreferrer">
+      {prefix} {service.label} →
+    </a>
   );
 }
 

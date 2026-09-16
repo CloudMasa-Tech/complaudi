@@ -5,7 +5,7 @@
  * app runnable before Supabase credentials exist, so onboarding a new developer
  * does not require provisioning a bucket first.
  */
-import { createHash } from 'node:crypto';
+import crypto, { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';

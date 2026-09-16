@@ -24,6 +24,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   PARTNERSHIP: 'Partnership Firm',
   PROPRIETORSHIP: 'Sole Proprietorship',
   SECTION_8: 'Section 8 Company',
+  UNREGISTERED: 'Unregistered Business',
 };
 
 export const entityLabel = (t: EntityType): string => ENTITY_LABELS[t] ?? t;
@@ -47,6 +48,7 @@ export const ALL_ENTITY_TYPES: EntityType[] = [
   'PARTNERSHIP',
   'PROPRIETORSHIP',
   'SECTION_8',
+  'UNREGISTERED',
 ];
 
 const asSet = (types: EntityType[]): EntityType[] => [...new Set(types)];

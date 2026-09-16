@@ -4,7 +4,8 @@ import { ApiError, del, patch, post, put, upload } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
 import type { Company, Director, EntityType, SyncResult } from '../api/types';
-import { Card, ErrorNote, Field, Loading, Spinner, fmtDate, fmtINR, inc20aNote, officersFor } from '../components/ui';
+import { Card, ErrorNote, Field, Loading, ServiceLink, Spinner, fmtDate, fmtINR, inc20aNote, officersFor } from '../components/ui';
+import { REGISTRATION_FIELD_LINKS } from '../lib/registrationLinks';
 
 /** Shared with the onboarding form so create and edit read identically. */
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
@@ -15,6 +16,7 @@ const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PARTNERSHIP', label: 'Partnership Firm' },
   { value: 'PROPRIETORSHIP', label: 'Sole Proprietorship' },
   { value: 'SECTION_8', label: 'Section 8 Company' },
+  { value: 'UNREGISTERED', label: 'Unregistered Business' },
 ];
 
 const STATES = [
@@ -49,6 +51,12 @@ const toForm = (c: Company): ProfileForm => ({
   dpiitRecognisedOn: c.dpiitRecognisedOn?.slice(0, 10) ?? '',
   epfoCode: c.epfoCode ?? '', esicCode: c.esicCode ?? '',
 });
+
+/** The matching partner-service link for a CompanyEdit field key, when one exists. */
+function FieldService({ field }: { field: string }) {
+  const service = REGISTRATION_FIELD_LINKS[field];
+  return service ? <ServiceLink service={service} /> : null;
+}
 
 function fieldErrors(details: unknown): Record<string, string> {
   const out: Record<string, string> = {};
@@ -156,19 +164,32 @@ export function CompanyEdit() {
               )}
             </div>
             <div className="stack" style={{ flex: 1 }}>
-              <input type="file" accept="image/*" disabled={busy} onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try {
-                  const form = new FormData();
-                  form.append('file', file);
-                  await upload(`/companies/${company.id}/logo`, form);
-                  reload();
-                  reloadCompanies();
-                } catch (err) {
-                  setSaveError(err instanceof ApiError ? err.message : 'Could not upload logo');
-                }
-              }} />
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <input type="file" accept="image/*" disabled={busy} onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const form = new FormData();
+                    form.append('file', file);
+                    await upload(`/companies/${company.id}/logo`, form);
+                    reload();
+                    reloadCompanies();
+                  } catch (err) {
+                    setSaveError(err instanceof ApiError ? err.message : 'Could not upload logo');
+                  }
+                }} />
+                {company.logoStorageKey && (
+                  <button type="button" className="btn btn-outline" disabled={busy} onClick={async () => {
+                    try {
+                      await del(`/companies/${company.id}/logo`);
+                      reload();
+                      reloadCompanies();
+                    } catch (err) {
+                      setSaveError(err instanceof ApiError ? err.message : 'Could not remove logo');
+                    }
+                  }}>Remove logo</button>
+                )}
+              </div>
               <span className="tiny dim">JPEG, PNG, GIF or WebP up to 5MB.</span>
             </div>
           </div>
@@ -189,7 +210,11 @@ export function CompanyEdit() {
             </Field>
 
             {isCompaniesAct ? (
-              <Field label="CIN" error={errors.cin}>
+              <Field
+                label="CIN"
+                hint={<><FieldService field="cin" />{' '}·{' '}<FieldService field="cinRoc" /></>}
+                error={errors.cin}
+              >
                 <input value={form.cin} onChange={(e) => set('cin', e.target.value.toUpperCase())} />
               </Field>
             ) : form.entityType === 'LLP' ? (
@@ -216,7 +241,7 @@ export function CompanyEdit() {
             </Field>
             <Field
               label="Incorporation date"
-              hint={inc20aNote(form.entityType, Number(form.paidUpCapital), form.incorporationDate)}
+              hint={<><span>{inc20aNote(form.entityType, Number(form.paidUpCapital), form.incorporationDate)}</span>{' '}<FieldService field="incorporationDate" /></>}
               error={errors.incorporationDate}
             >
               <input required type="date" value={form.incorporationDate}
@@ -227,7 +252,7 @@ export function CompanyEdit() {
 
         <Card title="Registrations held" note="Shown on the dashboard — none of these changes which rules apply">
           <div className="card-body grid grid-2">
-            <Field label="DPIIT recognition" hint="Startup India recognition number, e.g. DIPP12345">
+            <Field label="DPIIT recognition" hint={<><span>Startup India recognition number, e.g. DIPP12345</span>{' '}<FieldService field="dpiit" /></>}>
               <input value={form.dpiitRecognitionNumber}
                      onChange={(e) => set('dpiitRecognitionNumber', e.target.value)} />
             </Field>
@@ -448,11 +473,11 @@ function DirectorRow({ companyId, director, busy, run }: {
         <Field label="Name" error={nameError ?? undefined}>
           <input value={draft.name} onChange={(e) => { setDraft({ ...draft, name: e.target.value }); setNameError(null); }} />
         </Field>
-        <Field label="DIN / DPIN" hint="8 digits"><input value={draft.din} onChange={(e) => setDraft({ ...draft, din: e.target.value })} /></Field>
+        <Field label="DIN / DPIN" hint={<><span>8 digits</span> · <FieldService field="din" /></>}><input value={draft.din} onChange={(e) => setDraft({ ...draft, din: e.target.value })} /></Field>
         <Field label="Designation"><input value={draft.designation} onChange={(e) => setDraft({ ...draft, designation: e.target.value })} /></Field>
         <Field label="Email"><input type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></Field>
         <Field label="Appointed on"><input type="date" value={draft.appointedOn} onChange={(e) => setDraft({ ...draft, appointedOn: e.target.value })} /></Field>
-        <Field label="DSC expires on" hint="Blank if no digital signature is recorded">
+        <Field label="DSC expires on" hint={<><span>Blank if no digital signature is recorded</span> · <FieldService field="dsc" /></>}>
           <input type="date" value={draft.dscExpiresOn}
                  onChange={(e) => setDraft({ ...draft, dscExpiresOn: e.target.value })} />
         </Field>
@@ -534,7 +559,7 @@ function Registrations({
                 <input value={director.name} placeholder="Full name"
                        onChange={(e) => { setDirector({ ...director, name: e.target.value }); setLocalError('directorName', null); }} />
               </Field>
-              <Field label="DIN / DPIN" hint="8 digits — this is what adds DIR-3 KYC">
+              <Field label="DIN / DPIN" hint={<><span>8 digits — this is what adds DIR-3 KYC</span> · <FieldService field="din" /></>}>
                 <input value={director.din} placeholder="08123456"
                        onChange={(e) => setDirector({ ...director, din: e.target.value })} />
               </Field>
@@ -550,7 +575,7 @@ function Registrations({
                 <input type="date" value={director.appointedOn}
                        onChange={(e) => setDirector({ ...director, appointedOn: e.target.value })} />
               </Field>
-              <Field label="DSC expires on" hint="Optional — drives the DSC status on the dashboard">
+              <Field label="DSC expires on" hint={<><span>Optional — drives the DSC status on the dashboard</span> · <FieldService field="dsc" /></>}>
                 <input type="date" value={director.dscExpiresOn}
                        onChange={(e) => setDirector({ ...director, dscExpiresOn: e.target.value })} />
               </Field>
@@ -611,7 +636,7 @@ function Registrations({
           <div className="grid grid-3" style={{ alignItems: 'end' }}>
             <Field
               label="GSTIN"
-              hint="Check digit and embedded PAN are verified"
+              hint={<><span>Check digit and embedded PAN are verified</span> · <FieldService field="gstin" /></>}
               error={local.gstin ?? errors[`gstin:${gst.gstin.trim().toUpperCase()}`]}
             >
               <input value={gst.gstin} placeholder="33AAACN4321B1ZA"
@@ -644,7 +669,7 @@ function Registrations({
 
       <Card title="Udyam (MSME) registration">
         <div className="card-body grid grid-3" style={{ alignItems: 'end' }}>
-          <Field label="Udyam number" hint="UDYAM-KA-03-0114562" error={local.udyam ?? errors['udyamNumber']}>
+          <Field label="Udyam number" hint={<><span>UDYAM-KA-03-0114562</span> · <FieldService field="udyam" /></>} error={local.udyam ?? errors['udyamNumber']}>
             <input value={msme.udyamNumber}
                    onChange={(e) => { setMsme({ ...msme, udyamNumber: e.target.value.toUpperCase() }); setLocalError('udyam', null); }} />
           </Field>

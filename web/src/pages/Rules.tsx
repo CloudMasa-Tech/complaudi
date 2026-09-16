@@ -6,6 +6,7 @@ import {
   Loading, SeverityDot, titleise,
 } from '../components/ui';
 import type { Authority, EntityType, RuleEntityApplicability, Severity } from '../api/types';
+import { OTHER_REGISTRATION_SERVICES, REGISTRATION_SERVICE_LINKS } from '../lib/registrationLinks';
 
 interface Rule {
   code: string; title: string; authority: Authority; category: string; form: string | null;
@@ -16,7 +17,7 @@ interface Rule {
 }
 
 const ENTITY_ORDER: EntityType[] = [
-  'PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'LLP', 'PARTNERSHIP', 'PROPRIETORSHIP', 'SECTION_8',
+  'PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'LLP', 'PARTNERSHIP', 'PROPRIETORSHIP', 'SECTION_8', 'UNREGISTERED',
 ];
 
 const WHY: Record<string, string> = {
@@ -141,6 +142,11 @@ export function Rules() {
                               )}
                             </span>
                             <span className="tiny mono dim">{r.code}</span>
+                            {REGISTRATION_SERVICE_LINKS[r.code] && (
+                              <a className="reg-ext-link tiny" href={REGISTRATION_SERVICE_LINKS[r.code]!.url} target="_blank" rel="noopener noreferrer">
+                                Get help: {REGISTRATION_SERVICE_LINKS[r.code]!.label} →
+                              </a>
+                            )}
                           </div>
                         </td>
                         <td style={{ width: 96 }}><AuthorityTag value={r.authority} /></td>
@@ -193,6 +199,18 @@ export function Rules() {
           </div>
         )}
       </Card>
+
+      {OTHER_REGISTRATION_SERVICES.length > 0 && (
+        <p className="tiny dim" style={{ margin: '10px 2px 0' }}>
+          Other services from our partner:{' '}
+          {OTHER_REGISTRATION_SERVICES.map((s, i) => (
+            <Fragment key={s.url}>
+              {i > 0 && <span> · </span>}
+              <a className="reg-ext-link" href={s.url} target="_blank" rel="noopener noreferrer">{s.label} →</a>
+            </Fragment>
+          ))}
+        </p>
+      )}
     </>
   );
 }
