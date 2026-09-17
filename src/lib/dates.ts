@@ -55,6 +55,27 @@ export function parseDate(s: string): Date {
   return utcDate(y, m, d);
 }
 
+/**
+ * Parse a date as printed on Indian government certificates and portal
+ * printouts — `DD/MM/YYYY` (Udyam, GST) or `DD-MM-YYYY`. `parseDate` only
+ * accepts the `YYYY-MM-DD` form users type into the app, so feeding it an
+ * extracted certificate date throws `Invalid date` and 500s the whole import.
+ *
+ * Returns `null` instead of throwing when the text is not a recognisable
+ * calendar date: a missing registration date must never block saving the
+ * certificate itself.
+ */
+export function parseDmyDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const m = s.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const year = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
+  return utcDate(year, month, day);
+}
+
 /** Today, as a UTC-midnight calendar date. */
 export function today(): Date {
   return toDateOnly(new Date());

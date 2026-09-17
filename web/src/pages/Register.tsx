@@ -127,8 +127,9 @@ export function Register() {
             <div className="grid grid-2">
               <Field label={isIndividual ? 'Business / shop name' : 'Company name'} error={errors.companyName}>
                 <input required value={form.companyName}
-                       placeholder={isIndividual ? 'e.g. Sri Balaji Tea Stall' : 'Northwind Technologies Private Limited'}
-                       onChange={(e) => set('companyName', e.target.value)} />
+                       placeholder={isIndividual ? 'E.G. SRI BALAJI TEA STALL' : 'NORTHWIND TECHNOLOGIES PRIVATE LIMITED'}
+                       style={{ textTransform: 'uppercase' }}
+                       onChange={(e) => set('companyName', e.target.value.toUpperCase())} />
               </Field>
               <Field label={isIndividual ? 'Started on' : 'Date of incorporation'}
                      hint={isIndividual ? 'When the business began — the calendar is built from it' : 'From the certificate — the calendar is built from it'}
@@ -150,6 +151,19 @@ export function Register() {
                 >
                   <input value={form.cin} placeholder="U72900TN2020PTC138472"
                          onChange={(e) => set('cin', e.target.value.toUpperCase())} />
+                  {!form.cin.trim() && (
+                    <span style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>
+                      Don't have a CIN yet?{' '}
+                      <a
+                        href="https://www.mca.gov.in/content/mca/global/en/mca/fo-llp-filing/spice-plus.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--accent)', textDecoration: 'underline', fontWeight: 600 }}
+                      >
+                        Register your company on MCA →
+                      </a>
+                    </span>
+                  )}
                 </Field>
               )}
 

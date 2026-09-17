@@ -211,8 +211,27 @@ button:disabled:hover { background: var(--surface-2); filter: none; }
 .btn-danger { color: var(--critical); border-color: var(--border-strong); }
 
 /* A quiet tertiary "register via <service>" link under a dashboard reminder. */
-.reg-ext-link { color: var(--accent); text-decoration: none; }
-.reg-ext-link:hover { text-decoration: underline; }
+.reg-ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: 0.2px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.reg-ext-link:hover {
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+}
 
 input, select, textarea {
   font: inherit; font-size: 13px; color: var(--text);
@@ -223,7 +242,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 label { font-size: 12.5px; font-weight: 550; color: var(--text-2); }
 .field { display: flex; flex-direction: column; gap: 5px; }
-.field-hint { font-size: 11.5px; color: var(--text-3); }
+.field-hint { font-size: 11.5px; color: var(--text-3); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .field-error { font-size: 11.5px; color: var(--critical); }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .check input { width: auto; }
@@ -325,7 +344,7 @@ tbody tr.clickable:hover { background: var(--surface-2); }
   display: grid; place-items: center; font-weight: 700; font-size: 20px;
   box-shadow: var(--shadow);
 }
-.entity-name { font-size: 17px; font-weight: 650; line-height: 1.25; }
+.entity-name { font-size: 17px; font-weight: 650; line-height: 1.25; text-transform: uppercase; }
 .entity-sub { font-size: 12.5px; color: var(--text-2); }
 /* The registered number reads as a credential, so it is set apart rather than
    dropped into the grid where it had to wrap mid-identifier. */

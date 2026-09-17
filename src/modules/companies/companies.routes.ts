@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../../lib/async';
 import { BadRequestError, ForbiddenError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
 import { previewCompanyImport } from '../../lib/companyDocumentImport';
 import { decodeCsvBuffer } from '../../lib/mcaMasterData';
 import { serialiseBigInt } from '../../lib/prisma';
@@ -448,7 +449,13 @@ companiesRouter.post(
   asyncHandler(async (req, res) => {
     if (!req.file) throw new BadRequestError('Attach the PDF under the "file" field of a multipart request.');
     const me = auth(req);
-    const result = await service.importUdyamCertificate(req.params.id!, req.file, me);
+    let result;
+    try {
+      result = await service.importUdyamCertificate(req.params.id!, req.file, me);
+    } catch (err) {
+      logger.error({ err, companyId: req.params.id }, 'import-udyam failed');
+      throw err;
+    }
     const sync = await syncCompany(me, req.params.id!);
     await recordAudit({
       organizationId: me.organizationId,

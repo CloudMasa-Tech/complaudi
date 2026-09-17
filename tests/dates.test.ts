@@ -9,6 +9,7 @@ import {
   fyMonths,
   fyQuarters,
   parseDate,
+  parseDmyDate,
 } from '../src/lib/dates';
 
 describe('Indian financial year', () => {
@@ -45,6 +46,26 @@ describe('Indian financial year', () => {
     expect(m[0]!.key).toBe('2025-04');
     expect(m[11]!.key).toBe('2026-03');
     expect(formatDate(m[11]!.end)).toBe('2026-03-31');
+  });
+});
+
+describe('parseDmyDate (certificate dates)', () => {
+  it('parses DD/MM/YYYY as printed on Udyam and GST certificates', () => {
+    expect(formatDate(parseDmyDate('27/06/2020')!)).toBe('2020-06-27');
+  });
+
+  it('accepts DD-MM-YYYY too', () => {
+    expect(formatDate(parseDmyDate('01-04-2021')!)).toBe('2021-04-01');
+  });
+
+  it('returns null — never throws — for anything unrecognisable', () => {
+    expect(parseDmyDate(null)).toBeNull();
+    expect(parseDmyDate(undefined)).toBeNull();
+    expect(parseDmyDate('')).toBeNull();
+    expect(parseDmyDate('2020-06-27')).toBeNull();
+    expect(parseDmyDate('not a date')).toBeNull();
+    expect(parseDmyDate('31/02/2021')).toBeNull();
+    expect(parseDmyDate('27/13/2020')).toBeNull();
   });
 });
 

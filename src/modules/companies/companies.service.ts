@@ -10,7 +10,7 @@ import {
   type Actor,
 } from '../../lib/access';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors';
-import { parseDate } from '../../lib/dates';
+import { parseDate, parseDmyDate } from '../../lib/dates';
 import { stateCodeFromGstin, validateGstin } from '../../lib/india';
 import { parseMcaMasterData } from '../../lib/mcaMasterData';
 import { logger } from '../../lib/logger';
@@ -886,11 +886,13 @@ export async function importGstCertificate(companyId: string, file: Express.Mult
       await prisma.gstRegistration.update({
         where: { id: existing.id },
         data: { 
-          certificateKey: key, 
+          certificateKey: key,
           legalName: info.legalName || existing.legalName,
           tradeName: info.tradeName || existing.tradeName,
           constitution: info.constitution || existing.constitution,
-          registeredOn: info.registeredOn ? d(info.registeredOn) : existing.registeredOn,
+          // Extracted portal dates are DD/MM/YYYY — never let an unparseable
+          // one 500 the import; fall back to what is already on record.
+          registeredOn: parseDmyDate(info.registeredOn) ?? existing.registeredOn,
         },
       });
     } else {
@@ -902,7 +904,9 @@ export async function importGstCertificate(companyId: string, file: Express.Mult
           legalName: info.legalName,
           tradeName: info.tradeName,
           constitution: info.constitution,
-          registeredOn: info.registeredOn ? d(info.registeredOn) : null,
+          // Extracted portal dates are DD/MM/YYYY — never let an unparseable
+          // one 500 the import; the certificate itself is still saved.
+          registeredOn: parseDmyDate(info.registeredOn),
           certificateKey: key,
           filingFrequency: 'MONTHLY',
         },
@@ -939,13 +943,15 @@ export async function importUdyamCertificate(companyId: string, file: Express.Mu
       await prisma.msmeRegistration.update({
         where: { id: existing.id },
         data: { 
-          certificateKey: key, 
+          certificateKey: key,
           udyamNumber: info.udyamNumber,
           enterpriseName: info.enterpriseName || existing.enterpriseName,
           majorActivity: info.majorActivity || existing.majorActivity,
           socialCategory: info.socialCategory || existing.socialCategory,
           category: (info.organisationType as import('@prisma/client').MsmeCategory) || existing.category,
-          registeredOn: info.registeredOn ? d(info.registeredOn) : existing.registeredOn,
+          // Extracted certificate dates are DD/MM/YYYY — never let an
+          // unparseable one 500 the import; fall back to what is on record.
+          registeredOn: parseDmyDate(info.registeredOn) ?? existing.registeredOn,
         },
       });
     } else {
@@ -957,7 +963,7 @@ export async function importUdyamCertificate(companyId: string, file: Express.Mu
           majorActivity: info.majorActivity,
           socialCategory: info.socialCategory,
           category: (info.organisationType as import('@prisma/client').MsmeCategory) || 'MICRO', // default to MICRO, could improve
-          registeredOn: info.registeredOn ? d(info.registeredOn) : null,
+          registeredOn: parseDmyDate(info.registeredOn),
           certificateKey: key,
         },
       });

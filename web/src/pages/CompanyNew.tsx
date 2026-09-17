@@ -458,8 +458,8 @@ export function CompanyNew() {
       <Card title="Entity" note="These fields decide which rules apply">
         <div className="card-body grid grid-3">
           <Field label={isIndividual ? 'Business / shop name' : 'Legal name'} error={errors.legalName}>
-            <input required value={form.legalName} onChange={(e) => set('legalName', e.target.value)}
-                   placeholder={isIndividual ? 'e.g. Sri Balaji Tea Stall' : 'Northwind Technologies Private Limited'} />
+            <input required value={form.legalName} onChange={(e) => set('legalName', e.target.value.toUpperCase())}
+                   placeholder={isIndividual ? 'e.g. SRI BALAJI TEA STALL' : 'NORTHWIND TECHNOLOGIES PRIVATE LIMITED'} />
           </Field>
           <Field label={isIndividual ? 'Shop / trade name (optional)' : 'Brand name'} hint="Optional">
             <input value={form.brandName} onChange={(e) => set('brandName', e.target.value)} />

@@ -243,7 +243,7 @@ export function CompanyEdit() {
             {isCompaniesAct ? (
               <Field
                 label="CIN"
-                hint={<><FieldService field="cin" />{' '}·{' '}<FieldService field="cinRoc" /></>}
+                hint={<FieldService field="cin" />}
                 error={errors.cin}
               >
                 <input value={form.cin} onChange={(e) => set('cin', e.target.value.toUpperCase())} />
