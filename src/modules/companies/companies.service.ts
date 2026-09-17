@@ -429,11 +429,19 @@ export async function deleteCompanyPermanently(
   }
 
   const documents = await prisma.document.findMany({ where: { companyId }, select: { storageKey: true } });
+  const gsts = await prisma.gstRegistration.findMany({ where: { companyId }, select: { certificateKey: true } });
+  const msmes = await prisma.msmeRegistration.findMany({ where: { companyId }, select: { certificateKey: true } });
   const items = await prisma.complianceItem.count({ where: { companyId } });
 
-  for (const doc of documents) {
+  const keysToRemove = new Set<string>();
+  if (company.logoStorageKey) keysToRemove.add(company.logoStorageKey);
+  for (const doc of documents) keysToRemove.add(doc.storageKey);
+  for (const g of gsts) if (g.certificateKey) keysToRemove.add(g.certificateKey);
+  for (const m of msmes) if (m.certificateKey) keysToRemove.add(m.certificateKey);
+
+  for (const key of keysToRemove) {
     // A file that will not delete must not block the record from going.
-    await storage.remove(doc.storageKey).catch((err) => logger.warn({ err, key: doc.storageKey }, 'orphaned storage object'));
+    await storage.remove(key).catch((err) => logger.warn({ err, key }, 'orphaned storage object'));
   }
 
   await prisma.company.delete({ where: { id: companyId } });
@@ -627,12 +635,11 @@ export interface McaImportResult {
 export async function importMcaMasterData(
   actor: Actor,
   companyId: string,
-  csv: string,
+  parsed: import('../../lib/mcaMasterData').McaParseResult,
 ): Promise<McaImportResult> {
   const company = await getCompanyOrThrow(actor, companyId);
   await assertCan(actor, companyId, 'company.edit');
 
-  const parsed = parseMcaMasterData(csv);
   if (parsed.records.length === 0) {
     if (parsed.recognisedColumns.length === 0) {
       // No header matched a CIN alias — so no row could even be examined.
@@ -702,12 +709,56 @@ export async function importMcaMasterData(
     'paidUpCapital',
     record.paidUpCapital,
     Number(company.paidUpCapital),
-    (v) => { data.paidUpCapital = BigInt(v); },
+    (v) => { data.paidUpCapital = v; },
     (v) => String(v),
   );
+  take(
+    'authorisedCapital',
+    record.authorisedCapital,
+    Number(company.authorisedCapital),
+    (v) => { data.authorisedCapital = v; },
+    (v) => String(v),
+  );
+  take('registeredAddress', record.address, company.registeredAddress, (v) => { data.registeredAddress = v; });
+  take('companyStatus', record.status, company.companyStatus, (v) => { data.companyStatus = v; });
+  take('companyCategory', record.companyCategory, company.companyCategory, (v) => { data.companyCategory = v; });
+  take('companySubCategory', record.companySubCategory, company.companySubCategory, (v) => { data.companySubCategory = v; });
+  take('companyClass', record.companyClass, company.companyClass, (v) => { data.companyClass = v; });
 
   if (Object.keys(data).length > 0) {
     await prisma.company.update({ where: { id: companyId }, data });
+  }
+
+  // Upsert directors if any were extracted
+  let directorsAdded = 0;
+  if (record.directors && record.directors.length > 0) {
+    const existingDirectors = await prisma.director.findMany({ where: { companyId } });
+    for (const dir of record.directors) {
+      if (!dir.name) continue;
+      
+      const match = dir.din 
+        ? existingDirectors.find(e => e.din === dir.din)
+        : existingDirectors.find(e => e.name.toLowerCase() === dir.name?.toLowerCase());
+
+      const dirData = {
+        name: dir.name,
+        designation: dir.designation || 'Director',
+        status: dir.status || null,
+        ...(dir.din ? { din: dir.din } : {}),
+        ...(dir.appointedOn ? { appointedOn: dir.appointedOn } : {}),
+      };
+
+      if (match) {
+        await prisma.director.update({ where: { id: match.id }, data: dirData });
+      } else {
+        await prisma.director.create({ data: { companyId, ...dirData } });
+        directorsAdded++;
+      }
+    }
+    
+    if (directorsAdded > 0) {
+      applied.push({ field: 'directors', from: null, to: `Added ${directorsAdded} directors from Signatory Details` });
+    }
   }
 
   return {
@@ -806,6 +857,113 @@ export async function uploadLogo(companyId: string, file: Express.Multer.File, a
   }
 
   return `/api/v1/companies/${companyId}/logo`;
+}
+
+export async function importGstCertificate(companyId: string, file: Express.Multer.File, actor: Actor) {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { organizationId: true },
+  });
+  if (!company) throw new NotFoundError('Company not found');
+
+  const { extractTextFromPdf } = await import('../../lib/pdfTextExtractor');
+  const text = await extractTextFromPdf(file.buffer);
+
+  const { extractGstInfo } = await import('../../lib/certificateExtractor');
+  const info = extractGstInfo(text);
+
+  const key = buildStorageKey({
+    organizationId: company.organizationId,
+    companyId,
+    fileName: `gst-${file.originalname}`,
+  });
+
+  await storage.upload(key, file.buffer, file.mimetype);
+
+  if (info.gstin) {
+    const existing = await prisma.gstRegistration.findUnique({ where: { companyId_gstin: { companyId, gstin: info.gstin } } });
+    if (existing) {
+      await prisma.gstRegistration.update({
+        where: { id: existing.id },
+        data: { 
+          certificateKey: key, 
+          legalName: info.legalName || existing.legalName,
+          tradeName: info.tradeName || existing.tradeName,
+          constitution: info.constitution || existing.constitution,
+          registeredOn: info.registeredOn ? d(info.registeredOn) : existing.registeredOn,
+        },
+      });
+    } else {
+      await prisma.gstRegistration.create({
+        data: {
+          companyId,
+          gstin: info.gstin,
+          stateCode: info.stateCode || info.gstin.substring(0, 2),
+          legalName: info.legalName,
+          tradeName: info.tradeName,
+          constitution: info.constitution,
+          registeredOn: info.registeredOn ? d(info.registeredOn) : null,
+          certificateKey: key,
+          filingFrequency: 'MONTHLY',
+        },
+      });
+    }
+  }
+  return { extracted: info };
+}
+
+export async function importUdyamCertificate(companyId: string, file: Express.Multer.File, actor: Actor) {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { organizationId: true },
+  });
+  if (!company) throw new NotFoundError('Company not found');
+
+  const { extractTextFromPdf } = await import('../../lib/pdfTextExtractor');
+  const text = await extractTextFromPdf(file.buffer);
+
+  const { extractUdyamInfo } = await import('../../lib/certificateExtractor');
+  const info = extractUdyamInfo(text);
+
+  const key = buildStorageKey({
+    organizationId: company.organizationId,
+    companyId,
+    fileName: `udyam-${file.originalname}`,
+  });
+
+  await storage.upload(key, file.buffer, file.mimetype);
+
+  if (info.udyamNumber) {
+    const existing = await prisma.msmeRegistration.findUnique({ where: { companyId } });
+    if (existing) {
+      await prisma.msmeRegistration.update({
+        where: { id: existing.id },
+        data: { 
+          certificateKey: key, 
+          udyamNumber: info.udyamNumber,
+          enterpriseName: info.enterpriseName || existing.enterpriseName,
+          majorActivity: info.majorActivity || existing.majorActivity,
+          socialCategory: info.socialCategory || existing.socialCategory,
+          category: (info.organisationType as import('@prisma/client').MsmeCategory) || existing.category,
+          registeredOn: info.registeredOn ? d(info.registeredOn) : existing.registeredOn,
+        },
+      });
+    } else {
+      await prisma.msmeRegistration.create({
+        data: {
+          companyId,
+          udyamNumber: info.udyamNumber,
+          enterpriseName: info.enterpriseName,
+          majorActivity: info.majorActivity,
+          socialCategory: info.socialCategory,
+          category: (info.organisationType as import('@prisma/client').MsmeCategory) || 'MICRO', // default to MICRO, could improve
+          registeredOn: info.registeredOn ? d(info.registeredOn) : null,
+          certificateKey: key,
+        },
+      });
+    }
+  }
+  return { extracted: info };
 }
 
 export async function removeLogo(companyId: string, actor: Actor): Promise<void> {

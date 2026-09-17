@@ -154,7 +154,7 @@ export function inc20aNote(entityType: string, paidUpCapital: number, incorporat
 }
 
 export const AUTHORITY_LABEL: Record<string, string> = {
-  MCA: 'MCA', GST: 'GST', INCOME_TAX: 'Income Tax', MSME: 'MSME', LABOUR: 'Labour',
+  MCA: 'MCA', GST: 'GST', INCOME_TAX: 'Income Tax', MSME: 'MSME', LABOUR: 'Labour', DPIIT: 'DPIIT'
 };
 
 // ── primitives ──────────────────────────────────────────────────────────

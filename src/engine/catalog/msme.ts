@@ -64,23 +64,4 @@ export const msmeRules: ComplianceRule[] = [
     applicableWhen: [buysFromMsmeSuppliers()],
     occurrences: annual({ month: 5, day: 31, anchor: 'within' }),
   },
-  {
-    code: 'MSME_UDYAM_REGISTRATION',
-    title: 'Register for Udyam (MSME)',
-    authority: 'MSME',
-    category: 'Registration',
-    legalReference: 'Section 8, MSMED Act 2006',
-    description:
-      'The entity is within the MSME turnover limits but has no Udyam registration on record. Registration is free and unlocks the 45-day payment protection, priority-sector lending, public-procurement preference and interest-subvention schemes. Register on the Udyam portal and record the certificate to open the MSME-1 and 45-day payment rules — without a Udyam number on file, those obligations cannot be tracked accurately.',
-    severity: 'LOW',
-    penalty: 'None — but the MSME protections and benefits are unavailable until the entity registers.',
-    evidenceRequired: ['Udyam registration certificate'],
-    evidenceLevel: 'NONE',
-    periodKind: 'ONE_TIME',
-    applicableWhen: [
-      not(hasMsmeRegistration(), 'Has no Udyam registration on record'),
-      custom('Turnover is within the medium-enterprise ceiling of ₹250 crore', (ctx) => ctx.company.annualTurnover <= 250 * CRORE),
-    ],
-    occurrences: annual({ month: 6, day: 30, anchor: 'within' }),
-  },
 ];

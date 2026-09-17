@@ -2,11 +2,11 @@ import type { Authority, ItemStatus, Severity } from '@prisma/client';
 import { addDays, today } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { computeComplianceScore, type ScorableItem, type ScoreResult } from '../../engine/score';
-import { REGISTRATION_RULE_CODES } from '../../engine/catalog';
+import { evaluateRegistrations, type EvaluatedRegistration } from '../../engine/catalog/registrations';
 import { getCompanyOrThrow } from '../companies/companies.service';
 import { assertCan, companyScope, type Actor } from '../../lib/access';
 
-async function scorableItems(actor: Actor, companyId?: string): Promise<ScorableItem[]> {
+async function scorableItems(actor: Actor, companyId?: string) {
   const rows = await prisma.complianceItem.findMany({
     where: { company: companyScope(actor, companyId) },
     select: {
@@ -16,22 +16,29 @@ async function scorableItems(actor: Actor, companyId?: string): Promise<Scorable
       dueDate: true,
       status: true,
       completedAt: true,
-      company: { select: { createdAt: true } },
+      company: { select: { createdAt: true, annualTurnover: true, employeeCount: true, stateCode: true, entityType: true } },
     },
   });
-  return rows.map((r) => ({
-    ruleCode: r.ruleCode,
-    authority: r.authority,
-    severity: r.severity,
-    dueDate: r.dueDate,
-    status: r.status,
-    completedAt: r.completedAt,
-    onboardedAt: r.company.createdAt,
-  }));
+
+  return rows.map((r) => {
+    return {
+      ruleCode: r.ruleCode,
+      authority: r.authority,
+      severity: r.severity,
+      dueDate: r.dueDate,
+      status: r.status,
+      completedAt: r.completedAt,
+      onboardedAt: r.company.createdAt,
+      _company: r.company,
+    } as any;
+  });
 }
 
-export async function computeScore(actor: Actor, companyId?: string): Promise<ScoreResult> {
-  return computeComplianceScore(await scorableItems(actor, companyId));
+export async function computeScores(actor: Actor, companyId?: string): Promise<{ score: ScoreResult }> {
+  const items = await scorableItems(actor, companyId);
+  return {
+    score: computeComplianceScore(items),
+  };
 }
 
 export interface Overview {
@@ -42,12 +49,7 @@ export interface Overview {
   byAuthority: Array<{ authority: Authority; total: number; overdue: number; completed: number; upcoming: number }>;
   overdue: unknown[];
   dueSoon: unknown[];
-  /**
-   * Open registration-first reminders (GST_REGISTER, MSME_UDYAM_REGISTRATION,
-   * PF_REGISTER, ESI_REGISTER). Served apart from the filing lists so the
-   * dashboard can surface "register first" ahead of the work it unlocks.
-   */
-  registrations: unknown[];
+  registrations: EvaluatedRegistration[];
   taskCounts: Record<string, number>;
   evidence: { itemsRequiringEvidence: number; itemsWithEvidence: number; coveragePct: number };
   /** Only with one company in view — there is no single entity to describe otherwise. */
@@ -68,6 +70,7 @@ export interface CompanyProfile {
   legalName: string;
   entityType: string;
   businessType: string | null;
+  industry: string | null;
   /** CIN for a Companies Act entity, LLPIN for an LLP — whichever it has. */
   registrationLabel: 'CIN' | 'LLPIN' | 'PAN';
   registrationNumber: string | null;
@@ -87,6 +90,10 @@ export interface CompanyProfile {
   dpiit: { number: string; recognisedOn: string | null } | null;
   epfoCode: string | null;
   esicCode: string | null;
+  shopAndEstablishment: string | null;
+  fssai: string | null;
+  professionalTax: string | null;
+  tradeLicense: string | null;
   /** Across serving directors: active while at least one certificate is good. */
   dsc: { status: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED'; active: number; total: number; nextExpiry: string | null };
   /**
@@ -149,6 +156,7 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
     legalName: company.legalName,
     entityType: company.entityType,
     businessType: company.businessType ?? null,
+    industry: company.industry ?? null,
     registrationLabel,
     registrationNumber: registrationNumber ?? null,
     incorporationDate: iso(company.incorporationDate),
@@ -182,6 +190,10 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
       : null,
     epfoCode: company.epfoCode ?? null,
     esicCode: company.esicCode ?? null,
+    shopAndEstablishment: company.shopAndEstablishment ?? null,
+    fssai: company.fssaiNumber ?? null,
+    professionalTax: company.professionalTax ?? null,
+    tradeLicense: company.tradeLicense ?? null,
     esicTooltip: company.employeeCount !== null
       ? company.stateCode === 'MH' || company.stateCode === 'CH'
         ? company.employeeCount < 20
@@ -219,7 +231,6 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
     authorityGroups,
     overdue,
     dueSoon,
-    registrations,
     taskGroups,
     evidenceTotals,
     score,
@@ -251,26 +262,16 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
         task: { select: { id: true, status: true, assignee: { select: { id: true, name: true } } } },
       },
     }),
-    prisma.complianceItem.findMany({
-      where: {
-        ...itemScope,
-        ruleCode: { in: [...REGISTRATION_RULE_CODES] },
-        status: { notIn: ['COMPLETED', 'WAIVED'] },
-      },
-      orderBy: [{ ruleCode: 'asc' }],
-      include: {
-        company: { select: { id: true, legalName: true } },
-        task: { select: { id: true, status: true, assignee: { select: { id: true, name: true } } } },
-      },
-    }),
     prisma.task.groupBy({ by: ['status'], where: { complianceItem: itemScope }, _count: { _all: true } }),
     prisma.complianceItem.findMany({
       where: itemScope,
       select: { evidenceRequired: true, _count: { select: { documents: true } } },
     }),
-    computeScore(actor, companyId),
+    computeScores(actor, companyId),
     companyId ? companyProfile(actor, companyId) : null,
   ]);
+
+  const evaluatedRegistrations = profile ? evaluateRegistrations(profile) : [];
 
   const statusCounts = { ...ZERO_STATUS };
   for (const g of statusGroups) statusCounts[g.status] = g._count._all;
@@ -294,24 +295,15 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
   const requiring = evidenceTotals.filter((i) => i.evidenceRequired.length > 0);
   const withEvidence = requiring.filter((i) => i._count.documents > 0);
 
-  const uniqueRegistrations = [];
-  const seenRegRules = new Set<string>();
-  for (const r of registrations.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())) {
-    if (!seenRegRules.has(r.ruleCode)) {
-      seenRegRules.add(r.ruleCode);
-      uniqueRegistrations.push(r);
-    }
-  }
-
   return {
-    score,
+    score: score.score,
     companies,
     statusCounts,
     severityCounts,
     byAuthority: [...authorityMap.values()].sort((a, b) => b.overdue - a.overdue || a.authority.localeCompare(b.authority)),
     overdue,
     dueSoon,
-    registrations: uniqueRegistrations,
+    registrations: evaluatedRegistrations,
     taskCounts,
     evidence: {
       itemsRequiringEvidence: requiring.length,
@@ -326,14 +318,14 @@ export async function getOverview(actor: Actor, companyId?: string): Promise<Ove
 export async function snapshotScore(actor: Actor, companyId: string) {
   await getCompanyOrThrow(actor, companyId);
   await assertCan(actor, companyId, 'work.write');
-  const score = await computeScore(actor, companyId);
+  const scores = await computeScores(actor, companyId);
 
   return prisma.complianceScoreSnapshot.create({
     data: {
       companyId,
-      score: score.score,
-      band: score.band,
-      breakdown: JSON.parse(JSON.stringify(score)),
+      score: scores.score.score,
+      band: scores.score.band,
+      breakdown: JSON.parse(JSON.stringify(scores)),
     },
   });
 }

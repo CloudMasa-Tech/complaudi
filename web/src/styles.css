@@ -335,6 +335,69 @@ tbody tr.clickable:hover { background: var(--surface-2); }
 .entity-id-label { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
 .entity-id-value { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
 
+.entity-id-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Solid filled badges (unused in header now, kept for reference) */
+.id-badge {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--good);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(6, 118, 71, 0.08);
+}
+.id-badge-label {
+  background: var(--good);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 4px 10px;
+  letter-spacing: 0.5px;
+}
+.id-badge-value {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 4px 12px;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+
+/* Outlined badge — used in entity header for PAN & CIN */
+.id-badge-outline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1.5px solid var(--good);
+  border-radius: 6px;
+  padding: 4px 11px;
+  background: transparent;
+  white-space: nowrap;
+}
+.id-badge-outline-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--good);
+  text-transform: uppercase;
+}
+.id-badge-outline-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+
+
 .status-strip { display: flex; flex-wrap: wrap; gap: 10px; padding: 13px 18px; border-bottom: 1px solid var(--border); }
 .status-pill {
   display: flex; align-items: center; gap: 10px; flex: 1 1 240px; min-width: 0;
@@ -455,7 +518,7 @@ tbody tr.clickable:hover { background: var(--surface-2); }
   padding: 16px 20px; border-bottom: 1px solid var(--border);
   background: var(--surface); display: flex; align-items: flex-start; gap: 12px;
 }
-.drawer-body { padding: 18px 20px 40px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.drawer-body { flex: 1; padding: 18px 20px 40px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 
 .kv { display: grid; grid-template-columns: 116px 1fr; gap: 7px 12px; font-size: 13px; }
 .kv dt { color: var(--text-3); font-size: 12.5px; }

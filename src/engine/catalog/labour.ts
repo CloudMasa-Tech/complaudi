@@ -156,39 +156,4 @@ export const labourRules: ComplianceRule[] = [
     applicableWhen: [employeesAtLeast(1)],
     occurrences: annual({ month: 3, day: 31, anchor: 'within' }),
   },
-  // ------------------------------------------------------------- registration
-  {
-    code: 'PF_REGISTER',
-    title: 'Register for PF (EPFO establishment code)',
-    authority: 'LABOUR',
-    category: 'Registration',
-    legalReference: 'Sections 2A and 6, Employees’ Provident Funds and Miscellaneous Provisions Act 1952',
-    description:
-      'The PF Act applies once an establishment employs 20 or more persons, and the employer must then obtain an EPFO establishment code. The headcount threshold has been crossed but no code is on record. Over the counter the same fingers that file the ECR each month cannot exist without it — so get the code before the first contribution falls due (and note that coverage can also be triggered by voluntarily registering even below the headcount).',
-    severity: 'HIGH',
-    penalty:
-      'Section 7Q interest (12% p.a.) plus damages of 5% to 25% under s.14B apply from the date contributions became payable, whether or not a code has been obtained.',
-    evidenceRequired: [],
-    evidenceLevel: 'NONE',
-    periodKind: 'ONE_TIME',
-    applicableWhen: [employeesAtLeast(20), hasNoEpfoEnrollment()],
-    occurrences: registrationReminder(),
-  },
-  {
-    code: 'ESI_REGISTER',
-    title: 'Register for ESI (ESIC employer code)',
-    authority: 'LABOUR',
-    category: 'Registration',
-    legalReference: 'Section 2A, Employees’ State Insurance Act 1948 read with Regulation 10B',
-    description:
-      'ESI covers an establishment from the day it employs 10 or more persons (20 in Maharashtra and Chandigarh) — the thresholds the engine already uses for the monthly contribution rule. The headcount qualifies but no ESIC employer code is on record, and contributions cannot be remitted at all without one. Register with the local ESIC office and record the 17-digit code to retire this reminder.',
-    severity: 'HIGH',
-    penalty:
-      'Interest at 12% p.a. plus damages of up to 100% of arrears under s.85B for the period the establishment was covered but unregistered.',
-    evidenceRequired: [],
-    evidenceLevel: 'NONE',
-    periodKind: 'ONE_TIME',
-    applicableWhen: [esiApplies, hasNoEsicEnrollment()],
-    occurrences: registrationReminder(),
-  },
 ];

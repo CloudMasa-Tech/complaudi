@@ -111,6 +111,12 @@ model Company {
   employeeCount                 Int                       @default(0)
   annualTurnover                BigInt                    @default(0)
   paidUpCapital                 BigInt                    @default(0)
+  authorisedCapital             BigInt                    @default(0)
+  registeredAddress             String?
+  companyStatus                 String?
+  companyCategory               String?
+  companySubCategory            String?
+  companyClass                  String?
   cashTransactionRatioBelow5Pct Boolean                   @default(true)
   hasForeignTransactions        Boolean                   @default(false)
   acceptsDeposits               Boolean                   @default(false)
@@ -128,6 +134,10 @@ model Company {
   dpiitRecognisedOn             DateTime?                 @db.Date
   epfoCode                      String?
   esicCode                      String?
+  shopAndEstablishment          String?
+  fssaiNumber                   String?
+  professionalTax               String?
+  tradeLicense                  String?
   profileConfirmedAt            DateTime?
   logoStorageKey                String?
   organization                  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -167,6 +177,7 @@ model Director {
   designation  String    @default("Director")
   appointedOn  DateTime? @db.Date
   resignedOn   DateTime? @db.Date
+  status       String?
   isResident   Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -185,11 +196,14 @@ model GstRegistration {
   gstin               String
   stateCode           String
   legalName           String?
+  tradeName           String?
+  constitution        String?
   filingFrequency     GstFilingFrequency @default(MONTHLY)
   isTdsDeductor       Boolean            @default(false)
   isEcommerceOperator Boolean            @default(false)
   registeredOn        DateTime?          @db.Date
   isActive            Boolean            @default(true)
+  certificateKey      String?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   company             Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -203,8 +217,12 @@ model MsmeRegistration {
   id           String       @id @default(uuid())
   companyId    String       @unique
   udyamNumber  String
+  enterpriseName String?
   category     MsmeCategory
+  majorActivity String?
+  socialCategory String?
   registeredOn DateTime?    @db.Date
+  certificateKey String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)

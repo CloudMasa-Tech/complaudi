@@ -1,25 +1,57 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { qs } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Company, CompanyProfile, Overview } from '../api/types';
-import { REGISTRATION_SERVICE_LINKS } from '../lib/registrationLinks';
+import type { Company, CompanyProfile, Overview, EvaluatedRegistration } from '../api/types';
+
 import {
-  AUTHORITY_LABEL, Badge, Card, Empty, ENTITY_LABEL, ErrorNote, Loading,
-  SeverityDot, Stat, fmtDate, relativeDue, titleise, initials,
+  AUTHORITY_LABEL, Badge, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
+  SeverityDot, Stat, fmtDate, titleise, initials,
 } from '../components/ui';
 
 const SEVERITY_COLOUR: Record<string, string> = {
   CRITICAL: 'var(--critical)', HIGH: 'var(--high)', MEDIUM: 'var(--medium)', LOW: 'var(--text-3)',
 };
 
-/** What completing each reminder means, by rule code — the band's CTA label. */
-const REGISTER_CTA: Record<string, string> = {
-  GST_REGISTER: 'Add GST registration',
-  MSME_UDYAM_REGISTRATION: 'Add Udyam number',
-  PF_REGISTER: 'Add EPFO code',
-  ESI_REGISTER: 'Add ESIC code',
-};
+
+function RegistrationBreakdownDrawer({ profile, registrations, onClose }: { profile: CompanyProfile, registrations: EvaluatedRegistration[], onClose: () => void }) {
+  return (
+    <Drawer onClose={onClose}>
+      <header className="drawer-head">
+        <h2 style={{ fontSize: 16 }}>Registration Requirements Breakdown</h2>
+        <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close">✕</button>
+      </header>
+      <div className="drawer-body">
+        {registrations.map(r => (
+          <div key={r.id} className="card stack" style={{ padding: 16, gap: 8 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600 }}>{r.title}</span>
+              <Badge value={
+                r.status === 'REGISTERED' ? 'COMPLETED' 
+                : r.status === 'ELIGIBLE' || r.status === 'PENDING_APPLICATION' ? 'WAIVED' 
+                : 'DUE'
+              }>
+                {titleise(r.status.replace(/_/g, ' '))}
+              </Badge>
+            </div>
+            <p className="tiny dim" style={{ margin: 0 }}>{r.reason}</p>
+            {(r.status === 'MANDATORY' || r.status === 'ELIGIBLE' || r.status === 'EXPIRED_RENEWAL_DUE') && (
+              <div className="row" style={{ gap: 12, marginTop: 4 }}>
+                <Link className="btn btn-sm btn-primary" to={`/companies/${profile.id}/edit`}>Add number to profile</Link>
+                {r.ctaUrl && (
+                  <a className="btn btn-sm btn-outline" href={r.ctaUrl} target="_blank" rel="noopener noreferrer">
+                    Register externally →
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Drawer>
+  );
+}
 
 /** One registration. Held ones are marked; the rest say so and step back. */
 function Reg({ label, value, foot, badgeUrl, badgeStyle }: { label: string; value: string | null; foot?: string; badgeUrl?: string; badgeStyle?: React.CSSProperties }) {
@@ -115,15 +147,20 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
             {profile.ageYears !== null && ` · ${profile.ageYears} year${profile.ageYears === 1 ? '' : 's'} old`}
           </span>
         </div>
-        {profile.registrationNumber && (
-          <div className="entity-id">
-            <span className="entity-id-label">{profile.registrationLabel}</span>
-            <span className="entity-id-value">{profile.registrationNumber}</span>
-            {profile.pan && profile.registrationLabel !== 'PAN' && (
-              <span className="entity-id-label">PAN {profile.pan}</span>
-            )}
-          </div>
-        )}
+        <div className="entity-id-wrap">
+          {profile.pan && (
+            <div className="id-badge-outline">
+              <span className="id-badge-outline-label">PAN</span>
+              <span className="id-badge-outline-value">{profile.pan}</span>
+            </div>
+          )}
+          {profile.registrationNumber && profile.registrationLabel !== 'PAN' && (
+            <div className="id-badge-outline">
+              <span className="id-badge-outline-label">{profile.registrationLabel}</span>
+              <span className="id-badge-outline-value">{profile.registrationNumber}</span>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="status-strip">
@@ -260,8 +297,47 @@ function PortfolioOverview({ companies }: { companies: Company[] }) {
   );
 }
 
+function RegistrationDonut({ registered, mandatory, eligible }: { registered: number; mandatory: number; eligible: number }) {
+  const total = registered + mandatory + eligible || 1;
+  const radius = 15.9155; // circumference = 100
+  const circumference = 100;
+  
+  const compPct = (registered / total) * 100;
+  const missPct = (mandatory / total) * 100;
+  const naPct = (eligible / total) * 100;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+      <svg width="72" height="72" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)', overflow: 'visible' }}>
+        {eligible > 0 && (
+          <circle cx="18" cy="18" r={radius} fill="transparent" stroke="var(--border-strong)" strokeWidth="4.5" 
+            strokeDasharray={`${naPct} ${circumference - naPct}`} strokeDashoffset={100 - (compPct + missPct)} />
+        )}
+        {mandatory > 0 && (
+          <circle cx="18" cy="18" r={radius} fill="transparent" stroke="var(--critical)" strokeWidth="4.5" 
+            strokeDasharray={`${missPct} ${circumference - missPct}`} strokeDashoffset={100 - compPct} />
+        )}
+        {registered > 0 && (
+          <circle cx="18" cy="18" r={radius} fill="transparent" stroke="var(--good)" strokeWidth="4.5" 
+            strokeDasharray={`${compPct} ${circumference - compPct}`} strokeDashoffset={0} />
+        )}
+        <text x="18" y="18" textAnchor="middle" dy="0.3em" fontSize="10px" fontWeight="600" fill="var(--text)" style={{ transform: 'rotate(90deg)', transformOrigin: 'center' }}>
+          {registered}/{total}
+        </text>
+      </svg>
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="tiny" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="dot" style={{ background: 'var(--good)' }}/> {registered} Registered</span>
+        <span className="tiny" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="dot" style={{ background: 'var(--critical)' }}/> {mandatory} Required</span>
+        <span className="tiny" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="dot" style={{ background: 'var(--border-strong)' }}/> {eligible} Eligible</span>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const { companies, selectedId, selected } = useCompanies();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  
   const { data, error, initial } = useResource<Overview>(
     `/dashboard/overview${qs({ companyId: selectedId ?? undefined })}`,
     [selectedId],
@@ -271,6 +347,11 @@ export function Dashboard() {
   if (initial || !data) return <Loading label="Building the compliance picture" />;
 
   const { score, statusCounts, severityCounts, evidence, registrations } = data;
+  
+  const regRegistered = registrations.filter(r => r.status === 'REGISTERED').length;
+  const regMandatory = registrations.filter(r => r.status === 'MANDATORY' || r.status === 'EXPIRED_RENEWAL_DUE').length;
+  const regEligible = registrations.filter(r => r.status === 'ELIGIBLE' || r.status === 'PENDING_APPLICATION').length;
+
   // The same window the tile counts, handed to the task list so the two agree.
   const isoToday = new Date().toISOString().slice(0, 10);
   const isoIn30Days = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
@@ -314,43 +395,15 @@ export function Dashboard() {
         </div>
       )}
 
-      {registrations.length > 0 && (
-        <Card
-          title="Action needed — register first"
-          note={`${registrations.length} pending`}
-          action={<span className="tiny dim">The filing calendar can’t begin until these are on record.</span>}
-        >
-          <div className="card-body stack" style={{ gap: 10 }}>
-            {registrations.map((r) => {
-              const ext = REGISTRATION_SERVICE_LINKS[r.ruleCode];
-              return (
-                <div key={r.id} className="row" style={{ gap: 10, alignItems: 'center' }}>
-                  <SeverityDot value={r.severity} />
-                  <div className="stack" style={{ minWidth: 0, gap: 1, flex: 1 }}>
-                    <span style={{ fontWeight: 550 }}>{r.title}</span>
-                    <span className="tiny dim">
-                      {AUTHORITY_LABEL[r.authority]} · due {relativeDue(r.dueDate)}
-                      {r.company && r.company.id !== selectedId && ` · ${r.company.legalName}`}
-                    </span>
-                    {ext && (
-                      <a className="reg-ext-link tiny" href={ext.url} target="_blank" rel="noopener noreferrer">
-                        Don't have this yet? Register via {ext.label} →
-                      </a>
-                    )}
-                  </div>
-                  <Link className="btn btn-sm btn-primary" to={`/companies/${r.company?.id ?? selectedId}/edit`}>
-                    {REGISTER_CTA[r.ruleCode] ?? 'Complete registration'}
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
 
-      <div className="grid grid-4">
+
+      <div className="grid grid-2" style={{ marginBottom: 16 }}>
+        <div className="card stat" style={{ cursor: 'pointer' }} onClick={() => data.profile && setDrawerOpen(true)}>
+          <span className="stat-label">Registration Status (Click for details)</span>
+          <RegistrationDonut registered={regRegistered} mandatory={regMandatory} eligible={regEligible} />
+        </div>
         <div className="card stat">
-          <span className="stat-label">Compliance score</span>
+          <span className="stat-label">Recurring Compliance</span>
           <div className="gauge">
             <span className="gauge-num">{score.score}</span>
             <span className={`gauge-band band-${score.band}`}>{score.band}</span>
@@ -359,7 +412,9 @@ export function Dashboard() {
             {score.assessed} obligations assessed · {score.onTime} on time, {score.late} late
           </span>
         </div>
+      </div>
 
+      <div className="grid grid-3">
         <Stat
           label="Overdue"
           value={statusCounts.OVERDUE}
@@ -462,6 +517,7 @@ export function Dashboard() {
         </div>
       )}
 
+      {drawerOpen && data.profile && <RegistrationBreakdownDrawer profile={data.profile} registrations={data.registrations} onClose={() => setDrawerOpen(false)} />}
     </>
   );
 }

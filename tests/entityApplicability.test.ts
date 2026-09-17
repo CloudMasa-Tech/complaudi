@@ -23,7 +23,7 @@ const statusAt = (code: string, t: EntityType): RuleEntityStatus => applicabilit
 
 describe('entity-type reference matrix', () => {
   it('covers every rule in the catalog', () => {
-    expect(allRules).toHaveLength(63);
+    expect(allRules).toHaveLength(59);
     for (const rule of allRules) {
       const m = applicableEntityTypes(rule);
       expect(Object.keys(m).sort()).toEqual([...ALL].sort());
@@ -182,13 +182,7 @@ describe('GST, MSME and labour', () => {
   });
 });
 
-describe('registration reminders', () => {
-  it('every registration reminder is possible for and contingent to all eight types', () => {
-    for (const code of ['GST_REGISTER', 'MSME_UDYAM_REGISTRATION', 'PF_REGISTER', 'ESI_REGISTER']) {
-      for (const t of ALL) expect(statusAt(code, t), `${code} @ ${t}`).toBe('CONTINGENT');
-    }
-  });
-});
+
 
 describe('unregistered businesses', () => {
   it('never get MCA company or LLP filings', () => {
@@ -197,9 +191,8 @@ describe('unregistered businesses', () => {
     }
   });
 
-  it('reach registration reminders and GST/labour obligations like any business', () => {
+  it('reach GST/labour obligations like any business', () => {
     for (const code of [
-      'GST_REGISTER', 'MSME_UDYAM_REGISTRATION', 'PF_REGISTER', 'ESI_REGISTER',
       'GST_GSTR3B_MONTHLY', 'LABOUR_SHOPS_ESTABLISHMENT', 'LABOUR_EPF_ECR',
     ]) {
       expect(statusAt(code, UREG), code).toBe('CONTINGENT');

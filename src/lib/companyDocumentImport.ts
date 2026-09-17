@@ -113,6 +113,11 @@ export function extractFromPdfText(text: string): ImportPreview['record'] {
     entityType: decoded?.entityType ?? (llpin ? 'LLP' : null),
     industry: decoded?.industry ?? null,
     status: null,
+    address: null,
+    companyClass: null,
+    companyCategory: null,
+    companySubCategory: null,
+    directors: [],
   };
 }
 

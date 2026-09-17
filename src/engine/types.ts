@@ -1,6 +1,6 @@
 import type { FinancialYear } from '../lib/dates';
 
-export type Authority = 'MCA' | 'GST' | 'INCOME_TAX' | 'MSME' | 'LABOUR';
+export type Authority = 'MCA' | 'GST' | 'INCOME_TAX' | 'MSME' | 'LABOUR' | 'DPIIT';
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type EntityType =

@@ -35,6 +35,9 @@ interface ProfileForm {
   cashTransactionRatioBelow5Pct: boolean; hasForeignTransactions: boolean;
   acceptsDeposits: boolean; isListed: boolean; buysFromMsmeSuppliers: boolean;
   dpiitRecognitionNumber: string; dpiitRecognisedOn: string; epfoCode: string; esicCode: string;
+  shopAndEstablishment: string; fssaiNumber: string; professionalTax: string; tradeLicense: string;
+  registeredAddress: string; companyStatus: string; companyCategory: string; companySubCategory: string; companyClass: string;
+  authorisedCapital: number;
 }
 
 const toForm = (c: Company): ProfileForm => ({
@@ -53,6 +56,12 @@ const toForm = (c: Company): ProfileForm => ({
   dpiitRecognitionNumber: c.dpiitRecognitionNumber ?? '',
   dpiitRecognisedOn: c.dpiitRecognisedOn?.slice(0, 10) ?? '',
   epfoCode: c.epfoCode ?? '', esicCode: c.esicCode ?? '',
+  shopAndEstablishment: c.shopAndEstablishment ?? '', fssaiNumber: c.fssaiNumber ?? '',
+  professionalTax: c.professionalTax ?? '', tradeLicense: c.tradeLicense ?? '',
+  registeredAddress: c.registeredAddress ?? '', companyStatus: c.companyStatus ?? '',
+  companyCategory: c.companyCategory ?? '', companySubCategory: c.companySubCategory ?? '',
+  companyClass: c.companyClass ?? '',
+  authorisedCapital: Number(c.authorisedCapital),
 });
 
 /** The matching partner-service link for a CompanyEdit field key, when one exists. */
@@ -133,10 +142,13 @@ export function CompanyEdit() {
         acceptsDeposits: form!.acceptsDeposits,
         isListed: form!.isListed,
         buysFromMsmeSuppliers: form!.buysFromMsmeSuppliers,
+        authorisedCapital: Math.round(Number(form!.authorisedCapital)),
       };
       // An empty optional must be sent as null to clear it, not as "".
       for (const k of ['brandName', 'businessType', 'cin', 'llpin', 'pan', 'tan', 'incorporationDate', 'agmDate', 'industry',
-                       'dpiitRecognitionNumber', 'dpiitRecognisedOn', 'epfoCode', 'esicCode'] as const) {
+                       'dpiitRecognitionNumber', 'dpiitRecognisedOn', 'epfoCode', 'esicCode',
+                       'shopAndEstablishment', 'fssaiNumber', 'professionalTax', 'tradeLicense',
+                       'registeredAddress', 'companyStatus', 'companyCategory', 'companySubCategory', 'companyClass'] as const) {
         body[k] = form![k] ? form![k] : null;
       }
       const result = await patch<{ company: Company; sync: SyncResult }>(`/companies/${id}`, body);
@@ -256,7 +268,7 @@ export function CompanyEdit() {
               </select>
             </Field>
             <Field label="Industry" hint="Optional">
-              <input value={form.industry} onChange={(e) => set('industry', e.target.value)} />
+              <input value={form.industry || ''} onChange={(e) => set('industry', e.target.value)} />
             </Field>
             <Field
               label={isIndividual ? 'Started on' : 'Incorporation date'}
@@ -268,6 +280,25 @@ export function CompanyEdit() {
               <input required type="date" value={form.incorporationDate}
                      onChange={(e) => set('incorporationDate', e.target.value)} />
             </Field>
+            {isCompaniesAct && (
+              <>
+                <Field label="Registered Address">
+                  <input value={form.registeredAddress || ''} onChange={(e) => set('registeredAddress', e.target.value)} />
+                </Field>
+                <Field label="Company Status">
+                  <input value={form.companyStatus || ''} onChange={(e) => set('companyStatus', e.target.value)} />
+                </Field>
+                <Field label="Category">
+                  <input value={form.companyCategory || ''} onChange={(e) => set('companyCategory', e.target.value)} />
+                </Field>
+                <Field label="Sub Category">
+                  <input value={form.companySubCategory || ''} onChange={(e) => set('companySubCategory', e.target.value)} />
+                </Field>
+                <Field label="Class">
+                  <input value={form.companyClass || ''} onChange={(e) => set('companyClass', e.target.value)} />
+                </Field>
+              </>
+            )}
           </div>
         </Card>
 
@@ -287,6 +318,18 @@ export function CompanyEdit() {
             <Field label="ESI · ESIC employer code" hint="17 digits on most certificates">
               <input value={form.esicCode} onChange={(e) => set('esicCode', e.target.value)} />
             </Field>
+            <Field label="Shop & Establishment">
+              <input value={form.shopAndEstablishment} onChange={(e) => set('shopAndEstablishment', e.target.value)} />
+            </Field>
+            <Field label="FSSAI License">
+              <input value={form.fssaiNumber} onChange={(e) => set('fssaiNumber', e.target.value)} />
+            </Field>
+            <Field label="Professional Tax (PT)">
+              <input value={form.professionalTax} onChange={(e) => set('professionalTax', e.target.value)} />
+            </Field>
+            <Field label="Trade License">
+              <input value={form.tradeLicense} onChange={(e) => set('tradeLicense', e.target.value)} />
+            </Field>
           </div>
         </Card>
 
@@ -297,6 +340,9 @@ export function CompanyEdit() {
             </Field>
             <Field label="Paid-up capital (₹)" hint={fmtINR(form.paidUpCapital)}>
               <input type="number" min={0} value={form.paidUpCapital} onChange={(e) => set('paidUpCapital', Number(e.target.value))} />
+            </Field>
+            <Field label="Authorised capital (₹)" hint={fmtINR(form.authorisedCapital)}>
+              <input type="number" min={0} value={form.authorisedCapital} onChange={(e) => set('authorisedCapital', Number(e.target.value))} />
             </Field>
             <Field label="Employees" hint="10 → ESI and POSH · 20 → provident fund">
               <input type="number" min={0} value={form.employeeCount} onChange={(e) => set('employeeCount', Number(e.target.value))} />
@@ -369,11 +415,11 @@ function McaImport({ company, busy, run }: {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Card title="Import from MCA master data" note="CSV downloaded from MCA or data.gov.in">
+    <Card title="Import from MCA master data" note="CSV or PDF downloaded from MCA or data.gov.in">
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span className="tiny muted">
-          Fills the CIN, legal name, date of incorporation, state, entity type, industry and paid-up capital from
-          an MCA company master-data extract. Column names differ between vintages, so they are matched by
+          Fills the CIN, legal name, date of incorporation, state, entity type, industry, address, status, capital, and directors from
+          an MCA company master-data and signatory details extract. Column names differ between vintages, so they are matched by
           meaning rather than position. Nothing is fetched from MCA — this reads the file you give it.
         </span>
 
@@ -408,29 +454,29 @@ function McaImport({ company, busy, run }: {
           </div>
         )}
 
-        <input ref={fileInput} type="file" accept=".csv,text/csv" hidden
-onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!file) return;
-                  if (!file.name.toLowerCase().endsWith('.csv')) {
-                    setError('This import only accepts CSV files. If your data is in Excel, export it as CSV first.');
-                    return;
-                  }
-                  setError(null);
-                  void run(async () => {
-                    const form = new FormData();
-                    form.append('file', file);
-                    try {
-                      setResult(await upload<McaResult>(`/companies/${company.id}/import-mca`, form));
-                    } catch (err) {
-                      setError(err instanceof ApiError ? err.message : 'Could not read that file');
-                      throw err;
-                    }
-                  });
-                }} />
+        <input ref={fileInput} type="file" accept=".csv,text/csv,application/pdf" hidden
+               onChange={(e) => {
+                 const file = e.target.files?.[0];
+                 e.target.value = '';
+                 if (!file) return;
+                 if (!file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.pdf')) {
+                   setError('This import only accepts CSV or PDF files. If your data is in Excel, export it as CSV first.');
+                   return;
+                 }
+                 setError(null);
+                 void run(async () => {
+                   const form = new FormData();
+                   form.append('file', file);
+                   try {
+                     setResult(await upload<McaResult>(`/companies/${company.id}/import-mca`, form));
+                   } catch (err) {
+                     setError(err instanceof ApiError ? err.message : 'Could not read that file');
+                     throw err;
+                   }
+                 });
+               }} />
         <div className="dropzone" onClick={() => fileInput.current?.click()}>
-          {busy ? 'Reading…' : 'Choose an MCA master-data CSV'}
+          {busy ? 'Reading…' : 'Choose an MCA master-data CSV or PDF'}
         </div>
       </div>
     </Card>
@@ -640,6 +686,20 @@ function Registrations({
 
       <Card title="GST registrations" note="One set of returns is generated per GSTIN">
         <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="dropzone" onClick={() => document.getElementById('gst-upload')?.click()}>
+            {busy ? 'Reading…' : 'Drop a GST Certificate PDF to extract'}
+          </div>
+          <input id="gst-upload" type="file" accept="application/pdf" hidden onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            void run(async () => {
+              const form = new FormData();
+              form.append('file', file);
+              await upload(`/companies/${company.id}/import-gst`, form);
+            });
+          }} />
+          
           {company.gstRegistrations.map((g) => (
             <div key={g.id} className="file-row">
               <div className="stack" style={{ flex: 1 }}>
@@ -694,6 +754,22 @@ function Registrations({
 
       <Card title="Udyam (MSME) registration">
         <div className="card-body grid grid-3" style={{ alignItems: 'end' }}>
+          <div style={{ gridColumn: 'span 3', paddingBottom: 10 }}>
+            <div className="dropzone" onClick={() => document.getElementById('udyam-upload')?.click()}>
+              {busy ? 'Reading…' : 'Drop an MSME/Udyam Certificate PDF to extract'}
+            </div>
+            <input id="udyam-upload" type="file" accept="application/pdf" hidden onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              void run(async () => {
+                const form = new FormData();
+                form.append('file', file);
+                await upload(`/companies/${company.id}/import-udyam`, form);
+              });
+            }} />
+          </div>
+
           <Field label="Udyam number" hint={<><span>UDYAM-KA-03-0114562</span> · <FieldService field="udyam" /></>} error={local.udyam ?? errors['udyamNumber']}>
             <input value={msme.udyamNumber}
                    onChange={(e) => { setMsme({ ...msme, udyamNumber: e.target.value.toUpperCase() }); setLocalError('udyam', null); }} />

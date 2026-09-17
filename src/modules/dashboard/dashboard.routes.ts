@@ -28,7 +28,7 @@ dashboardRouter.get(
   validateQuery(z.object({ companyId: z.string().uuid().optional() })),
   asyncHandler(async (req, res) => {
     const { companyId } = req.query as { companyId?: string };
-    res.json(await service.computeScore(auth(req), companyId));
+    res.json(await service.computeScores(auth(req), companyId));
   }),
 );
 

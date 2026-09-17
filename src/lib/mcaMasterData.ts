@@ -24,6 +24,9 @@ const FIELD_ALIASES: Record<string, string[]> = {
     'incorporationdate', 'dateofregistrationincorporation', 'dateofincorporationddmmyyyy',
   ],
   companyClass: ['companyclass', 'class', 'classofcompany', 'companyclassification'],
+  companyCategory: ['companycategory', 'category'],
+  companySubCategory: ['companysubcategory', 'subcategory'],
+  address: ['registeredaddress', 'registeredofficedetails', 'address', 'roaddress', 'registeredofficedetail', 'registeredofficedetailsaddress', 'registeredofficeaddress', 'registeredoffice'],
   paidUpCapital: [
     'paidupcapital', 'paidupcapitalrs', 'paidup', 'paidupcapitalinrs',
     'paidupcapitalinrcrore', 'paidupcapitalinlakhs', 'paiducapital', 'sharecapital',
@@ -156,9 +159,22 @@ export interface McaRecord {
   incorporatedOn: Date | null;
   paidUpCapital: number | null;
   authorisedCapital: number | null;
+  address: string | null;
+  companyClass: string | null;
+  companyCategory: string | null;
+  companySubCategory: string | null;
   stateCode: string | null;
   entityType: string | null;
   industry: string | null;
+  status: string | null;
+  directors: McaDirector[];
+}
+
+export interface McaDirector {
+  din: string | null;
+  name: string | null;
+  designation: string | null;
+  appointedOn: Date | null;
   status: string | null;
 }
 
@@ -205,7 +221,61 @@ export function parseMcaMasterData(csv: string): McaParseResult {
   };
 
   const records: McaRecord[] = [];
-  for (const row of rows.slice(headerRow + 1)) {
+  
+  // Find directors if they exist in the file (Signatory Details table)
+  const dirAliases = {
+    din: ['din', 'dinpan', 'dinpanno', 'dpindin', 'dinofdirector'],
+    name: ['name', 'nameofdirector', 'fullname', 'signatoryname'],
+    designation: ['designation'],
+    appointedOn: ['dateofappointment', 'appointmentdate'],
+    status: ['status', 'directorstatus', 'currentstatus']
+  };
+
+  const directors: McaDirector[] = [];
+  let inSignatoryTable = false;
+  let dirIndex: Partial<Record<keyof typeof dirAliases, number>> = {};
+  
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r]!;
+    
+    // Check if this row looks like a signatory table header
+    const rowNorms = row.map(normaliseHeader);
+    const hasDinCol = rowNorms.some(h => dirAliases.din.includes(h));
+    const hasNameCol = rowNorms.some(h => dirAliases.name.includes(h));
+    
+    if (hasDinCol && hasNameCol) {
+      inSignatoryTable = true;
+      dirIndex = {};
+      rowNorms.forEach((h, i) => {
+        for (const [field, aliases] of Object.entries(dirAliases)) {
+          if (aliases.includes(h) && dirIndex[field as keyof typeof dirAliases] === undefined) {
+            dirIndex[field as keyof typeof dirAliases] = i;
+          }
+        }
+      });
+      continue;
+    }
+    
+    if (inSignatoryTable) {
+      if (row.every(c => c.trim() === '')) continue; // Skip empty rows
+      const atD = (field: keyof typeof dirAliases) => {
+        const i = dirIndex[field];
+        return i === undefined ? '' : (row[i] ?? '').trim();
+      };
+      const dinRaw = atD('din');
+      const name = atD('name');
+      if (dinRaw || name) {
+        directors.push({
+          din: dinRaw || null,
+          name: name || null,
+          designation: atD('designation') || null,
+          appointedOn: parseMcaDate(atD('appointedOn')),
+          status: atD('status') || null
+        });
+      }
+      continue;
+    }
+
     const cinRaw = at(row, 'cin').toUpperCase();
     const cin = CIN_REGEX.test(cinRaw) ? cinRaw : null;
     if (!cin) continue; // a row with no usable CIN tells us nothing
@@ -219,6 +289,10 @@ export function parseMcaMasterData(csv: string): McaParseResult {
       incorporatedOn: parseMcaDate(at(row, 'incorporatedOn')),
       paidUpCapital: parseAmount(at(row, 'paidUpCapital')),
       authorisedCapital: parseAmount(at(row, 'authorisedCapital')),
+      address: at(row, 'address') || null,
+      companyClass: at(row, 'companyClass') || null,
+      companyCategory: at(row, 'companyCategory') || null,
+      companySubCategory: at(row, 'companySubCategory') || null,
       // The CIN is the more reliable source for both of these.
       stateCode: decoded?.stateCode ?? null,
       entityType:
@@ -226,8 +300,85 @@ export function parseMcaMasterData(csv: string): McaParseResult {
         (classRaw.includes('public') ? 'PUBLIC_LIMITED' : classRaw.includes('private') ? 'PRIVATE_LIMITED' : null),
       industry: at(row, 'activity') || decoded?.industry || null,
       status: at(row, 'status') || null,
+      directors: [] // will be attached later if there's only 1 company
     });
+  }
+  
+  if (records.length === 1 && directors.length > 0) {
+    records[0]!.directors = directors;
+    recognised.push('Directors'); // Just to signal we found directors
   }
 
   return { records, recognisedColumns: recognised, unrecognisedColumns: unrecognised, rowCount: rows.length - headerRow - 1 };
+}
+
+export function parseMcaMasterDataPdf(text: string): McaParseResult {
+  const records: McaRecord[] = [];
+  const recognisedColumns: string[] = [];
+
+  const cinMatch = text.match(/([UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6})/i);
+  const cin = cinMatch ? cinMatch[1]!.toUpperCase() : null;
+
+  if (cin) {
+    recognisedColumns.push('CIN');
+    const decoded = decodeCin(cin);
+    
+    const nameMatch = text.match(/Company Name\s+(.*?)\s+(?:ROC Code|Registration Number|Company Category)/i);
+    const name = nameMatch ? nameMatch[1]!.trim() : null;
+    if (name) recognisedColumns.push('Company Name');
+
+    const incDateMatch = text.match(/Date of Incorporation\s+(\d{2}[/-]\d{2}[/-]\d{4})/i);
+    const incorporatedOn = incDateMatch ? parseMcaDate(incDateMatch[1]!) : null;
+    if (incDateMatch) recognisedColumns.push('Date of Incorporation');
+
+    const classMatch = text.match(/Class of Company\s+(.*?)\s+(?:Authorised Capital|Company Category)/i);
+    const companyClass = classMatch ? classMatch[1]!.trim() : null;
+    if (companyClass) recognisedColumns.push('Class of Company');
+
+    const categoryMatch = text.match(/Company Category\s+(.*?)\s+(?:Company SubCategory|Class of Company)/i);
+    const companyCategory = categoryMatch ? categoryMatch[1]!.trim() : null;
+    if (companyCategory) recognisedColumns.push('Company Category');
+
+    const subcategoryMatch = text.match(/Company SubCategory\s+(.*?)\s+(?:Class of Company|Authorised Capital)/i);
+    const companySubCategory = subcategoryMatch ? subcategoryMatch[1]!.trim() : null;
+    if (companySubCategory) recognisedColumns.push('Company SubCategory');
+
+    const authCapMatch = text.match(/Authorised Capital(?:\(Rs\))?\s+([\d,\.]+)/i);
+    const authorisedCapital = authCapMatch ? parseAmount(authCapMatch[1]!) : null;
+    if (authCapMatch) recognisedColumns.push('Authorised Capital');
+
+    const paidCapMatch = text.match(/Paid up Capital(?:\(Rs\))?\s+([\d,\.]+)/i);
+    const paidUpCapital = paidCapMatch ? parseAmount(paidCapMatch[1]!) : null;
+    if (paidCapMatch) recognisedColumns.push('Paid up Capital');
+    
+    const addressMatch = text.match(/Registered Address\s+(.*?)\s+(?:Address other than|Email Id|Whether Listed)/i);
+    const address = addressMatch ? addressMatch[1]!.trim() : null;
+    if (addressMatch) recognisedColumns.push('Registered Address');
+    
+    const statusMatch = text.match(/Company Status(?:\(for efiling\))?\s+(.*?)\s*$/im) || text.match(/Company Status(?:\(for efiling\))?\s+(.*?)\s+(?:Date of|Number of)/i);
+    const status = statusMatch ? statusMatch[1]!.trim() : null;
+    if (statusMatch) recognisedColumns.push('Company Status');
+
+    // For PDF, extracting directors reliably from flattened text is tricky and often not needed for simple upload.
+    // If we wanted to, we would look for DIN/PAN and Name. We'll skip it for now to avoid false positives.
+
+    records.push({
+      cin,
+      name,
+      incorporatedOn,
+      paidUpCapital,
+      authorisedCapital,
+      address,
+      companyClass,
+      companyCategory,
+      companySubCategory,
+      stateCode: decoded?.stateCode ?? null,
+      entityType: decoded?.entityType ?? (companyClass?.toLowerCase().includes('public') ? 'PUBLIC_LIMITED' : companyClass?.toLowerCase().includes('private') ? 'PRIVATE_LIMITED' : null),
+      industry: decoded?.industry ?? null,
+      status,
+      directors: []
+    });
+  }
+
+  return { records, recognisedColumns, unrecognisedColumns: [], rowCount: records.length };
 }

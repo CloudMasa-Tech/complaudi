@@ -1,4 +1,4 @@
-export type Authority = 'MCA' | 'GST' | 'INCOME_TAX' | 'MSME' | 'LABOUR';
+export type Authority = 'MCA' | 'GST' | 'INCOME_TAX' | 'MSME' | 'LABOUR' | 'DPIIT';
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type ItemStatus = 'UPCOMING' | 'DUE' | 'OVERDUE' | 'COMPLETED' | 'WAIVED';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE' | 'CANCELLED';
@@ -69,6 +69,9 @@ export interface Company {
   businessType: BusinessType | null;
   cin: string | null; llpin: string | null; pan: string | null; tan: string | null;
   incorporationDate: string | null; stateCode: string; industry: string | null;
+  registeredAddress: string | null; companyStatus: string | null;
+  companyCategory: string | null; companySubCategory: string | null;
+  companyClass: string | null; authorisedCapital: string;
   employeeCount: number; annualTurnover: string; paidUpCapital: string;
   cashTransactionRatioBelow5Pct: boolean; hasForeignTransactions: boolean;
   acceptsDeposits: boolean; isListed: boolean; buysFromMsmeSuppliers: boolean;
@@ -76,6 +79,8 @@ export interface Company {
   /** Registrations held. They drive no rules — the dashboard reports them. */
   dpiitRecognitionNumber: string | null; dpiitRecognisedOn: string | null;
   epfoCode: string | null; esicCode: string | null;
+  shopAndEstablishment: string | null; fssaiNumber: string | null;
+  professionalTax: string | null; tradeLicense: string | null;
   /** This viewer's role and capabilities on this company specifically. */
   myRole: UserRole | null;
   myCapabilities: Capability[];
@@ -166,6 +171,7 @@ export interface CompanyProfile {
   legalName: string;
   entityType: string;
   businessType: BusinessType | null;
+  industry: string | null;
   registrationLabel: 'CIN' | 'LLPIN' | 'PAN';
   registrationNumber: string | null;
   incorporationDate: string | null;
@@ -181,8 +187,21 @@ export interface CompanyProfile {
   dpiit: { number: string; recognisedOn: string | null } | null;
   epfoCode: string | null;
   esicCode: string | null;
+  shopAndEstablishment: string | null;
+  fssai: string | null;
+  professionalTax: string | null;
+  tradeLicense: string | null;
   dsc: { status: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED'; active: number; total: number; nextExpiry: string | null };
   mcaKyc: { status: 'MET' | 'NOT_MET' | 'NOT_DUE' | 'NOT_APPLICABLE'; dueDate: string | null; periodLabel: string | null };
+}
+
+export interface EvaluatedRegistration {
+  id: string;
+  title: string;
+  status: 'REGISTERED' | 'ELIGIBLE' | 'MANDATORY' | 'PENDING_APPLICATION' | 'EXPIRED_RENEWAL_DUE';
+  reason: string;
+  ctaUrl?: string;
+  authority: Authority;
 }
 
 export interface Overview {
@@ -194,8 +213,7 @@ export interface Overview {
                  completed: number; upcoming: number }[];
   overdue: ComplianceItem[];
   dueSoon: ComplianceItem[];
-  /** Open registration-first reminders — surfaced above the filing lists. */
-  registrations: ComplianceItem[];
+  registrations: EvaluatedRegistration[];
   taskCounts: Record<string, number>;
   evidence: { itemsRequiringEvidence: number; itemsWithEvidence: number; coveragePct: number };
   /** Null org-wide — there is no single entity to describe. */

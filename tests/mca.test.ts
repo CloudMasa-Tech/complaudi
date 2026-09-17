@@ -34,8 +34,8 @@ describe('MCA date formats', () => {
 
 describe('master data mapping', () => {
   const csv =
-    'CORPORATE_IDENTIFICATION_NUMBER,COMPANY_NAME,COMPANY_CLASS,DATE_OF_REGISTRATION,PAIDUP_CAPITAL,REGISTERED_OFFICE_ADDRESS\n' +
-    'U72900TN2020PTC138472,"NORTHWIND TECHNOLOGIES PRIVATE LIMITED",Private,14/07/2020,"25,00,000","1 Mount Road"\n';
+    'CORPORATE_IDENTIFICATION_NUMBER,COMPANY_NAME,COMPANY_CLASS,DATE_OF_REGISTRATION,PAIDUP_CAPITAL,REGISTERED_OFFICE_ADDRESS,UNKNOWN_COL\n' +
+    'U72900TN2020PTC138472,"NORTHWIND TECHNOLOGIES PRIVATE LIMITED",Private,14/07/2020,"25,00,000","1 Mount Road","ignored"\n';
 
   it('maps a row and prefers the CIN over the file for state and entity type', () => {
     const { records } = parseMcaMasterData(csv);
@@ -46,6 +46,7 @@ describe('master data mapping', () => {
       entityType: 'PRIVATE_LIMITED',
       stateCode: 'TN',
       paidUpCapital: 2500000,
+      address: '1 Mount Road',
     });
     expect(formatDate(records[0]!.incorporatedOn!)).toBe('2020-07-14');
   });
@@ -53,7 +54,8 @@ describe('master data mapping', () => {
   it('reports which columns it understood and which it ignored', () => {
     const parsed = parseMcaMasterData(csv);
     expect(parsed.recognisedColumns).toContain('CORPORATE_IDENTIFICATION_NUMBER');
-    expect(parsed.unrecognisedColumns).toEqual(['REGISTERED_OFFICE_ADDRESS']);
+    expect(parsed.recognisedColumns).toContain('REGISTERED_OFFICE_ADDRESS');
+    expect(parsed.unrecognisedColumns).toEqual(['UNKNOWN_COL']);
   });
 
   it('accepts the alternative header spellings other extracts use', () => {

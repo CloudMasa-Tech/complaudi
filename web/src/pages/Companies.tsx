@@ -492,6 +492,11 @@ export function Companies() {
                       Archive
                     </button>
                   )}
+                  {canOn(c.id, 'company.delete') && (
+                    <button className="btn-sm btn-ghost btn-danger" onClick={() => setDeleting(c)}>
+                      Delete permanently
+                    </button>
+                  )}
                   <Link className="btn btn-sm" to="/calendar" onClick={() => select(c.id)} style={{ marginLeft: 'auto' }}>
                     Calendar →
                   </Link>

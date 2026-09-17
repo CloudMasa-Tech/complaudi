@@ -124,6 +124,17 @@ const companyCore = {
   dpiitRecognisedOn: dateString.optional().nullable(),
   epfoCode: heldNumber,
   esicCode: heldNumber,
+  shopAndEstablishment: heldNumber,
+  fssaiNumber: heldNumber,
+  professionalTax: heldNumber,
+  tradeLicense: heldNumber,
+
+  registeredAddress: z.string().optional().nullable(),
+  companyStatus: z.string().optional().nullable(),
+  companyCategory: z.string().optional().nullable(),
+  companySubCategory: z.string().optional().nullable(),
+  companyClass: z.string().optional().nullable(),
+  authorisedCapital: rupees.default(0),
 };
 
 /**

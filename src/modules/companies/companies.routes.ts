@@ -300,15 +300,27 @@ companiesRouter.post(
  * Nothing here contacts MCA — this reads a CSV you downloaded from them
  * (data.gov.in, or the state-wise extracts on the MCA portal).
  */
+import { extractTextFromPdf } from '../../lib/pdfTextExtractor';
+import { parseMcaMasterData, parseMcaMasterDataPdf } from '../../lib/mcaMasterData';
+
 companiesRouter.post(
   '/:id/import-mca',
   validateParams(idParamSchema),
   mcaUpload.single('file'),
   asyncHandler(async (req, res) => {
-    if (!req.file) throw new BadRequestError('Attach the CSV under the "file" field of a multipart request.');
-
+    if (!req.file) throw new BadRequestError('Attach the file under the "file" field of a multipart request.');
+    
+    let parsed;
+    if (req.file.buffer.length >= 4 && req.file.buffer[0] === 0x25 && req.file.buffer[1] === 0x50 && req.file.buffer[2] === 0x44 && req.file.buffer[3] === 0x46) {
+      const text = await extractTextFromPdf(req.file.buffer);
+      parsed = parseMcaMasterDataPdf(text);
+    } else {
+      const csv = decodeCsvBuffer(req.file.buffer);
+      parsed = parseMcaMasterData(csv);
+    }
+    
     const me = auth(req);
-    const result = await service.importMcaMasterData(me, req.params.id!, decodeCsvBuffer(req.file.buffer));
+    const result = await service.importMcaMasterData(me, req.params.id!, parsed);
     const sync = await syncCompany(me, req.params.id!);
 
     await recordAudit({
@@ -366,6 +378,29 @@ companiesRouter.delete(
 
 // ---------------------------------------------------------------- GST
 
+const certUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
+
+companiesRouter.post(
+  '/:id/import-gst',
+  validateParams(idParamSchema),
+  certUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw new BadRequestError('Attach the PDF under the "file" field of a multipart request.');
+    const me = auth(req);
+    const result = await service.importGstCertificate(req.params.id!, req.file, me);
+    const sync = await syncCompany(me, req.params.id!);
+    await recordAudit({
+      organizationId: me.organizationId,
+      action: 'gst.import',
+      entityType: 'GstRegistration',
+      entityId: req.params.id!,
+      after: { extracted: result.extracted, file: req.file.originalname },
+      req,
+    });
+    res.status(201).json({ extracted: result.extracted, sync });
+  }),
+);
+
 companiesRouter.post(
   '/:id/gst-registrations',
   validateParams(idParamSchema),
@@ -405,6 +440,27 @@ companiesRouter.delete(
 );
 
 // ---------------------------------------------------------------- MSME
+
+companiesRouter.post(
+  '/:id/import-udyam',
+  validateParams(idParamSchema),
+  certUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw new BadRequestError('Attach the PDF under the "file" field of a multipart request.');
+    const me = auth(req);
+    const result = await service.importUdyamCertificate(req.params.id!, req.file, me);
+    const sync = await syncCompany(me, req.params.id!);
+    await recordAudit({
+      organizationId: me.organizationId,
+      action: 'msme.import',
+      entityType: 'MsmeRegistration',
+      entityId: req.params.id!,
+      after: { extracted: result.extracted, file: req.file.originalname },
+      req,
+    });
+    res.status(201).json({ extracted: result.extracted, sync });
+  }),
+);
 
 companiesRouter.put(
   '/:id/msme-registration',
