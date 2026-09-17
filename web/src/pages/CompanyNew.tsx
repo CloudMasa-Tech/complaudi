@@ -2,8 +2,8 @@ import { useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, get, post, upload } from '../api/client';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Company, EntityType, SyncResult } from '../api/types';
-import { Card, ErrorNote, Field, Spinner, inc20aNote, officersFor } from '../components/ui';
+import type { BusinessType, Company, EntityType, SyncResult } from '../api/types';
+import { BUSINESS_TYPE_LABEL, Card, ErrorNote, Field, Spinner, inc20aNote, officersFor } from '../components/ui';
 
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PRIVATE_LIMITED', label: 'Private Limited Company' },
@@ -13,8 +13,10 @@ const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PARTNERSHIP', label: 'Partnership Firm' },
   { value: 'PROPRIETORSHIP', label: 'Sole Proprietorship' },
   { value: 'SECTION_8', label: 'Section 8 Company' },
-  { value: 'UNREGISTERED', label: 'Unregistered Business' },
+  { value: 'UNREGISTERED', label: 'Individual / Shop / Freelancer' },
 ];
+
+const BUSINESS_TYPES: BusinessType[] = ['SHOP_RETAIL', 'FREELANCER', 'PROFESSIONAL', 'FOOD_RESTAURANT', 'OTHER'];
 
 const STATES = [
   'AN','AP','AR','AS','BR','CG','CH','DL','DNDD','GA','GJ','HP','HR','JH','JK','KA','KL','LA','LD',
@@ -214,6 +216,7 @@ export function CompanyNew() {
 
   const [form, setForm] = useState({
     legalName: '', brandName: '', entityType: 'PRIVATE_LIMITED' as EntityType,
+    businessType: '' as BusinessType | '',
     cin: '', llpin: '', pan: '', tan: '', incorporationDate: '', agmDate: '',
     stateCode: 'TN', industry: '', employeeCount: 0,
     annualTurnover: 0, paidUpCapital: 0,
@@ -237,6 +240,7 @@ export function CompanyNew() {
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const isCompaniesAct = ['PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'SECTION_8'].includes(form.entityType);
+  const isIndividual = form.entityType === 'UNREGISTERED';
   const officers = officersFor(form.entityType);
   const namedOfficers = directors.filter((d) => d.name.trim()).length;
   const atOfficerCap = officers.max !== undefined && directors.length >= officers.max;
@@ -403,7 +407,7 @@ export function CompanyNew() {
     };
 
     // Optional fields must be omitted, not sent empty — the schema validates format.
-    for (const k of ['brandName', 'cin', 'llpin', 'pan', 'tan', 'incorporationDate', 'agmDate', 'industry',
+    for (const k of ['brandName', 'businessType', 'cin', 'llpin', 'pan', 'tan', 'incorporationDate', 'agmDate', 'industry',
                      'dpiitRecognitionNumber', 'dpiitRecognisedOn', 'epfoCode', 'esicCode'] as const) {
       if (form[k]) body[k] = form[k];
     }
@@ -453,14 +457,19 @@ export function CompanyNew() {
 
       <Card title="Entity" note="These fields decide which rules apply">
         <div className="card-body grid grid-3">
-          <Field label="Legal name" error={errors.legalName}>
+          <Field label={isIndividual ? 'Business / shop name' : 'Legal name'} error={errors.legalName}>
             <input required value={form.legalName} onChange={(e) => set('legalName', e.target.value)}
-                   placeholder="Northwind Technologies Private Limited" />
+                   placeholder={isIndividual ? 'e.g. Sri Balaji Tea Stall' : 'Northwind Technologies Private Limited'} />
           </Field>
-          <Field label="Brand name" hint="Optional">
+          <Field label={isIndividual ? 'Shop / trade name (optional)' : 'Brand name'} hint="Optional">
             <input value={form.brandName} onChange={(e) => set('brandName', e.target.value)} />
           </Field>
-          <Field label="Entity type">
+          <Field
+            label="Entity type"
+            hint={isIndividual
+              ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants — anything not registered under the Companies Act. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
+              : undefined}
+          >
             <select
               value={form.entityType}
               onChange={(e) => {
@@ -472,6 +481,16 @@ export function CompanyNew() {
               {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </Field>
+
+          {isIndividual && (
+            <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
+              <select value={form.businessType}
+                      onChange={(e) => set('businessType', e.target.value as BusinessType)}>
+                <option value="">— Select —</option>
+                {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
+              </select>
+            </Field>
+          )}
 
           {isCompaniesAct ? (
             <Field
@@ -518,8 +537,10 @@ export function CompanyNew() {
             <input value={form.industry} onChange={(e) => set('industry', e.target.value)} placeholder="Software products" />
           </Field>
           <Field
-            label="Incorporation date"
-            hint={inc20aNote(form.entityType, Number(form.paidUpCapital), form.incorporationDate)}
+            label={isIndividual ? 'Started on' : 'Incorporation date'}
+            hint={isIndividual
+              ? 'When the business began — the calendar is built from it'
+              : inc20aNote(form.entityType, Number(form.paidUpCapital), form.incorporationDate)}
             error={errors.incorporationDate}
           >
             <input required type="date" value={form.incorporationDate}

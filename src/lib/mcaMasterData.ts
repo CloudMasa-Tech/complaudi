@@ -10,34 +10,92 @@
  * Nothing here contacts MCA. It reads a file you downloaded from them.
  */
 import { decodeCin, CIN_REGEX } from './india';
+import type { Buffer } from 'node:buffer';
 
 /** Header aliases, normalised to letters only before matching. */
 const FIELD_ALIASES: Record<string, string[]> = {
-  cin: ['corporateidentificationnumber', 'cin', 'companycin', 'cinllpin'],
-  name: ['companyname', 'nameofcompany', 'company', 'legalname'],
+  cin: [
+    'corporateidentificationnumber', 'cin', 'companycin', 'cinllpin',
+    'cinnumber', 'cinno', 'corporationidentificationnumber',
+  ],
+  name: ['companyname', 'nameofcompany', 'company', 'legalname', 'companyllpname', 'companyorllpname'],
   incorporatedOn: [
     'dateofregistration', 'dateofincorporation', 'registrationdate',
-    'incorporationdate', 'dateofregistrationincorporation',
+    'incorporationdate', 'dateofregistrationincorporation', 'dateofincorporationddmmyyyy',
   ],
-  companyClass: ['companyclass', 'class', 'classofcompany'],
-  paidUpCapital: ['paidupcapital', 'paidupcapitalrs', 'paidup', 'paidupcapitalinrs'],
-  authorisedCapital: ['authorizedcapital', 'authorisedcapital', 'authorizedcap', 'authorizedcapitalrs'],
-  state: ['registeredstate', 'state', 'companystate'],
+  companyClass: ['companyclass', 'class', 'classofcompany', 'companyclassification'],
+  paidUpCapital: [
+    'paidupcapital', 'paidupcapitalrs', 'paidup', 'paidupcapitalinrs',
+    'paidupcapitalinrcrore', 'paidupcapitalinlakhs', 'paiducapital', 'sharecapital',
+  ],
+  authorisedCapital: [
+    'authorizedcapital', 'authorisedcapital', 'authorizedcap', 'authorizedcapitalrs',
+    'authorizedcapitalinrcrore', 'authorisedcapitalinlakhs',
+  ],
+  state: ['registeredstate', 'state', 'companystate', 'registeredofficestate', 'registeredofficestatename', 'statename'],
   activity: ['principalbusinessactivityasperciniic', 'principalbusinessactivity', 'industrialclass', 'activitydescription'],
-  status: ['companystatus', 'companystatusforefiling', 'status'],
+  status: ['companystatus', 'companystatusforefiling', 'status', 'statusofcompany'],
   email: ['emailaddr', 'emailaddress', 'email'],
 };
 
 const normaliseHeader = (h: string): string => h.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-/** Minimal RFC-4180 reader — quoted fields, embedded commas, escaped quotes. */
-export function parseCsv(text: string): string[][] {
+/**
+ * Decodes the raw bytes of an uploaded file to text.
+ *
+ * Excel saves "CSV (UTF-16)" with a byte-order mark and UTF-16 character
+ * encoding, so files are sniffed rather than assumed to be UTF-8 — decoded as
+ * UTF-8, a UTF-16 file reads back as one long line of NUL-padded text with no
+ * usable header or row breaks.
+ */
+export function decodeCsvBuffer(buffer: Buffer): string {
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    return buffer.toString('utf8', 3); // UTF-8 BOM — strip it rather than inherit it
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(buffer.subarray(2));
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(buffer.subarray(2));
+  }
+
+  // BOM-less UTF-16 escapes from some tools — NULs land on only one parity.
+  const head = buffer.subarray(0, 2048);
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < head.length; i += 1) {
+    if (head[i] === 0) {
+      if (i % 2 === 0) even += 1;
+      else odd += 1;
+    }
+  }
+  if (odd > 16 && even < 4) return new TextDecoder('utf-16le').decode(buffer);
+  if (even > 16 && odd < 4) return new TextDecoder('utf-16be').decode(buffer);
+
+  return buffer.toString('utf8');
+}
+
+/**
+ * Which separator a file actually uses. Excel saves "CSV" as comma-, semicolon-
+ * or tab-delimited depending on the regional locale, so the delimiter is read
+ * from the file rather than assumed — a header with no commas but plenty of
+ * tabs is a tab file, and a comma-only parser would read it as one giant column.
+ */
+const guessDelimiter = (text: string): string => {
+  const firstLine = text.replace(/^\uFEFF/, '').split(/[\r\n]/)[0] ?? '';
+  const [best] = [',', ';', '\t'].map((d) => ({ d, n: firstLine.split(d).length - 1 }))
+    .sort((a, b) => b.n - a.n);
+  return best!.n > 0 ? best!.d : ',';
+};
+
+/** Minimal RFC-4180 reader — quoted fields, embedded delimiters, escaped quotes. */
+export function parseCsv(text: string, delimiter = guessDelimiter(text)): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
   let inQuotes = false;
 
-  const body = text.replace(/^﻿/, ''); // strip a BOM if Excel added one
+  const body = text.replace(/^\uFEFF/, ''); // strip a BOM if Excel added one
 
   for (let i = 0; i < body.length; i += 1) {
     const ch = body[i]!;
@@ -49,7 +107,7 @@ export function parseCsv(text: string): string[][] {
       continue;
     }
     if (ch === '"') { inQuotes = true; continue; }
-    if (ch === ',') { row.push(field); field = ''; continue; }
+    if (ch === delimiter) { row.push(field); field = ''; continue; }
     if (ch === '\n' || ch === '\r') {
       if (ch === '\r' && body[i + 1] === '\n') i += 1;
       row.push(field);
@@ -117,7 +175,13 @@ export function parseMcaMasterData(csv: string): McaParseResult {
   const rows = parseCsv(csv);
   if (rows.length < 2) return { records: [], recognisedColumns: [], unrecognisedColumns: [], rowCount: 0 };
 
-  const headers = rows[0]!.map(normaliseHeader);
+  // A leading blank line (or a whitespace preamble) must not be read as the
+  // header row — find the first line that actually names columns.
+  let headerRow = 0;
+  while (headerRow < rows.length && rows[headerRow]!.every((cell) => cell.trim() === '')) headerRow += 1;
+  if (headerRow >= rows.length - 1) return { records: [], recognisedColumns: [], unrecognisedColumns: [], rowCount: 0 };
+
+  const headers = rows[headerRow]!.map(normaliseHeader);
   const index: Partial<Record<keyof typeof FIELD_ALIASES, number>> = {};
   const recognised: string[] = [];
 
@@ -125,13 +189,13 @@ export function parseMcaMasterData(csv: string): McaParseResult {
     for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
       if (aliases.includes(h) && index[field] === undefined) {
         index[field] = i;
-        recognised.push(rows[0]![i]!.trim());
+        recognised.push(rows[headerRow]![i]!.trim());
         return;
       }
     }
   });
 
-  const unrecognised = rows[0]!
+  const unrecognised = rows[headerRow]!
     .map((h) => h.trim())
     .filter((h) => !recognised.includes(h));
 
@@ -141,7 +205,7 @@ export function parseMcaMasterData(csv: string): McaParseResult {
   };
 
   const records: McaRecord[] = [];
-  for (const row of rows.slice(1)) {
+  for (const row of rows.slice(headerRow + 1)) {
     const cinRaw = at(row, 'cin').toUpperCase();
     const cin = CIN_REGEX.test(cinRaw) ? cinRaw : null;
     if (!cin) continue; // a row with no usable CIN tells us nothing
@@ -165,5 +229,5 @@ export function parseMcaMasterData(csv: string): McaParseResult {
     });
   }
 
-  return { records, recognisedColumns: recognised, unrecognisedColumns: unrecognised, rowCount: rows.length - 1 };
+  return { records, recognisedColumns: recognised, unrecognisedColumns: unrecognised, rowCount: rows.length - headerRow - 1 };
 }

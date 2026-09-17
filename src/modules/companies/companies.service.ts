@@ -21,6 +21,7 @@ import { generateTemporaryPassword } from '../../lib/jwt';
 import { sendMail } from '../../lib/mailer';
 import { inviteHtml, inviteSubject, inviteText } from '../notifications/templates';
 import { canInviteAs, INVITER_ROLES } from './company-invite';
+import { syncCompany } from '../../modules/compliance/compliance.service';
 import type { CreateCompanyInput, UpdateCompanyInput } from './companies.schemas';
 
 const d = (v?: string | null): Date | null => (v ? parseDate(v) : null);
@@ -82,6 +83,7 @@ export async function createCompany(actor: Actor, input: CreateCompanyInput): Pr
       legalName: input.legalName,
       brandName: input.brandName ?? null,
       entityType: input.entityType,
+      businessType: input.businessType ?? null,
       cin: input.cin ?? null,
       llpin: input.llpin ?? null,
       pan: input.pan ?? null,
@@ -366,7 +368,9 @@ export async function updateCompany(
   // User has now reviewed and confirmed their profile data
   data.profileConfirmedAt = new Date();
 
-  return prisma.company.update({ where: { id: companyId }, data, include: companyInclude });
+  const company = await prisma.company.update({ where: { id: companyId }, data, include: companyInclude });
+  await syncCompany(actor, companyId);
+  return company;
 }
 
 /**
@@ -505,7 +509,7 @@ export async function addGstRegistration(actor: Actor, companyId: string, input:
     throw new BadRequestError('GST registration is invalid', [{ gstin, problems: result.errors }]);
   }
 
-  return prisma.gstRegistration.create({
+  const resultRow = prisma.gstRegistration.create({
     data: {
       companyId,
       gstin,
@@ -518,6 +522,8 @@ export async function addGstRegistration(actor: Actor, companyId: string, input:
       isActive: (input.isActive as boolean) ?? true,
     },
   });
+  await syncCompany(actor, companyId);
+  return resultRow;
 }
 
 export async function updateGstRegistration(
@@ -565,11 +571,13 @@ export async function upsertMsmeRegistration(
     category: input.category,
     registeredOn: d(input.registeredOn),
   };
-  return prisma.msmeRegistration.upsert({
+  const result = prisma.msmeRegistration.upsert({
     where: { companyId },
     create: { companyId, ...data },
     update: data,
   });
+  await syncCompany(actor, companyId);
+  return result;
 }
 
 export async function removeMsmeRegistration(actor: Actor, companyId: string) {
@@ -626,9 +634,20 @@ export async function importMcaMasterData(
 
   const parsed = parseMcaMasterData(csv);
   if (parsed.records.length === 0) {
+    if (parsed.recognisedColumns.length === 0) {
+      // No header matched a CIN alias — so no row could even be examined.
+      const seen = parsed.unrecognisedColumns.length
+        ? `I saw header${parsed.unrecognisedColumns.length === 1 ? '' : 's'}: ${parsed.unrecognisedColumns.join(', ')}.`
+        : 'It read back as empty or as a single line, so no header row was found.';
+      throw new BadRequestError(
+        `This file has no column holding a CIN. ${seen} Headers are matched by name, case-insensitively — ` +
+          '"CIN", "Corporate Identification Number", "CORPORATE_IDENTIFICATION_NUMBER", "CIN Number", "CIN/LLPIN" and "Company CIN" all work.',
+        { recognisedColumns: parsed.recognisedColumns, unrecognisedColumns: parsed.unrecognisedColumns, rowsInFile: parsed.rowCount },
+      );
+    }
     throw new BadRequestError(
-      'No usable rows found. The file needs a column holding the CIN — MCA extracts call it ' +
-        '"CORPORATE_IDENTIFICATION_NUMBER" — and at least one row with a valid one.',
+      `Found the CIN column "${parsed.recognisedColumns[0]}" but no valid CIN in its ${parsed.rowCount} data row${parsed.rowCount === 1 ? '' : 's'}. ` +
+        'A CIN is 21 characters beginning with U or L, e.g. U72900TN2020PTC138472.',
       { recognisedColumns: parsed.recognisedColumns, rowsInFile: parsed.rowCount },
     );
   }

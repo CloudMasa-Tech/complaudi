@@ -3,8 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, del, patch, post, put, upload } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Company, Director, EntityType, SyncResult } from '../api/types';
-import { Card, ErrorNote, Field, Loading, ServiceLink, Spinner, fmtDate, fmtINR, inc20aNote, officersFor } from '../components/ui';
+import type { BusinessType, Company, Director, EntityType, SyncResult } from '../api/types';
+import { BUSINESS_TYPE_LABEL, Card, ErrorNote, Field, Loading, ServiceLink, Spinner, fmtDate, fmtINR, inc20aNote, officersFor } from '../components/ui';
 import { REGISTRATION_FIELD_LINKS } from '../lib/registrationLinks';
 
 /** Shared with the onboarding form so create and edit read identically. */
@@ -16,8 +16,10 @@ const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PARTNERSHIP', label: 'Partnership Firm' },
   { value: 'PROPRIETORSHIP', label: 'Sole Proprietorship' },
   { value: 'SECTION_8', label: 'Section 8 Company' },
-  { value: 'UNREGISTERED', label: 'Unregistered Business' },
+  { value: 'UNREGISTERED', label: 'Individual / Shop / Freelancer' },
 ];
+
+const BUSINESS_TYPES: BusinessType[] = ['SHOP_RETAIL', 'FREELANCER', 'PROFESSIONAL', 'FOOD_RESTAURANT', 'OTHER'];
 
 const STATES = [
   'AN','AP','AR','AS','BR','CG','CH','DL','DNDD','GA','GJ','HP','HR','JH','JK','KA','KL','LA','LD',
@@ -26,7 +28,7 @@ const STATES = [
 
 /** Only the fields the API accepts on PATCH — identity and profile. */
 interface ProfileForm {
-  legalName: string; brandName: string; entityType: EntityType;
+  legalName: string; brandName: string; entityType: EntityType; businessType: BusinessType | null;
   cin: string; llpin: string; pan: string; tan: string;
   incorporationDate: string; agmDate: string; stateCode: string; industry: string;
   employeeCount: number; annualTurnover: number; paidUpCapital: number;
@@ -37,6 +39,7 @@ interface ProfileForm {
 
 const toForm = (c: Company): ProfileForm => ({
   legalName: c.legalName, brandName: c.brandName ?? '', entityType: c.entityType,
+  businessType: c.businessType,
   cin: c.cin ?? '', llpin: c.llpin ?? '', pan: c.pan ?? '', tan: c.tan ?? '',
   incorporationDate: c.incorporationDate?.slice(0, 10) ?? '',
   agmDate: c.agmDate?.slice(0, 10) ?? '',
@@ -92,6 +95,7 @@ export function CompanyEdit() {
 
   const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const isCompaniesAct = ['PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'SECTION_8'].includes(form.entityType);
+  const isIndividual = form.entityType === 'UNREGISTERED';
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -131,7 +135,7 @@ export function CompanyEdit() {
         buysFromMsmeSuppliers: form!.buysFromMsmeSuppliers,
       };
       // An empty optional must be sent as null to clear it, not as "".
-      for (const k of ['brandName', 'cin', 'llpin', 'pan', 'tan', 'incorporationDate', 'agmDate', 'industry',
+      for (const k of ['brandName', 'businessType', 'cin', 'llpin', 'pan', 'tan', 'incorporationDate', 'agmDate', 'industry',
                        'dpiitRecognitionNumber', 'dpiitRecognisedOn', 'epfoCode', 'esicCode'] as const) {
         body[k] = form![k] ? form![k] : null;
       }
@@ -197,17 +201,32 @@ export function CompanyEdit() {
 
         <Card title="Identity">
           <div className="card-body grid grid-3">
-            <Field label="Legal name" error={errors.legalName}>
+            <Field label={isIndividual ? 'Business / shop name' : 'Legal name'} error={errors.legalName}>
               <input required value={form.legalName} onChange={(e) => set('legalName', e.target.value)} />
             </Field>
-            <Field label="Brand name" hint="Optional">
+            <Field label={isIndividual ? 'Shop / trade name (optional)' : 'Brand name'} hint="Optional">
               <input value={form.brandName} onChange={(e) => set('brandName', e.target.value)} />
             </Field>
-            <Field label="Entity type" hint="Changing this changes which rules apply">
+            <Field
+              label="Entity type"
+              hint={isIndividual
+                ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
+                : 'Changing this changes which rules apply'}
+            >
               <select value={form.entityType} onChange={(e) => set('entityType', e.target.value as EntityType)}>
                 {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </Field>
+
+            {isIndividual && (
+              <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
+                <select value={form.businessType ?? ''}
+                        onChange={(e) => set('businessType', e.target.value ? e.target.value as BusinessType : null)}>
+                  <option value="">— Select —</option>
+                  {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
+                </select>
+              </Field>
+            )}
 
             {isCompaniesAct ? (
               <Field
@@ -240,8 +259,10 @@ export function CompanyEdit() {
               <input value={form.industry} onChange={(e) => set('industry', e.target.value)} />
             </Field>
             <Field
-              label="Incorporation date"
-              hint={<><span>{inc20aNote(form.entityType, Number(form.paidUpCapital), form.incorporationDate)}</span>{' '}<FieldService field="incorporationDate" /></>}
+              label={isIndividual ? 'Started on' : 'Incorporation date'}
+              hint={isIndividual
+                ? 'When the business began — the calendar is built from it'
+                : <><span>{inc20aNote(form.entityType, Number(form.paidUpCapital), form.incorporationDate)}</span>{' '}<FieldService field="incorporationDate" /></>}
               error={errors.incorporationDate}
             >
               <input required type="date" value={form.incorporationDate}
@@ -388,22 +409,26 @@ function McaImport({ company, busy, run }: {
         )}
 
         <input ref={fileInput} type="file" accept=".csv,text/csv" hidden
-               onChange={(e) => {
-                 const file = e.target.files?.[0];
-                 e.target.value = '';
-                 if (!file) return;
-                 setError(null);
-                 void run(async () => {
-                   const form = new FormData();
-                   form.append('file', file);
-                   try {
-                     setResult(await upload<McaResult>(`/companies/${company.id}/import-mca`, form));
-                   } catch (err) {
-                     setError(err instanceof ApiError ? err.message : 'Could not read that file');
-                     throw err;
-                   }
-                 });
-               }} />
+onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  if (!file.name.toLowerCase().endsWith('.csv')) {
+                    setError('This import only accepts CSV files. If your data is in Excel, export it as CSV first.');
+                    return;
+                  }
+                  setError(null);
+                  void run(async () => {
+                    const form = new FormData();
+                    form.append('file', file);
+                    try {
+                      setResult(await upload<McaResult>(`/companies/${company.id}/import-mca`, form));
+                    } catch (err) {
+                      setError(err instanceof ApiError ? err.message : 'Could not read that file');
+                      throw err;
+                    }
+                  });
+                }} />
         <div className="dropzone" onClick={() => fileInput.current?.click()}>
           {busy ? 'Reading…' : 'Choose an MCA master-data CSV'}
         </div>

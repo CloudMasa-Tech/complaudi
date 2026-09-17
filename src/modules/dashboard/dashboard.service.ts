@@ -67,6 +67,7 @@ export interface CompanyProfile {
   id: string;
   legalName: string;
   entityType: string;
+  businessType: string | null;
   /** CIN for a Companies Act entity, LLPIN for an LLP — whichever it has. */
   registrationLabel: 'CIN' | 'LLPIN' | 'PAN';
   registrationNumber: string | null;
@@ -74,6 +75,9 @@ export interface CompanyProfile {
   /** Whole years since incorporation, for the reader who does not do the sum. */
   ageYears: number | null;
   pan: string | null;
+  annualTurnover: number | null;
+  employeeCount: number | null;
+  stateCode: string | null;
   directors: Array<{
     id: string; name: string; din: string | null; designation: string;
     dscExpiresOn: string | null; dscStatus: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED';
@@ -91,6 +95,7 @@ export interface CompanyProfile {
    * fallen due was closed out.
    */
   mcaKyc: { status: 'MET' | 'NOT_MET' | 'NOT_DUE' | 'NOT_APPLICABLE'; dueDate: string | null; periodLabel: string | null };
+  esicTooltip?: { tooltip: string } | undefined;
 }
 
 const iso = (v: Date | null | undefined): string | null => (v ? v.toISOString().slice(0, 10) : null);
@@ -143,6 +148,7 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
     id: company.id,
     legalName: company.legalName,
     entityType: company.entityType,
+    businessType: company.businessType ?? null,
     registrationLabel,
     registrationNumber: registrationNumber ?? null,
     incorporationDate: iso(company.incorporationDate),
@@ -150,6 +156,9 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
       ? Math.floor((now.getTime() - company.incorporationDate.getTime()) / 31_557_600_000)
       : null,
     pan: company.pan ?? null,
+    annualTurnover: Number(company.annualTurnover),
+    employeeCount: company.employeeCount,
+    stateCode: company.stateCode,
     directors: serving.map((dir) => ({
       id: dir.id,
       name: dir.name,
@@ -173,6 +182,15 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
       : null,
     epfoCode: company.epfoCode ?? null,
     esicCode: company.esicCode ?? null,
+    esicTooltip: company.employeeCount !== null
+      ? company.stateCode === 'MH' || company.stateCode === 'CH'
+        ? company.employeeCount < 20
+          ? { tooltip: `Your employee count (${company.employeeCount}) is below the 20-employee threshold for Maharashtra/Chandigarh — ESI registration isn't mandatory yet.` }
+          : undefined
+        : company.employeeCount < 10
+          ? { tooltip: `Your employee count (${company.employeeCount}) is below the 10-employee threshold — ESI registration isn't mandatory yet.` }
+          : undefined
+      : undefined,
     dsc: {
       status: activeDsc.length > 0 ? 'ACTIVE' : recorded.length > 0 ? 'EXPIRED' : 'NOT_RECORDED',
       active: activeDsc.length,

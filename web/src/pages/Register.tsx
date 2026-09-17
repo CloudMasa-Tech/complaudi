@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError, post, tokens } from '../api/client';
-import type { EntityType } from '../api/types';
+import type { BusinessType, EntityType } from '../api/types';
 import { BRAND_TAGLINE } from '../components/Layout';
-import { Field, Spinner } from '../components/ui';
+import { BUSINESS_TYPE_LABEL, Field, Spinner } from '../components/ui';
 
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PRIVATE_LIMITED', label: 'Private Limited Company' },
@@ -13,8 +13,10 @@ const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PARTNERSHIP', label: 'Partnership Firm' },
   { value: 'PROPRIETORSHIP', label: 'Sole Proprietorship' },
   { value: 'SECTION_8', label: 'Section 8 Company' },
-  { value: 'UNREGISTERED', label: 'Unregistered Business' },
+  { value: 'UNREGISTERED', label: 'Individual / Shop / Freelancer' },
 ];
+
+const BUSINESS_TYPES: BusinessType[] = ['SHOP_RETAIL', 'FREELANCER', 'PROFESSIONAL', 'FOOD_RESTAURANT', 'OTHER'];
 
 const STATES = [
   'AN','AP','AR','AS','BR','CG','CH','DL','DNDD','GA','GJ','HP','HR','JH','JK','KA','KL','LA','LD',
@@ -36,7 +38,9 @@ export function Register() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     name: '', email: '', phone: '', password: '',
-    companyName: '', incorporationDate: '', entityType: 'PRIVATE_LIMITED' as EntityType, stateCode: 'TN', cin: '',
+    companyName: '', incorporationDate: '', entityType: 'PRIVATE_LIMITED' as EntityType,
+    businessType: '' as BusinessType | '',
+    stateCode: 'TN', cin: '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +55,7 @@ export function Register() {
   // asking for them. The server does the actual decoding — this only decides
   // what to show.
   const cinCarriesTheRest = CIN_SHAPE.test(form.cin.trim().toUpperCase());
+  const isIndividual = form.entityType === 'UNREGISTERED';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -67,7 +72,8 @@ export function Register() {
         incorporationDate: form.incorporationDate,
         entityType: form.entityType,
       };
-      if (form.cin.trim()) body.cin = form.cin.trim().toUpperCase();
+      if (form.businessType) body.businessType = form.businessType;
+      if (!isIndividual && form.cin.trim()) body.cin = form.cin.trim().toUpperCase();
       if (!cinCarriesTheRest) body.stateCode = form.stateCode;
 
       const result = await post<{ accessToken: string; refreshToken: string }>('/auth/register-trial', body);
@@ -119,32 +125,55 @@ export function Register() {
 
             <span className="tiny dim" style={{ marginTop: 4 }}>About the entity</span>
             <div className="grid grid-2">
-              <Field label="Company name" error={errors.companyName}>
-                <input required value={form.companyName} placeholder="Northwind Technologies Private Limited"
+              <Field label={isIndividual ? 'Business / shop name' : 'Company name'} error={errors.companyName}>
+                <input required value={form.companyName}
+                       placeholder={isIndividual ? 'e.g. Sri Balaji Tea Stall' : 'Northwind Technologies Private Limited'}
                        onChange={(e) => set('companyName', e.target.value)} />
               </Field>
-              <Field label="Date of incorporation" hint="From the certificate — the calendar is built from it" error={errors.incorporationDate}>
+              <Field label={isIndividual ? 'Started on' : 'Date of incorporation'}
+                     hint={isIndividual ? 'When the business began — the calendar is built from it' : 'From the certificate — the calendar is built from it'}
+                     error={errors.incorporationDate}>
                 <input required type="date" value={form.incorporationDate}
                        onChange={(e) => set('incorporationDate', e.target.value)} />
               </Field>
-              <Field
-                label="CIN"
-                hint={cinCarriesTheRest
-                  ? 'Entity type and state will be read from this'
-                  : 'Optional — if you have it, we read the entity type and state from it'}
-                error={errors.cin}
-              >
-                <input value={form.cin} placeholder="U72900TN2020PTC138472"
-                       onChange={(e) => set('cin', e.target.value.toUpperCase())} />
-              </Field>
+              {isIndividual ? (
+                <Field label="Registration" hint="Not required for this entity type">
+                  <input disabled placeholder="—" />
+                </Field>
+              ) : (
+                <Field
+                  label="CIN"
+                  hint={cinCarriesTheRest
+                    ? 'Entity type and state will be read from this'
+                    : 'Optional — if you have it, we read the entity type and state from it'}
+                  error={errors.cin}
+                >
+                  <input value={form.cin} placeholder="U72900TN2020PTC138472"
+                         onChange={(e) => set('cin', e.target.value.toUpperCase())} />
+                </Field>
+              )}
 
               {!cinCarriesTheRest && (
                 <>
-                  <Field label="Entity type">
+                  <Field
+                    label="Entity type"
+                    hint={isIndividual
+                      ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants — anything not registered under the Companies Act. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
+                      : undefined}
+                  >
                     <select value={form.entityType} onChange={(e) => set('entityType', e.target.value as EntityType)}>
                       {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </Field>
+                  {isIndividual && (
+                    <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
+                      <select value={form.businessType}
+                              onChange={(e) => set('businessType', e.target.value as BusinessType)}>
+                        <option value="">— Select —</option>
+                        {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
+                      </select>
+                    </Field>
+                  )}
                   <Field label="State" hint="Drives professional tax and ESI thresholds" error={errors.stateCode}>
                     <select value={form.stateCode} onChange={(e) => set('stateCode', e.target.value)}>
                       {STATES.map((s) => <option key={s} value={s}>{s}</option>)}

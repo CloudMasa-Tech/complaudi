@@ -35,6 +35,18 @@ export const entityTypeSchema = z.enum([
   'UNREGISTERED',
 ]);
 
+/**
+ * What kind of unincorporated business this is. Display-only — recorded to put
+ * a human-readable kind under the shop's name, never to drive a rule.
+ */
+export const businessTypeSchema = z.enum([
+  'SHOP_RETAIL',
+  'FREELANCER',
+  'PROFESSIONAL',
+  'FOOD_RESTAURANT',
+  'OTHER',
+]);
+
 export const stateCodeSchema = z
   .string()
   .transform(upper)
@@ -84,6 +96,7 @@ const companyCore = {
   legalName: z.string().min(2).max(200),
   brandName: z.string().max(200).optional().nullable(),
   entityType: entityTypeSchema,
+  businessType: businessTypeSchema.optional().nullable(),
   cin: z.string().transform(upper).refine((v) => CIN_REGEX.test(v), 'CIN must be 21 characters, e.g. U72900TN2020PTC123456').optional().nullable(),
   llpin: z.string().transform(upper).refine((v) => LLPIN_REGEX.test(v), 'LLPIN must look like AAB-1234').optional().nullable(),
   pan: z.string().transform(upper).refine((v) => PAN_REGEX.test(v), 'PAN must be 10 characters, e.g. AAACT1234A').optional().nullable(),

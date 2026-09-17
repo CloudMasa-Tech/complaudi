@@ -154,6 +154,7 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
         organizationId: org.id,
         legalName: input.companyName,
         entityType,
+        businessType: input.businessType ?? null,
         stateCode,
         cin: decoded?.cin ?? null,
         incorporationDate: parseDate(input.incorporationDate),

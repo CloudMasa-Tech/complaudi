@@ -16,7 +16,7 @@
  * than silently filling itself in.
  */
 import { CIN_REGEX, LLPIN_REGEX, PAN_REGEX, decodeCin } from './india';
-import { parseAmount, parseMcaDate, parseMcaMasterData, type McaRecord } from './mcaMasterData';
+import { decodeCsvBuffer, parseAmount, parseMcaDate, parseMcaMasterData, type McaRecord } from './mcaMasterData';
 
 export type ImportSource = 'csv' | 'pdf';
 
@@ -169,7 +169,7 @@ export async function previewCompanyImport(buffer: Buffer): Promise<ImportPrevie
     };
   }
 
-  const parsed = parseMcaMasterData(buffer.toString('utf8'));
+  const parsed = parseMcaMasterData(decodeCsvBuffer(buffer));
   const first = parsed.records[0];
   return {
     source: 'csv',

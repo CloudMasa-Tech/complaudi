@@ -14,6 +14,9 @@ export type EntityType =
   | 'PRIVATE_LIMITED' | 'PUBLIC_LIMITED' | 'OPC' | 'LLP'
   | 'PARTNERSHIP' | 'PROPRIETORSHIP' | 'SECTION_8' | 'UNREGISTERED';
 
+/** Sub-kind of an unincorporated business — display-only. */
+export type BusinessType = 'SHOP_RETAIL' | 'FREELANCER' | 'PROFESSIONAL' | 'FOOD_RESTAURANT' | 'OTHER';
+
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'CA' | 'COMPANY_OWNER' | 'VIEWER';
 
 export type Capability =
@@ -63,6 +66,7 @@ export interface Director {
 
 export interface Company {
   id: string; legalName: string; brandName: string | null; logoStorageKey: string | null; entityType: EntityType;
+  businessType: BusinessType | null;
   cin: string | null; llpin: string | null; pan: string | null; tan: string | null;
   incorporationDate: string | null; stateCode: string; industry: string | null;
   employeeCount: number; annualTurnover: string; paidUpCapital: string;
@@ -161,11 +165,15 @@ export interface CompanyProfile {
   id: string;
   legalName: string;
   entityType: string;
+  businessType: BusinessType | null;
   registrationLabel: 'CIN' | 'LLPIN' | 'PAN';
   registrationNumber: string | null;
   incorporationDate: string | null;
   ageYears: number | null;
   pan: string | null;
+  annualTurnover: number | null;
+  employeeCount: number | null;
+  stateCode: string | null;
   directors: { id: string; name: string; din: string | null; designation: string;
                dscExpiresOn: string | null; dscStatus: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED' }[];
   msme: { udyamNumber: string; category: string; registeredOn: string | null } | null;

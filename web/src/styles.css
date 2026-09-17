@@ -348,20 +348,32 @@ tbody tr.clickable:hover { background: var(--surface-2); }
 
 .reg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; padding: 14px 18px; }
 .reg-tile {
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 13px;
-  display: flex; flex-direction: column; gap: 3px; min-width: 0;
-  transition: border-color .12s, box-shadow .12s;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; padding-right: 100px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; min-width: 0;
+  transition: all .25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative; overflow: hidden;
+  background: var(--surface);
+  min-height: 96px;
 }
-/* Held registrations carry a quiet accent edge; the rest stay out of the way,
-   so the eye lands on what the entity actually has. */
-.reg-tile.held { border-left: 3px solid var(--good); }
-.reg-tile.held:hover { box-shadow: var(--shadow); border-color: var(--border-strong); }
-.reg-tile.empty { background: var(--surface-2); border-style: dashed; }
-.reg-label { font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
-.reg-value { font-family: var(--mono); font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.reg-value.na { font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text-3); }
-.reg-foot { font-size: 11px; color: var(--text-3); }
+
+.reg-tile.held {
+  border-left: 4px solid #10b981;
+  background: linear-gradient(135deg, rgba(16,185,129,0.05) 0%, rgba(59,130,246,0.05) 100%);
+  border-color: #10b981;
+}
+
+.reg-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -8px rgba(16, 185, 129, 0.25);
+  border-color: #10b981;
+}
+
+.reg-tile.empty { background: var(--bg); border-style: dashed; }
+.reg-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--text-2); }
+.reg-tile.held .reg-label { color: #10b981; }
+.reg-value { font-family: var(--mono); font-size: 17px; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; color: var(--text); }
+.reg-value.na { font-family: inherit; font-size: 14px; font-weight: 500; color: var(--text-3); }
+.reg-foot { font-size: 12px; color: var(--text-2); font-weight: 500; z-index: 1; }
 
 .dir-strip { display: flex; flex-wrap: wrap; gap: 9px; padding: 0 18px 16px; }
 .dir-chip {
@@ -553,3 +565,12 @@ tbody tr.clickable:hover { background: var(--surface-2); }
 /* CONTINGENT — the rule can apply to this type only for some of its members. */
 .badge-VARIES { background: var(--high-soft); color: var(--high); }
 .badge-NEVER { opacity: .8; }
+
+.reg-badge { mix-blend-mode: multiply; }
+[data-theme="dark"] .reg-badge { 
+  mix-blend-mode: normal; 
+  background: white; 
+  border-radius: 12px; 
+  padding: 4px;
+}
+

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { Severity } from '../api/types';
+import type { BusinessType, Severity } from '../api/types';
 import type { RegistrationServiceLink } from '../lib/registrationLinks';
 
 // ── formatting ──────────────────────────────────────────────────────────
@@ -78,7 +78,15 @@ export const ENTITY_LABEL: Record<string, string> = {
   PARTNERSHIP: 'Partnership Firm',
   PROPRIETORSHIP: 'Proprietorship',
   SECTION_8: 'Section 8 Company',
-  UNREGISTERED: 'Unregistered Business',
+  UNREGISTERED: 'Individual / Shop / Freelancer',
+};
+
+export const BUSINESS_TYPE_LABEL: Record<BusinessType, string> = {
+  SHOP_RETAIL:    'Shop / Retail Store',
+  FREELANCER:     'Freelancer / Consultant',
+  PROFESSIONAL:   'Professional (Doctor / Lawyer / CA)',
+  FOOD_RESTAURANT:'Food / Restaurant',
+  OTHER:          'Other',
 };
 
 /**
@@ -109,7 +117,7 @@ export const ENTITY_OFFICERS: Record<string, {
   SECTION_8:       { singular: 'director', plural: 'Directors', designation: 'Director', min: 2,
                      note: 'A Section 8 company needs at least two directors.' },
   UNREGISTERED:    { singular: 'owner', plural: 'Owners', designation: 'Owner', min: 1,
-                     note: 'An unregistered business is run by a single owner; add rows if it is owned by more than one person.' },
+                     note: 'An individual or shop business has at least one owner; add rows if it is run by more than one person.' },
 };
 
 export const officersFor = (entityType: string) =>

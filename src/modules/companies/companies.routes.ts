@@ -3,6 +3,7 @@ import multer from 'multer';
 import { asyncHandler } from '../../lib/async';
 import { BadRequestError, ForbiddenError } from '../../lib/errors';
 import { previewCompanyImport } from '../../lib/companyDocumentImport';
+import { decodeCsvBuffer } from '../../lib/mcaMasterData';
 import { serialiseBigInt } from '../../lib/prisma';
 import { auth, requireAuth, requireCapability } from '../../middleware/auth';
 import { z } from 'zod';
@@ -307,7 +308,7 @@ companiesRouter.post(
     if (!req.file) throw new BadRequestError('Attach the CSV under the "file" field of a multipart request.');
 
     const me = auth(req);
-    const result = await service.importMcaMasterData(me, req.params.id!, req.file.buffer.toString('utf8'));
+    const result = await service.importMcaMasterData(me, req.params.id!, decodeCsvBuffer(req.file.buffer));
     const sync = await syncCompany(me, req.params.id!);
 
     await recordAudit({

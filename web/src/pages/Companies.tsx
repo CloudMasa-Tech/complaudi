@@ -8,7 +8,7 @@ import { InviteMemberModal } from '../components/InviteMemberModal';
 import type { Applicability, Company, CompanyMember, OnboardedCompany, SyncResult, UserRole } from '../api/types';
 import { ROLE_LABEL } from '../api/types';
 import {
-  AuthorityTag, Badge, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
+  AuthorityTag, Badge, BUSINESS_TYPE_LABEL, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
   SeverityDot, Spinner, fmtDate, fmtINR,
 } from '../components/ui';
 
@@ -434,7 +434,9 @@ export function Companies() {
       ) : (
         <div className="grid grid-2">
           {filteredCompanies.map((c) => (
-            <Card key={c.id} title={c.legalName} note={ENTITY_LABEL[c.entityType] ?? c.entityType}>
+            <Card key={c.id} title={c.legalName}
+              note={[ENTITY_LABEL[c.entityType] ?? c.entityType, c.businessType ? BUSINESS_TYPE_LABEL[c.businessType] : null]
+                .filter(Boolean).join(' · ')}>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <dl className="kv">
                   <dt>{c.entityType === 'LLP' ? 'LLPIN' : 'CIN'}</dt>
@@ -515,7 +517,9 @@ export function Companies() {
                       <td>
                         <div className="stack">
                           <span style={{ fontWeight: 500 }}>{c.legalName}</span>
-                          <span className="tiny dim">{ENTITY_LABEL[c.entityType]} · {c.cin ?? c.llpin ?? '—'}</span>
+                          <span className="tiny dim">{ENTITY_LABEL[c.entityType]}
+                          {c.businessType ? ` · ${BUSINESS_TYPE_LABEL[c.businessType]}` : ''}
+                          {' · '}{c.cin ?? c.llpin ?? '—'}</span>
                         </div>
                       </td>
                       <td className="right" style={{ whiteSpace: 'nowrap' }}>

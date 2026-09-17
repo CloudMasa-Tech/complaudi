@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { decodeCin, isValidStateCode, normalisePhone } from '../../lib/india';
-import { entityTypeSchema } from '../companies/companies.schemas';
+import { businessTypeSchema, entityTypeSchema } from '../companies/companies.schemas';
 
 export const registerSchema = z.object({
   organizationName: z.string().min(2).max(120),
@@ -46,6 +46,8 @@ export const trialSignupSchema = z
     /// Optional when a CIN is supplied, which carries the state itself.
     stateCode: z.string().min(2).max(6).optional().nullable(),
     cin: z.string().max(21).optional().nullable(),
+    /// Display-only kind of unincorporated business — never drives a rule.
+    businessType: businessTypeSchema.optional().nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.cin && !decodeCin(data.cin)) {

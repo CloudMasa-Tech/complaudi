@@ -23,16 +23,29 @@ const REGISTER_CTA: Record<string, string> = {
 
 /** One registration. Held ones are marked; the rest say so and step back. */
 function Reg({ label, value, foot, badgeUrl, badgeStyle }: { label: string; value: string | null; foot?: string; badgeUrl?: string; badgeStyle?: React.CSSProperties }) {
+  const hasValue = value !== null;
+  const displayValue = hasValue ? value : 'Not held';
+
+  const badgeBackground: React.CSSProperties = hasValue
+    ? {}
+    : {
+        background: 'rgba(255, 255, 255, 0.25)',
+        width: '24px', height: '24px', borderRadius: '50%',
+        position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'var(--text)',
+      };
+
   return (
-    <div className={`reg-tile ${value ? 'held' : 'empty'}`}>
+    <div className={`reg-tile ${hasValue ? 'held' : 'empty'}`}>
       <span className="reg-label">{label}</span>
-      <span className={`reg-value${value ? '' : ' na'}`}>{value ?? 'Not held'}</span>
+      <span className={`reg-value${hasValue ? '' : ' na'}`}>{displayValue}</span>
       {foot && <span className="reg-foot">{foot}</span>}
       {badgeUrl && (
-        <img src={badgeUrl} alt={label} style={{
-          position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', width: 64, height: 64, objectFit: 'contain',
-          opacity: value ? 1 : 0.4, filter: value ? 'none' : 'grayscale(100%)', mixBlendMode: 'multiply',
-          ...badgeStyle
+        <img className="reg-badge" src={badgeUrl} alt={label} style={{
+          position: 'absolute', top: '50%', right: 4, transform: 'translateY(-50%)', width: 88, height: 88, objectFit: 'contain',
+          opacity: hasValue ? 1 : 0.4, filter: hasValue ? 'none' : 'grayscale(100%)',
+          ...badgeStyle,
+          ...badgeBackground
         }} />
       )}
     </div>
@@ -145,14 +158,12 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
               : live.length === 1 ? live[0]!.stateCode : 'Not registered'
           }
           badgeUrl="/gst.webp?v=3"
-          badgeStyle={{ width: 88, height: 88, right: 4 }}
         />
         <Reg
           label="MSME · Udyam"
           value={msme?.udyamNumber ?? null}
           foot={msme ? `${titleise(msme.category)}${msme.registeredOn ? ` · ${fmtDate(msme.registeredOn)}` : ''}` : 'Not registered'}
           badgeUrl="/msme.webp?v=3"
-          badgeStyle={{ width: 88, height: 88, right: 4 }}
         />
         <Reg
           label="DPIIT · Startup India"

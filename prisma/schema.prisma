@@ -97,6 +97,10 @@ model Company {
   legalName                     String
   brandName                     String?
   entityType                    EntityType
+  /// Kind of unincorporated business — a yes/no for the entity type slide.
+  /// Records what kind of shop or profession this is: SHOP_RETAIL, FREELANCER,
+  /// PROFESSIONAL, FOOD_RESTAURANT, OTHER. Display-only: drives no rules.
+  businessType                  String?
   cin                           String?
   llpin                         String?
   pan                           String?

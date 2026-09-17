@@ -8,7 +8,7 @@ import { prisma } from '../../lib/prisma';
 import { evaluateAll, evaluateRule } from '../../engine/evaluator';
 import { evaluateGate } from '../../engine/gate';
 import { generateCalendar, type GeneratedItem } from '../../engine/generator';
-import { getRule } from '../../engine/catalog';
+import { getRule, REGISTRATION_RULE_CODES } from '../../engine/catalog';
 import type { ComplianceContext } from '../../engine/types';
 import { getCompanyOrThrow, type CompanyWithProfile } from '../companies/companies.service';
 
@@ -271,6 +271,12 @@ export async function syncCompany(actor: Actor, companyId: string): Promise<Sync
     // A profile too incomplete to produce a calendar should not keep the one it
     // produced before: those rows were guesses, not history.
     if (blockedBy) return true;
+
+    // If the rule no longer applies (e.g. user has now registered), withdraw the
+    // registration reminder item regardless of due date. These are gate reminders,
+    // not ongoing filing obligations — once the gate is passed the reminder must
+    // never show again, even if the original due date has passed.
+    if (REGISTRATION_RULE_CODES.includes(row.ruleCode) && !generatedKeys.has(itemKey(row.ruleCode, row.periodKey))) return true;
 
     const predatesIncorporation =
       company.incorporationDate !== null && row.periodEnd < company.incorporationDate;
