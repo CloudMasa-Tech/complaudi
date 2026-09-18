@@ -15,6 +15,7 @@ import { Profile } from './pages/Profile';
 import { Register } from './pages/Register';
 import { Rules } from './pages/Rules';
 import { Billing } from './pages/Billing';
+import { Analytics } from './pages/Analytics';
 import { Tasks } from './pages/Tasks';
 import { Team } from './pages/Team';
 
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="team" element={<Team />} />
           <Route path="profile" element={<Profile />} />
           <Route path="billing" element={<Billing />} />
+          <Route path="analytics" element={<Analytics />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

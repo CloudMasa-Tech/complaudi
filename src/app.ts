@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
@@ -12,6 +12,7 @@ import { prisma } from './lib/prisma';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { auditRouter } from './modules/audit/audit.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { billingRouter } from './modules/billing/billing.routes';
 import { companiesRouter } from './modules/companies/companies.routes';
 import { complianceRouter } from './modules/compliance/compliance.routes';
 import { copilotRouter, rulesRouter } from './modules/copilot/copilot.routes';
@@ -29,7 +30,22 @@ export function createApp(): Express {
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          // The Razorpay checkout loads its script into the page it opens as a
+          // popup, and frames the hosted flow on the parent. Default CSP blocks
+          // both, which silently breaks every payment.
+          scriptSrc: ["'self'", 'https://checkout.razorpay.com'],
+          frameSrc: ['https://api.razorpay.com', 'https://checkout.razorpay.com'],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          connectSrc: ["'self'"],
+        },
+      },
+    }),
+  );
   app.use(
     cors({
       origin: (origin, cb) => {
@@ -40,7 +56,18 @@ export function createApp(): Express {
     }),
   );
 
-  app.use(express.json({ limit: '1mb' }));
+  // The Razorpay webhook signs the raw JSON bytes; express.json() otherwise
+  // consumes them and the signature can never be recomputed.
+  app.use(
+    express.json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        // Body-parser types the callback's req as IncomingMessage; we capture
+        // the signed bytes onto the Express Request surface for the webhook.
+        (req as Request).rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   app.use(
@@ -80,6 +107,7 @@ export function createApp(): Express {
       health: { liveness: '/health', readiness: '/ready' },
       endpoints: {
         auth: '/api/v1/auth',
+        billing: '/api/v1/billing',
         companies: '/api/v1/companies',
         compliance: '/api/v1/compliance',
         tasks: '/api/v1/tasks',
@@ -111,6 +139,7 @@ export function createApp(): Express {
   // ------------------------------------------------------------- api
   const api = express.Router();
   api.use('/auth', authRouter);
+  api.use('/billing', billingRouter);
   api.use('/companies', companiesRouter);
   api.use('/compliance', complianceRouter);
   api.use('/tasks', tasksRouter);

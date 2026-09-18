@@ -17,9 +17,14 @@ model Organization {
   /// Set for self-service trials. Null means a full account with no expiry, so
   /// existing organisations are unaffected.
   trialEndsAt DateTime?
+  /// When a self-service trial signed up. Null for accounts that never began on
+  /// a trial. Kept so trial→paid conversion can be computed honestly platform-wide:
+  /// the denominator is every organisation that actually started on a trial.
+  trialSignedUpAt DateTime?
   auditLogs   AuditLog[]
   companies   Company[]
   users       User[]
+  payments    Payment[]
 
   @@map("organizations")
 }
@@ -47,6 +52,7 @@ model User {
   notifications     Notification[]
   refreshTokens     RefreshToken[]
   assignedTasks     Task[]              @relation("TaskAssignee")
+  initiatedPayments Payment[]           @relation("PaymentCreator")
   organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -149,6 +155,7 @@ model Company {
   documents                     Document[]
   gstRegistrations              GstRegistration[]
   msmeRegistration              MsmeRegistration?
+  payments                      Payment[]
 
   @@unique([organizationId, legalName])
   @@index([organizationId])
@@ -411,6 +418,50 @@ model JobRun {
   @@map("job_runs")
 }
 
+/// One Razorpay transaction, attributed to the organisation whose subscription
+/// it pays for and to the company the owner was upgrading. The single source of
+/// truth for both the per-company billing history and the SUPER_ADMIN platform
+/// analytics — nothing is ever derived from a hardcoded number or a client claim.
+///
+/// Amount, plan and method are recorded server-side only: the amount comes from
+/// the order this server created, and the method from a verify/webhook path that
+/// fetches the payment from Razorpay. The frontend never supplies any of them.
+model Payment {
+  id              String        @id @default(uuid())
+  organizationId  String
+  /// Which company the owner was upgrading. Null when the upgrade was not
+  /// attached to a single company (organisation-level purchase).
+  companyId       String?
+  createdByUserId String?
+  rzxOrderId      String        @unique
+  /// Set only from server-side signature verification or a verified webhook —
+  /// never from a value the client presents.
+  rzxPaymentId    String?       @unique
+  rzxSignature    String?
+  /// Actual charged amount in paise, from the order this server created.
+  amountPaise     Int
+  currency        String        @default("INR")
+  /// Plan name at purchase time, from config — audited here, displayed there.
+  planName        String
+  status          PaymentStatus @default(CREATED)
+  /// "card" / "upi" / ... — from the Razorpay payment object, never a client claim.
+  method          String?
+  paidAt          DateTime?
+  /// Length of the entitlement this payment bought: payment date + plan period.
+  validUntil      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdBy       User?         @relation("PaymentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([paidAt])
+  @@map("payments")
+}
+
 model ComplianceScoreSnapshot {
   id         String   @id @default(uuid())
   companyId  String
@@ -515,4 +566,19 @@ enum JobStatus {
   RUNNING
   SUCCEEDED
   FAILED
+}
+
+/// Lifecycle of one Razorpay order/payment, as the server saw it act on it.
+enum PaymentStatus {
+  /// Order created server-side; checkout not finished or payment not confirmed.
+  CREATED
+  /// A verified webhook confirmed the capture before the user's verify call
+  /// landed (or the verify call is still pending).
+  AUTHORIZED
+  /// Server-side signature verification passed.
+  SUCCESS
+  /// payment.failed from a verified webhook.
+  FAILED
+  /// Captured then refunded.
+  REFUNDED
 }

@@ -124,15 +124,35 @@ export const crossesGstRegistrationThreshold = (): Condition => ({
 export const hasNoGstRegistration = (): Condition =>
   not(hasGstRegistration(), 'Has no active GST registration');
 
+export const hasEpfoEnrollment = (): Condition => ({
+  label: 'Holds an EPFO establishment code',
+  test: (ctx) => Boolean(ctx.company.epfoCode),
+});
+
 export const hasNoEpfoEnrollment = (): Condition =>
   custom('No EPFO establishment code on record', (ctx) => !ctx.company.epfoCode);
+
+export const hasEsicEnrollment = (): Condition => ({
+  label: 'Holds an ESIC employer code',
+  test: (ctx) => Boolean(ctx.company.esicCode),
+});
 
 export const hasNoEsicEnrollment = (): Condition =>
   custom('No ESIC employer code on record', (ctx) => !ctx.company.esicCode);
 
+export const hasProfessionalTax = (): Condition => ({
+  label: 'Holds a Professional Tax registration',
+  test: (ctx) => Boolean(ctx.company.professionalTax),
+});
+
 export const hasTan = (): Condition => ({
   label: 'Holds a TAN (deducts tax at source)',
   test: (ctx) => Boolean(ctx.company.tan),
+});
+
+export const hasShopsAndEstablishment = (): Condition => ({
+  label: 'Holds a Shops and Establishments registration',
+  test: (ctx) => Boolean(ctx.company.shopAndEstablishment),
 });
 
 export const hasDirectorWithDin = (): Condition => ({

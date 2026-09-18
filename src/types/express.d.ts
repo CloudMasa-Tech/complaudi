@@ -10,6 +10,9 @@ declare global {
         name: string;
         role: UserRole;
       };
+      /** Captured by the express.json() verify hook so webhook signatures can
+       *  be recomputed over the exact bytes Razorpay signed. */
+      rawBody?: Buffer;
     }
   }
 }

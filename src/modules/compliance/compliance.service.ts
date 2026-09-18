@@ -49,7 +49,9 @@ export function buildContext(company: CompanyWithProfile): ComplianceContext {
       agmDate: company.agmDate,
       epfoCode: company.epfoCode,
       esicCode: company.esicCode,
-    } as any,
+      professionalTax: company.professionalTax,
+      shopAndEstablishment: company.shopAndEstablishment,
+    },
     directors: company.directors.map((dir) => ({
       id: dir.id,
       name: dir.name,
@@ -272,10 +274,10 @@ export async function syncCompany(actor: Actor, companyId: string): Promise<Sync
     // produced before: those rows were guesses, not history.
     if (blockedBy) return true;
 
-
-    const predatesIncorporation =
-      company.incorporationDate !== null && row.periodEnd < company.incorporationDate;
-    return predatesIncorporation || row.dueDate >= now;
+    // An uncompleted, un-evidenced obligation for a rule that does not apply to
+    // this company (e.g. no PT registration, no EPFO code, no GSTIN) is not real
+    // history — it is an item generated under old or un-gated rules and should be withdrawn.
+    return true;
   });
 
   const [created] = await prisma.$transaction([

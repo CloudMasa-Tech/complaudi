@@ -106,6 +106,88 @@ export interface OnboardedCompany {
   onboardedBy: { id: string; name: string; email: string } | null;
 }
 
+// ------------------------------------------------------------------ billing
+
+export type PaymentStatus = 'CREATED' | 'AUTHORIZED' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
+
+/** One payment on the Company Owner's billing page — a real Payment row. */
+export interface BillingPaymentRow {
+  id: string;
+  company: string | null;
+  rzxOrderId: string;
+  amountPaise: number;
+  amountLabel: string;
+  currency: string;
+  planName: string;
+  status: PaymentStatus;
+  method: string | null;
+  paidAt: string | null;
+  validUntil: string | null;
+  createdAt: string;
+}
+
+/** GET /billing — the whole Company Owner billing page in one call. */
+export interface BillingView {
+  plan: { name: string; amountPaise: number; currency: string; periodDays: number; periodLabel: string; amountLabel: string };
+  subscription: {
+    status: 'TRIAL' | 'PAID';
+    trialEndsAt: string | null;
+    trialDaysLeft: number | null;
+    validUntil: string | null;
+    paymentCount: number;
+  };
+  payments: BillingPaymentRow[];
+  canPurchase: boolean;
+}
+
+export interface RenewalRow {
+  organizationId: string;
+  organizationName: string | null;
+  validUntil: string | null;
+  dueInDays: number;
+}
+
+export interface FailedPaymentRow {
+  id: string;
+  organizationName: string | null;
+  rzxOrderId: string;
+  amountPaise: number;
+  amountLabel: string;
+  status: PaymentStatus;
+  method: string | null;
+  createdAt: string;
+}
+
+export interface AnalyticsPaymentRow {
+  id: string;
+  organizationName: string | null;
+  companyName: string | null;
+  paidBy: { name: string; email: string } | null;
+  rzxOrderId: string;
+  amountPaise: number;
+  amountLabel: string;
+  currency: string;
+  planName: string;
+  status: PaymentStatus;
+  method: string | null;
+  paidAt: string | null;
+  validUntil: string | null;
+  createdAt: string;
+}
+
+/** GET /billing/analytics — SUPER_ADMIN platform-wide, all real data. */
+export interface AnalyticsView {
+  revenue: { allTime: number; thisMonth: number; thisYear: number; fiscalYear: number };
+  revenueLabels: { allTime: string; thisMonth: string; thisYear: string; fiscalYear: string };
+  organisations: { total: number; onTrial: number; trialExpired: number; payingNow: number; fullUnbilled: number; churned: number };
+  conversion: { trialSignups: number; converted: number; rate: number; displayRate: string };
+  churn: { everConverted: number; churned: number; rate: number; displayRate: string };
+  renewals: { next30Days: RenewalRow[]; next30to60Days: RenewalRow[]; list: RenewalRow[] };
+  trend: { key: string; label: string; amountPaise: number; amountLabel: string }[];
+  failedPayments: FailedPaymentRow[];
+  paymentHistory: AnalyticsPaymentRow[];
+}
+
 export interface ComplianceItem {
   id: string; ruleCode: string; title: string; authority: Authority; category: string;
   form: string | null; legalReference: string; severity: Severity;

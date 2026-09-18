@@ -129,6 +129,112 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
   const dscView = DSC_VIEW[dsc.status];
   const kycView = KYC_VIEW[mcaKyc.status];
 
+  const regCards = [
+    {
+      id: 'MSME',
+      hasData: Boolean(msme?.udyamNumber),
+      render: (
+        <Reg
+          key="msme"
+          label="MSME · Udyam"
+          value={msme?.udyamNumber ?? null}
+          foot={msme ? `${titleise(msme.category)}${msme.registeredOn ? ` · ${fmtDate(msme.registeredOn)}` : ''}` : 'Not registered'}
+          badgeUrl="/msme.webp?v=3"
+        />
+      ),
+    },
+    {
+      id: 'GSTIN',
+      hasData: live.length > 0 && Boolean(live[0]?.gstin),
+      render: (
+        <Reg
+          key="gstin"
+          label="GSTIN"
+          value={live[0]?.gstin ?? null}
+          foot={
+            live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more state${live.length === 2 ? '' : 's'}`
+              : live.length === 1 ? live[0]!.stateCode : 'Not registered'
+          }
+          badgeUrl="/gst.webp?v=3"
+        />
+      ),
+    },
+    {
+      id: 'DPIIT',
+      hasData: Boolean(dpiit?.number),
+      render: (
+        <Reg
+          key="dpiit"
+          label="DPIIT · Startup India"
+          value={dpiit?.number ?? null}
+          foot={dpiit?.recognisedOn ? `Recognised ${fmtDate(dpiit.recognisedOn)}` : dpiit ? undefined : 'Not recognised'}
+          badgeUrl="/dpiit.webp?v=3"
+        />
+      ),
+    },
+    {
+      id: 'PF',
+      hasData: Boolean(profile.epfoCode),
+      render: (
+        <Reg key="epfo" label="PF · EPFO" value={profile.epfoCode} foot={profile.epfoCode ? undefined : 'Not enrolled'} badgeUrl="/epfo.png?v=3" />
+      ),
+    },
+    {
+      id: 'ESI',
+      hasData: Boolean(profile.esicCode),
+      render: (
+        <Reg key="esic" label="ESI · ESIC" value={profile.esicCode} foot={profile.esicCode ? undefined : 'Not enrolled'} badgeUrl="/esic.png?v=3" />
+      ),
+    },
+  ];
+
+  const mcaDscCards = [
+    {
+      id: 'MCA_KYC',
+      hasData: mcaKyc.status === 'MET',
+      render: (
+        <Status
+          key="mcaKyc"
+          label="MCA KYC · DIR-3"
+          value={kycView.word}
+          tone={kycView.tone}
+          foot={
+            mcaKyc.status === 'NOT_APPLICABLE'
+              ? 'No DIN on record, so none is raised'
+              : `${mcaKyc.periodLabel ?? ''}${mcaKyc.dueDate ? ` · due ${fmtDate(mcaKyc.dueDate)}` : ''}`
+          }
+        />
+      ),
+    },
+    {
+      id: 'DSC',
+      hasData: dsc.status !== 'NOT_RECORDED',
+      render: (
+        <Status
+          key="dsc"
+          label="DSC"
+          value={dscView.word}
+          tone={dscView.tone}
+          foot={
+            dsc.status === 'NOT_RECORDED'
+              ? `No expiry on record for ${dsc.total} director${dsc.total === 1 ? '' : 's'}`
+              : `${dsc.active} of ${dsc.total} current${dsc.nextExpiry ? ` · next expires ${fmtDate(dsc.nextExpiry)}` : ''}`
+          }
+        />
+      ),
+    },
+  ];
+
+  const sortedRegCards = [
+    ...regCards.filter((c) => c.hasData),
+    ...regCards.filter((c) => !c.hasData),
+  ];
+
+  const sortedMcaDscCards = [
+    ...mcaDscCards.filter((c) => c.hasData),
+    ...mcaDscCards.filter((c) => !c.hasData),
+  ];
+
   return (
     <div className="card">
       <header className="entity-head">
@@ -163,53 +269,14 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
         </div>
       </header>
 
-      <div className="status-strip">
-        <Status
-          label="DSC"
-          value={dscView.word}
-          tone={dscView.tone}
-          foot={
-            dsc.status === 'NOT_RECORDED'
-              ? `No expiry on record for ${dsc.total} director${dsc.total === 1 ? '' : 's'}`
-              : `${dsc.active} of ${dsc.total} current${dsc.nextExpiry ? ` · next expires ${fmtDate(dsc.nextExpiry)}` : ''}`
-          }
-        />
-        <Status
-          label="MCA KYC · DIR-3"
-          value={kycView.word}
-          tone={kycView.tone}
-          foot={
-            mcaKyc.status === 'NOT_APPLICABLE'
-              ? 'No DIN on record, so none is raised'
-              : `${mcaKyc.periodLabel ?? ''}${mcaKyc.dueDate ? ` · due ${fmtDate(mcaKyc.dueDate)}` : ''}`
-          }
-        />
+      {/* Row 1: Only 5 Registration Widgets */}
+      <div className="reg-grid">
+        {sortedRegCards.map((c) => c.render)}
       </div>
 
-      <div className="reg-grid">
-        <Reg
-          label="GSTIN"
-          value={live[0]?.gstin ?? null}
-          foot={
-            live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more state${live.length === 2 ? '' : 's'}`
-              : live.length === 1 ? live[0]!.stateCode : 'Not registered'
-          }
-          badgeUrl="/gst.webp?v=3"
-        />
-        <Reg
-          label="MSME · Udyam"
-          value={msme?.udyamNumber ?? null}
-          foot={msme ? `${titleise(msme.category)}${msme.registeredOn ? ` · ${fmtDate(msme.registeredOn)}` : ''}` : 'Not registered'}
-          badgeUrl="/msme.webp?v=3"
-        />
-        <Reg
-          label="DPIIT · Startup India"
-          value={dpiit?.number ?? null}
-          foot={dpiit?.recognisedOn ? `Recognised ${fmtDate(dpiit.recognisedOn)}` : dpiit ? undefined : 'Not recognised'}
-          badgeUrl="/dpiit.webp?v=3"
-        />
-        <Reg label="PF · EPFO" value={profile.epfoCode} foot={profile.epfoCode ? undefined : 'Not enrolled'} badgeUrl="/epfo.png?v=3" />
-        <Reg label="ESI · ESIC" value={profile.esicCode} foot={profile.esicCode ? undefined : 'Not enrolled'} badgeUrl="/esic.png?v=3" />
+      {/* Row 2: MCA KYC + DSC Widgets */}
+      <div className="status-strip">
+        {sortedMcaDscCards.map((c) => c.render)}
       </div>
 
       <div className="row" style={{ padding: '0 18px 8px' }}>

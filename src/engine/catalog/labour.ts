@@ -6,7 +6,7 @@
  * professional-tax rule carries a warning to confirm the local date.
  */
 import { utcDate } from '../../lib/dates';
-import { custom, employeesAtLeast, hasNoEpfoEnrollment, hasNoEsicEnrollment } from '../conditions';
+import { custom, employeesAtLeast, hasEpfoEnrollment, hasEsicEnrollment, hasNoEpfoEnrollment, hasNoEsicEnrollment, hasProfessionalTax, hasShopsAndEstablishment } from '../conditions';
 import { annual, monthly, registrationReminder } from '../schedule';
 import type { ComplianceRule } from '../types';
 
@@ -46,7 +46,7 @@ export const labourRules: ComplianceRule[] = [
     evidenceRequired: ['ECR text file', 'Payment confirmation receipt (TRRN)', 'Monthly payroll register'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'MONTHLY',
-    applicableWhen: [employeesAtLeast(20)],
+    applicableWhen: [hasEpfoEnrollment(), employeesAtLeast(20)],
     occurrences: monthly({ day: 15 }),
   },
   {
@@ -62,7 +62,7 @@ export const labourRules: ComplianceRule[] = [
     evidenceRequired: ['ESI monthly contribution challan', 'Contribution statement', 'Payroll register'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'MONTHLY',
-    applicableWhen: [esiApplies],
+    applicableWhen: [hasEsicEnrollment(), esiApplies],
     occurrences: monthly({ day: 15 }),
   },
   {
@@ -78,7 +78,7 @@ export const labourRules: ComplianceRule[] = [
     evidenceRequired: ['Professional tax challan', 'Monthly return acknowledgement', 'Employee-wise deduction statement'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'MONTHLY',
-    applicableWhen: [professionalTaxApplies],
+    applicableWhen: [hasProfessionalTax(), professionalTaxApplies],
     occurrences: monthly({ day: 15 }),
   },
   {
@@ -153,7 +153,7 @@ export const labourRules: ComplianceRule[] = [
     evidenceRequired: ['Current registration certificate', 'Renewal application and fee receipt'],
     evidenceLevel: 'ATTEST',
     periodKind: 'ANNUAL',
-    applicableWhen: [employeesAtLeast(1)],
+    applicableWhen: [hasShopsAndEstablishment(), employeesAtLeast(1)],
     occurrences: annual({ month: 3, day: 31, anchor: 'within' }),
   },
 ];

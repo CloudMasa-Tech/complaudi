@@ -36,6 +36,21 @@ const schema = z.object({
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default('Compliance Toolkit <no-reply@example.com>'),
 
+  // Razorpay billing. Both keys present ⇒ billing is enabled. The test-mode
+  // switch is a hard safety guard: with RAZORPAY_TEST_MODE=true the process
+  // refuses to boot against a *live* key id (rzp_live_*), so a test environment
+  // can never accidentally charge a real customer. See the check below.
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_TEST_MODE: boolish(false),
+  /// Single product today: annual plan, price in paise. Not hardcoded anywhere
+  /// in the app — served to the frontend from here and used to create orders.
+  RAZORPAY_PLAN_AMOUNT_PAISE: z.coerce.number().int().positive().default(69900),
+  RAZORPAY_PLAN_NAME: z.string().min(1).default('Annual plan'),
+  RAZORPAY_PLAN_PERIOD_DAYS: z.coerce.number().int().positive().default(365),
+  RAZORPAY_CURRENCY: z.string().min(3).default('INR'),
+
   // Defaults to OFF. In-process cron is a development convenience; every
   // replica would fire it, so production drives jobs from an external
   // scheduler instead. See DEPLOYMENT.md.
@@ -63,6 +78,18 @@ if (!parsed.success) {
 
 const raw = parsed.data;
 
+// The safety switch: refuse to run test mode against live keys. A test
+// environment forgetting to swap keys must fail at boot, not on the first real
+// charge. (`raw` may be null here only if the schema above was removed; zod
+// parsing already guarantees non-null by the time we reach this line.)
+const KEY_PREFIX_RE = /^rzp_(live|test)_/;
+const keyEnv = raw.RAZORPAY_KEY_ID?.match(KEY_PREFIX_RE)?.[1] ?? null;
+if (raw.RAZORPAY_TEST_MODE && keyEnv === 'live') {
+  throw new Error(
+    'RAZORPAY_TEST_MODE is true but RAZORPAY_KEY_ID starts with rzp_live_ — refusing to start so test traffic can never hit live billing.',
+  );
+}
+
 export const env = {
   ...raw,
   isProd: raw.NODE_ENV === 'production',
@@ -72,6 +99,10 @@ export const env = {
   storageDriver: raw.SUPABASE_URL && raw.SUPABASE_SERVICE_ROLE_KEY ? ('supabase' as const) : ('local' as const),
   jobTriggerEnabled: Boolean(raw.JOB_TRIGGER_SECRET),
   mailDriver: raw.SMTP_HOST ? ('smtp' as const) : ('console' as const),
+  /// Billing is a config-gated module: both Razorpay keys present switches it on.
+  razorpayEnabled: Boolean(raw.RAZORPAY_KEY_ID && raw.RAZORPAY_KEY_SECRET),
+  /// Which key environment the configured id belongs to, when billing is on.
+  razorpayKeyEnv: (keyEnv ?? 'none') as 'live' | 'test' | 'none',
 };
 
 export type Env = typeof env;

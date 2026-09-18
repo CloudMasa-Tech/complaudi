@@ -5,6 +5,7 @@ import type { BusinessType, EntityType } from '../api/types';
 import { BRAND_TAGLINE } from '../components/Layout';
 import { BUSINESS_TYPE_LABEL, Field, Spinner } from '../components/ui';
 
+
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PRIVATE_LIMITED', label: 'Private Limited Company' },
   { value: 'PUBLIC_LIMITED', label: 'Public Limited Company' },

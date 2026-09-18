@@ -71,25 +71,37 @@ describe('turnover-driven thresholds', () => {
   });
 });
 
-describe('headcount-driven labour rules', () => {
-  it('adds ESI at 10 employees but PF only at 20', () => {
-    const twelve = codesFor(makeContext({ company: makeCompany({ employeeCount: 12 }) }));
-    expect(twelve).toContain('LABOUR_ESI_CONTRIBUTION');
-    expect(twelve).toContain('LABOUR_POSH_IC');
-    expect(twelve).not.toContain('LABOUR_EPF_ECR');
+describe('headcount and registration-driven labour rules', () => {
+  it('requires both headcount threshold AND enrollment code for PF and ESI returns', () => {
+    // 25 employees, but no epfoCode or esicCode
+    const noCodes = codesFor(makeContext({ company: makeCompany({ employeeCount: 25, epfoCode: null, esicCode: null }) }));
+    expect(noCodes).not.toContain('LABOUR_EPF_ECR');
+    expect(noCodes).not.toContain('LABOUR_ESI_CONTRIBUTION');
+    expect(noCodes).toContain('LABOUR_POSH_IC');
 
-    const twentyFive = codesFor(makeContext({ company: makeCompany({ employeeCount: 25 }) }));
-    expect(twentyFive).toContain('LABOUR_EPF_ECR');
+    // 25 employees + enrolled
+    const enrolled = codesFor(makeContext({ company: makeCompany({ employeeCount: 25, epfoCode: 'MH/BAN/12345/000', esicCode: '3100012345' }) }));
+    expect(enrolled).toContain('LABOUR_EPF_ECR');
+    expect(enrolled).toContain('LABOUR_ESI_CONTRIBUTION');
   });
 
   it('uses the 20-employee ESI threshold in Maharashtra', () => {
-    const mh = codesFor(makeContext({ company: makeCompany({ employeeCount: 12, stateCode: 'MH' }) }));
-    expect(mh).not.toContain('LABOUR_ESI_CONTRIBUTION');
+    const mhUnenrolled = codesFor(makeContext({ company: makeCompany({ employeeCount: 12, stateCode: 'MH', esicCode: '3100012345' }) }));
+    expect(mhUnenrolled).not.toContain('LABOUR_ESI_CONTRIBUTION');
+
+    const mhEnrolled = codesFor(makeContext({ company: makeCompany({ employeeCount: 22, stateCode: 'MH', esicCode: '3100012345' }) }));
+    expect(mhEnrolled).toContain('LABOUR_ESI_CONTRIBUTION');
   });
 
-  it('skips professional tax in states that do not levy it', () => {
-    expect(codesFor(makeContext({ company: makeCompany({ stateCode: 'DL' }) }))).not.toContain('LABOUR_PROFESSIONAL_TAX');
-    expect(codesFor(makeContext({ company: makeCompany({ stateCode: 'KA' }) }))).toContain('LABOUR_PROFESSIONAL_TAX');
+  it('requires both state levy AND PT registration for professional tax deposit rule', () => {
+    expect(codesFor(makeContext({ company: makeCompany({ stateCode: 'DL', professionalTax: 'PT123' }) }))).not.toContain('LABOUR_PROFESSIONAL_TAX');
+    expect(codesFor(makeContext({ company: makeCompany({ stateCode: 'KA', professionalTax: null }) }))).not.toContain('LABOUR_PROFESSIONAL_TAX');
+    expect(codesFor(makeContext({ company: makeCompany({ stateCode: 'KA', professionalTax: 'PT123' }) }))).toContain('LABOUR_PROFESSIONAL_TAX');
+  });
+
+  it('requires shopAndEstablishment registration for Shops and Establishments renewal task', () => {
+    expect(codesFor(makeContext({ company: makeCompany({ employeeCount: 5, shopAndEstablishment: null }) }))).not.toContain('LABOUR_SHOPS_ESTABLISHMENT');
+    expect(codesFor(makeContext({ company: makeCompany({ employeeCount: 5, shopAndEstablishment: 'PY/SE/2024/004921' }) }))).toContain('LABOUR_SHOPS_ESTABLISHMENT');
   });
 });
 

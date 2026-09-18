@@ -87,6 +87,8 @@ export interface CompanyProfile {
   /** Enrolment numbers — only meaningful for the labour rules that require them. */
   epfoCode: string | null;
   esicCode: string | null;
+  professionalTax: string | null;
+  shopAndEstablishment: string | null;
 }
 
 /** Everything a rule is allowed to look at. Nothing else. */

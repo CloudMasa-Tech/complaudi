@@ -129,7 +129,7 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
 
   const { user, companyId } = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
-      data: { name: input.companyName, slug, trialEndsAt },
+      data: { name: input.companyName, slug, trialEndsAt, trialSignedUpAt: new Date() },
     });
 
     const created = await tx.user.create({

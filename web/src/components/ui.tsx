@@ -160,7 +160,22 @@ export const AUTHORITY_LABEL: Record<string, string> = {
 // ── primitives ──────────────────────────────────────────────────────────
 
 export const Badge = ({ value, children }: { value: string; children?: ReactNode }) => (
-  <span className={`badge badge-${value}`}>{children ?? titleise(value)}</span>
+  <span className={`badge badge-${value}`}>{children}</span>
+);
+
+/** Razorpay payment statuses, shared by the billing page and platform analytics. */
+export const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  CREATED: 'Pending',
+  AUTHORIZED: 'Authorized',
+  SUCCESS: 'Success',
+  FAILED: 'Failed',
+  REFUNDED: 'Refunded',
+};
+
+export const PaymentStatusBadge = ({ status }: { status: string }) => (
+  <Badge value={status === 'SUCCESS' ? 'COMPLETED' : status === 'FAILED' || status === 'REFUNDED' ? 'BLOCKED' : 'WAIVED'}>
+    {PAYMENT_STATUS_LABEL[status] ?? status}
+  </Badge>
 );
 
 export const SeverityDot = ({ value }: { value: Severity }) => (

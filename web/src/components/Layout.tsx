@@ -22,6 +22,7 @@ const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capab
   { to: '/rules', label: 'Rule engine', icon: '§', capability: 'rules.read' as const },
   { to: '/team', label: 'People & access', icon: '◍', capability: 'users.manage' as const },
   { to: '/billing', label: 'Billing', icon: '₹' },
+  { to: '/analytics', label: 'Platform analytics', icon: '∑', adminOnly: true },
 ];
 
 const TITLES: Record<string, { title: string; sub: string }> = {
@@ -36,6 +37,7 @@ const TITLES: Record<string, { title: string; sub: string }> = {
   '/team': { title: 'People & access', sub: 'Who works here, and which companies they can reach' },
   '/profile': { title: 'Profile', sub: 'Your personal information and account settings' },
   '/billing': { title: 'Billing', sub: 'Plan details and payment settings' },
+  '/analytics': { title: 'Platform analytics', sub: 'Revenue and adoption across every workspace' },
 };
 
 function CompanySwitcher({ companies, selectedId, select, userRole }: { companies: any[], selectedId: string | null, select: (id: string | null) => void, userRole?: string }) {
