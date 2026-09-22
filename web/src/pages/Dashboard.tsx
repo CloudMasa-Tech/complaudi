@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { qs } from '../api/client';
+import { qs, resolveApiUrl } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
 import type { Company, CompanyProfile, Overview, EvaluatedRegistration } from '../api/types';
@@ -240,7 +240,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
       <header className="entity-head">
         <div className="entity-mark" style={logoStorageKey ? { background: 'transparent', boxShadow: 'none' } : undefined}>
           {logoStorageKey ? (
-            <img src={`/api/v1/companies/${profile.id}/logo`} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'inherit' }} />
+            <img src={resolveApiUrl(`/companies/${profile.id}/logo`)} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'inherit' }} />
           ) : (
             initials(profile.legalName)
           )}

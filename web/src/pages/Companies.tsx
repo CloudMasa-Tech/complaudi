@@ -279,19 +279,22 @@ function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean 
       {members && members.length > 0 && (
         <div className="team-list">
           {members.map((m) => (
-            <div key={m.member.id} className="team-row">
-              <span className="avatar team-avatar">{initials(m.member.name)}</span>
-              <div className="stack" style={{ flex: 1, minWidth: 0 }}>
-                <span className="truncate" style={{ fontWeight: 550 }}>
-                  {m.member.name}
-                  {!m.member.isActive && <span className="dim"> · deactivated</span>}
-                </span>
-                <span className="tiny dim truncate">{m.member.email}</span>
+            <div key={m.member?.id || m.member?.email} className="team-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <span className="avatar team-avatar">{initials(m.member?.name || 'User')}</span>
+              <div className="stack" style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                  <span className="truncate" style={{ fontWeight: 550, fontSize: 13.5 }}>
+                    {m.member?.name || 'Team Member'}
+                  </span>
+                  <Badge value={m.invitationStatus === 'ACTIVE' || m.member?.isActive ? 'COMPLETED' : 'WAIVED'}>
+                    {m.invitationStatus === 'ACTIVE' || m.member?.isActive ? 'Active' : 'Pending'}
+                  </Badge>
+                </div>
+                <span className="tiny dim truncate">{m.member?.email} {m.invitedBy?.name ? `· invited by ${m.invitedBy.name}` : ''}</span>
               </div>
-              <span className="tiny">{ROLE_LABEL[m.role as UserRole] ?? m.role}</span>
-              {m.member.isActive
-                ? <span className="team-status team-active" title="Active">✓</span>
-                : <span className="team-status team-inactive" title="Inactive">—</span>}
+              <span className="badge badge-outline" style={{ fontSize: 11.5 }}>
+                {ROLE_LABEL[m.role as UserRole] ?? m.role}
+              </span>
             </div>
           ))}
         </div>

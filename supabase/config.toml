@@ -107,3 +107,49 @@ enabled = false
 #   "application/xml",
 #   "text/xml",
 # ]
+
+# ── Function JWT Verification Settings ──────────────────────────────────────
+# Disable gateway JWT verification so browser OPTIONS preflight requests pass
+# through and custom JWT auth handles authorization in function code.
+[functions.auth-api]
+verify_jwt = false
+
+[functions.companies-api]
+verify_jwt = false
+
+[functions.compliance-api]
+verify_jwt = false
+
+[functions.tasks-api]
+verify_jwt = false
+
+[functions.documents-api]
+verify_jwt = false
+
+[functions.billing-api]
+verify_jwt = false
+
+[functions.notifications-api]
+verify_jwt = false
+
+[functions.dashboard-api]
+verify_jwt = false
+
+[functions.audit-api]
+verify_jwt = false
+
+[functions.copilot-api]
+verify_jwt = false
+
+[functions.rules-api]
+verify_jwt = false
+
+[functions.lookup-api]
+verify_jwt = false
+
+[functions.scheduled-compliance]
+verify_jwt = false
+
+[functions.razorpay-webhook]
+verify_jwt = false
+

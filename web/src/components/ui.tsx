@@ -63,8 +63,8 @@ export function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export const titleise = (s: string): string =>
-  s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
+export const titleise = (s?: string | null): string =>
+  s ? s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase()) : '';
 
 export const initials = (name: string): string =>
   name.split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('');

@@ -49,6 +49,7 @@ export interface CompanyMember {
   since: string;
   member: { id: string; name: string; email: string; isActive: boolean };
   invitedBy: { id: string; name: string };
+  invitationStatus?: 'ACTIVE' | 'PENDING';
 }
 
 export interface GstRegistration {

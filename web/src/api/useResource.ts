@@ -4,6 +4,7 @@ import { ApiError, get } from './client';
 export interface Resource<T> {
   data: T | undefined;
   error: string | null;
+  apiError: ApiError | null;
   loading: boolean;
   /** True only on the first load, so refetches do not blank the screen. */
   initial: boolean;
@@ -18,6 +19,7 @@ export interface Resource<T> {
 export function useResource<T>(path: string | null, deps: unknown[] = []): Resource<T> {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
   const [nonce, setNonce] = useState(0);
   const seen = useRef(false);
@@ -27,6 +29,8 @@ export function useResource<T>(path: string | null, deps: unknown[] = []): Resou
   useEffect(() => {
     if (!path) {
       setData(undefined);
+      setError(null);
+      setApiError(null);
       setLoading(false);
       return;
     }
@@ -38,11 +42,18 @@ export function useResource<T>(path: string | null, deps: unknown[] = []): Resou
       .then((result) => {
         setData(result);
         setError(null);
+        setApiError(null);
         seen.current = true;
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setError(err instanceof ApiError ? err.message : 'Could not reach the server');
+        if (err instanceof ApiError) {
+          setApiError(err);
+          setError(err.message);
+        } else {
+          setApiError(null);
+          setError('Could not reach the server');
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -52,5 +63,5 @@ export function useResource<T>(path: string | null, deps: unknown[] = []): Resou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, nonce, ...deps]);
 
-  return { data, error, loading, initial: loading && !seen.current, reload };
+  return { data, error, apiError, loading, initial: loading && !seen.current, reload };
 }

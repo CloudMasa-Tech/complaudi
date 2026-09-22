@@ -1,0 +1,199 @@
+// supabase/functions/_shared/engine/conditions.ts
+import type { Condition, EntityType, GstFilingFrequency } from './types.ts';
+
+export const CRORE = 10_000_000;
+export const LAKH = 100_000;
+
+export function inr(amount: number): string {
+  if (amount >= CRORE) {
+    const cr = amount / CRORE;
+    return `₹${Number.isInteger(cr) ? cr : cr.toFixed(2)} crore`;
+  }
+  if (amount >= LAKH) {
+    const l = amount / LAKH;
+    return `₹${Number.isInteger(l) ? l : l.toFixed(2)} lakh`;
+  }
+  return `₹${amount.toLocaleString('en-IN')}`;
+}
+
+const ENTITY_LABELS: Record<EntityType, string> = {
+  PRIVATE_LIMITED: 'Private Limited Company',
+  PUBLIC_LIMITED: 'Public Limited Company',
+  OPC: 'One Person Company',
+  LLP: 'Limited Liability Partnership',
+  PARTNERSHIP: 'Partnership Firm',
+  PROPRIETORSHIP: 'Sole Proprietorship',
+  SECTION_8: 'Section 8 Company',
+  UNREGISTERED: 'Unregistered Business',
+};
+
+export const entityLabel = (t: EntityType): string => ENTITY_LABELS[t] ?? t;
+
+export const always = (label = 'Applies to every registered entity'): Condition => ({
+  label,
+  test: () => true,
+});
+
+export const ALL_ENTITY_TYPES: EntityType[] = [
+  'PRIVATE_LIMITED',
+  'PUBLIC_LIMITED',
+  'OPC',
+  'LLP',
+  'PARTNERSHIP',
+  'PROPRIETORSHIP',
+  'SECTION_8',
+  'UNREGISTERED',
+];
+
+const asSet = (types: EntityType[]): EntityType[] => [...new Set(types)];
+
+export const entityIs = (...types: EntityType[]): Condition => ({
+  label: `Entity is a ${types.map(entityLabel).join(' or ')}`,
+  test: (ctx) => types.includes(ctx.company.entityType),
+  entityScope: asSet(types),
+  entityOnly: true,
+});
+
+export const isCompaniesActEntity = (): Condition =>
+  entityIs('PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'SECTION_8');
+
+export const turnoverAtLeast = (amount: number): Condition => ({
+  label: `Annual turnover is ${inr(amount)} or more`,
+  test: (ctx) => ctx.company.annualTurnover >= amount,
+});
+
+export const turnoverBelow = (amount: number): Condition => ({
+  label: `Annual turnover is below ${inr(amount)}`,
+  test: (ctx) => ctx.company.annualTurnover < amount,
+});
+
+export const paidUpCapitalAtLeast = (amount: number): Condition => ({
+  label: `Paid-up share capital is ${inr(amount)} or more`,
+  test: (ctx) => ctx.company.paidUpCapital >= amount,
+});
+
+export const employeesAtLeast = (n: number): Condition => ({
+  label: `Has ${n} or more employees`,
+  test: (ctx) => ctx.company.employeeCount >= n,
+});
+
+export const hasGstRegistration = (): Condition => ({
+  label: 'Has at least one active GST registration',
+  test: (ctx) => ctx.gstRegistrations.some((g) => g.isActive),
+});
+
+export const anyGstFrequencyIs = (...freqs: GstFilingFrequency[]): Condition => ({
+  label: `Files GST under the ${freqs.join(' / ')} scheme`,
+  test: (ctx) => ctx.gstRegistrations.some((g) => g.isActive && freqs.includes(g.filingFrequency)),
+});
+
+export const anyGstDeductsTds = (): Condition => ({
+  label: 'Registered as a GST TDS deductor',
+  test: (ctx) => ctx.gstRegistrations.some((g) => g.isActive && g.isTdsDeductor),
+});
+
+export const anyGstIsEcommerceOperator = (): Condition => ({
+  label: 'Registered as an e-commerce operator collecting TCS',
+  test: (ctx) => ctx.gstRegistrations.some((g) => g.isActive && g.isEcommerceOperator),
+});
+
+export const hasMsmeRegistration = (): Condition => ({
+  label: 'Holds a Udyam (MSME) registration',
+  test: (ctx) => ctx.msme !== null,
+});
+
+export const crossesGstRegistrationThreshold = (): Condition => ({
+  label: 'Annual turnover is ₹20 lakh or more — the mandatory GST registration threshold for services',
+  test: (ctx) => ctx.company.annualTurnover >= 20 * LAKH,
+});
+
+export const hasNoGstRegistration = (): Condition =>
+  not(hasGstRegistration(), 'Has no active GST registration');
+
+export const hasEpfoEnrollment = (): Condition => ({
+  label: 'Holds an EPFO establishment code',
+  test: (ctx) => Boolean(ctx.company.epfoCode),
+});
+
+export const hasNoEpfoEnrollment = (): Condition =>
+  custom('No EPFO establishment code on record', (ctx) => !ctx.company.epfoCode);
+
+export const hasEsicEnrollment = (): Condition => ({
+  label: 'Holds an ESIC employer code',
+  test: (ctx) => Boolean(ctx.company.esicCode),
+});
+
+export const hasNoEsicEnrollment = (): Condition =>
+  custom('No ESIC employer code on record', (ctx) => !ctx.company.esicCode);
+
+export const hasProfessionalTax = (): Condition => ({
+  label: 'Holds a Professional Tax registration',
+  test: (ctx) => Boolean(ctx.company.professionalTax),
+});
+
+export const hasTan = (): Condition => ({
+  label: 'Holds a TAN (deducts tax at source)',
+  test: (ctx) => Boolean(ctx.company.tan),
+});
+
+export const hasShopsAndEstablishment = (): Condition => ({
+  label: 'Holds a Shops and Establishments registration',
+  test: (ctx) => Boolean(ctx.company.shopAndEstablishment),
+});
+
+export const hasDirectorWithDin = (): Condition => ({
+  label: 'Has at least one director/partner holding a DIN or DPIN',
+  test: (ctx) => ctx.directors.some((d) => Boolean(d.din) && !d.resignedOn),
+});
+
+export const acceptsDeposits = (): Condition => ({
+  label: 'Has outstanding loans or money received not treated as deposits',
+  test: (ctx) => ctx.company.acceptsDeposits,
+});
+
+export const buysFromMsmeSuppliers = (): Condition => ({
+  label: 'Procures goods or services from MSME-registered suppliers',
+  test: (ctx) => ctx.company.buysFromMsmeSuppliers,
+});
+
+export const hasForeignTransactions = (): Condition => ({
+  label: 'Has international or specified domestic transactions (transfer pricing)',
+  test: (ctx) => ctx.company.hasForeignTransactions,
+});
+
+export const isListed = (): Condition => ({
+  label: 'Is a listed company',
+  test: (ctx) => ctx.company.isListed,
+});
+
+export const crossesTaxAuditThreshold = (): Condition => ({
+  label: 'Turnover crosses the s.44AB tax-audit threshold (₹1 crore, or ₹10 crore if cash dealings ≤ 5%)',
+  test: (ctx) => {
+    const threshold = ctx.company.cashTransactionRatioBelow5Pct ? 10 * CRORE : 1 * CRORE;
+    return ctx.company.annualTurnover >= threshold;
+  },
+});
+
+export const llpCrossesAuditThreshold = (): Condition => ({
+  label: 'LLP turnover exceeds ₹40 lakh or contribution exceeds ₹25 lakh',
+  test: (ctx) => ctx.company.annualTurnover > 40 * LAKH || ctx.company.paidUpCapital > 25 * LAKH,
+});
+
+export const custom = (label: string, test: Condition['test']): Condition => ({ label, test });
+
+export const not = (c: Condition, label?: string): Condition => ({
+  label: label ?? `NOT — ${c.label}`,
+  test: (ctx) => !c.test(ctx),
+  ...(c.entityScope
+    ? { entityScope: ALL_ENTITY_TYPES.filter((t) => !c.entityScope!.includes(t)) }
+    : {}),
+});
+
+export const anyOf = (label: string, ...conditions: Condition[]): Condition => {
+  const allScoped = conditions.every((c) => c.entityScope !== undefined);
+  return {
+    label,
+    test: (ctx) => conditions.some((c) => c.test(ctx)),
+    ...(allScoped ? { entityScope: asSet(conditions.flatMap((c) => c.entityScope!)) } : {}),
+  };
+};

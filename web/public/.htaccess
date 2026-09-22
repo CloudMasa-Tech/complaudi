@@ -1,0 +1,10 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve existing static files directly (CSS, JS, images, favicon)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  # Route all SPA paths (e.g. /login, /dashboard, /companies, /compliance, /tasks) to index.html
+  RewriteRule . /index.html [L]
+</IfModule>

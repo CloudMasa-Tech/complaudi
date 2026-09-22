@@ -27,8 +27,10 @@ export const setSessionLostHandler = (fn: () => void) => { onSessionLost = fn; }
 
 function isTokenExpired(token: string): boolean {
   try {
-    const base64Url = token.split('.')[1];
-    if (!base64Url) return true;
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const base64Url = parts[1];
+    if (!base64Url) return false;
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(
       window
@@ -38,14 +40,45 @@ function isTokenExpired(token: string): boolean {
         .join('')
     );
     const payload = JSON.parse(jsonPayload);
+    if (typeof payload.exp !== 'number') return false;
     // 10 seconds of slack
     return payload.exp * 1000 < Date.now() + 10000;
   } catch {
-    return true;
+    return false;
   }
 }
 
 let refreshing: Promise<boolean> | null = null;
+
+export function resolveApiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const mode = (import.meta as any).env?.VITE_API_MODE || 'SUPABASE';
+  if (mode === 'SUPABASE') {
+    const supabaseUrl = ((import.meta as any).env?.VITE_SUPABASE_URL || 'https://ciulqktarpydorkkfmqh.supabase.co').replace(/\/$/, '');
+    const cleanPath = normalizedPath.split('?')[0] || '';
+    const segments = cleanPath.split('/').filter(Boolean);
+    const primary = segments[0] || '';
+
+    let functionName = 'health';
+    if (primary === 'auth') functionName = 'auth-api';
+    else if (primary === 'companies') functionName = 'companies-api';
+    else if (primary === 'compliance') functionName = 'compliance-api';
+    else if (primary === 'tasks') functionName = 'tasks-api';
+    else if (primary === 'documents') functionName = 'documents-api';
+    else if (primary === 'notifications') functionName = 'notifications-api';
+    else if (primary === 'billing') functionName = 'billing-api';
+    else if (primary === 'audit') functionName = 'audit-api';
+    else if (primary === 'lookup') functionName = 'lookup-api';
+    else if (primary === 'rules') functionName = 'rules-api';
+    else if (primary === 'dashboard') functionName = 'dashboard-api';
+    else if (primary === 'copilot') functionName = 'copilot-api';
+
+    return `${supabaseUrl}/functions/v1/${functionName}${normalizedPath}`;
+  }
+
+  const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL || '';
+  return `${baseUrl}/api/v1${normalizedPath}`;
+}
 
 /**
  * Access tokens live 15 minutes, so a 401 mid-session is routine. Refresh once
@@ -58,7 +91,7 @@ async function refreshSession(): Promise<boolean> {
 
   refreshing ??= (async () => {
     try {
-      const res = await fetch('/api/v1/auth/refresh', {
+      const res = await fetch(resolveApiUrl('/auth/refresh'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refreshToken: token }),
@@ -87,6 +120,12 @@ interface RequestOptions {
 
 async function send(path: string, opts: RequestOptions, isRetry = false): Promise<Response> {
   const headers: Record<string, string> = {};
+  const mode = (import.meta as any).env?.VITE_API_MODE || 'SUPABASE';
+  if (mode === 'SUPABASE') {
+    const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+    if (anonKey) headers.apikey = anonKey;
+  }
+
   let access = tokens.access();
   if (access && !isRetry) {
     if (isTokenExpired(access)) {
@@ -114,7 +153,9 @@ async function send(path: string, opts: RequestOptions, isRetry = false): Promis
     body = JSON.stringify(opts.body);
   }
 
-  const res = await fetch(`/api/v1${path}`, {
+  const url = resolveApiUrl(path);
+
+  const res = await fetch(url, {
     method: opts.method ?? 'GET',
     headers,
     body,
@@ -158,6 +199,15 @@ export const upload = <T>(path: string, form: FormData) => api<T>(path, { method
 export async function download(id: string, fileName: string): Promise<void> {
   const res = await send(`/documents/${id}/download`, {});
   if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'Could not download the file');
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const data = await res.json();
+    if (data?.kind === 'redirect' && data.url) {
+      window.open(data.url, '_blank');
+      return;
+    }
+  }
 
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');

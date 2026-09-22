@@ -28,7 +28,7 @@ export function Analytics() {
     return <Loading label="Loading platform analytics" />;
   }
 
-  const maxTrend = data.trend.reduce((m, t) => Math.max(m, t.amountPaise), 0);
+  const maxTrend = (data.trend || []).reduce((m, t) => Math.max(m, t.amountPaise), 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -41,10 +41,10 @@ export function Analytics() {
 
       <Card title="Revenue" note="captured payments only">
         <div className="grid grid-4" style={{ padding: 16 }}>
-          <Stat label={data.revenueLabels.allTime} value={fmtINR(data.revenue.allTime)} />
-          <Stat label={data.revenueLabels.thisMonth} value={fmtINR(data.revenue.thisMonth)} />
-          <Stat label={data.revenueLabels.thisYear} value={fmtINR(data.revenue.thisYear)} />
-          <Stat label={data.revenueLabels.fiscalYear} value={fmtINR(data.revenue.fiscalYear)} />
+          <Stat label="All-Time Revenue" value={data.revenueLabels.allTime} foot="total platform earnings" />
+          <Stat label="This Month" value={data.revenueLabels.thisMonth} foot="current calendar month" />
+          <Stat label="This Year" value={data.revenueLabels.thisYear} foot="calendar year to date" />
+          <Stat label="Fiscal Year" value={data.revenueLabels.fiscalYear} foot="current financial year" />
         </div>
       </Card>
 
@@ -189,8 +189,4 @@ export function Analytics() {
       </Card>
     </div>
   );
-}
-
-function fmtINR(paise: number): string {
-  return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
