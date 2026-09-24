@@ -195,16 +195,47 @@ export const put = <T>(path: string, body?: unknown) => api<T>(path, { method: '
 export const del = <T>(path: string) => api<T>(path, { method: 'DELETE' });
 export const upload = <T>(path: string, form: FormData) => api<T>(path, { method: 'POST', form });
 
+/** Opens document in a new browser tab for viewing without triggering a forced file download. */
+export async function view(id: string): Promise<void> {
+  const res = await send(`/documents/${id}/download`, {});
+  if (!res.ok) throw new ApiError(res.status, 'VIEW_FAILED', 'Could not view the document');
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const data = await res.json();
+    if (data?.url) {
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  window.open(blobUrl, '_blank', 'noopener,noreferrer');
+}
+
 /** Downloads stream through the API, so the auth header has to travel with them. */
 export async function download(id: string, fileName: string): Promise<void> {
+  return forceDownload(id, fileName);
+}
+
+export async function forceDownload(id: string, fileName: string): Promise<void> {
   const res = await send(`/documents/${id}/download`, {});
   if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'Could not download the file');
 
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     const data = await res.json();
-    if (data?.kind === 'redirect' && data.url) {
-      window.open(data.url, '_blank');
+    if (data?.url) {
+      const blob = await fetch(data.url).then((r) => r.blob());
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
       return;
     }
   }

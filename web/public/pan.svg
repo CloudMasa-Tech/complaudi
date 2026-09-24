@@ -1,0 +1,8 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="12" fill="#1E3A8A"/>
+  <rect x="8" y="16" width="48" height="32" rx="4" fill="#FFFFFF" fill-opacity="0.95"/>
+  <rect x="14" y="22" width="16" height="12" rx="2" fill="#2563EB"/>
+  <rect x="34" y="24" width="16" height="3" rx="1.5" fill="#1E293B"/>
+  <rect x="34" y="30" width="12" height="3" rx="1.5" fill="#64748B"/>
+  <text x="32" y="43" font-family="Times New Roman, serif" font-weight="bold" font-size="7" fill="#1E3A8A" text-anchor="middle">INCOME TAX DEPT</text>
+</svg>

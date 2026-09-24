@@ -245,7 +245,7 @@ Deno.serve(async (req: Request) => {
         msme: company.msme ? { ...company.msme, registeredOn: company.msme.registeredOn ? parseDate(company.msme.registeredOn) : null } : null,
       };
 
-      const explanation = explainRule(ctx, ruleCode);
+      const explanation = explainRule(ruleCode, ctx);
       if (!explanation) throw new NotFoundError('Rule not found');
       return jsonResponse(explanation);
     }

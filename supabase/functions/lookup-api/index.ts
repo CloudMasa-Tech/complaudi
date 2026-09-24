@@ -4,6 +4,8 @@ import { jsonResponse, errorResponse } from '../_shared/response.ts';
 import { UnprocessableError, NotFoundError } from '../_shared/errors.ts';
 import { decodeCin, decodePan, validateGstin } from '../_shared/india.ts';
 
+import { validateCompanyMasterData } from '../_shared/companyValidation.ts';
+
 const DERIVED_FROM = 'Derived from the identifier itself — no government service was contacted.';
 
 Deno.serve(async (req) => {
@@ -11,9 +13,42 @@ Deno.serve(async (req) => {
   if (corsRes) return corsRes;
 
   try {
-    await getAuthContext(req);
     const url = new URL(req.url);
     const path = url.pathname.replace(/\/+$/, '');
+
+    // POST /lookup-api/validate-company (Public endpoint for self-onboarding validation)
+    if (req.method === 'POST' && (path.endsWith('/validate-company') || path.endsWith('/validate-company/'))) {
+      const body = await req.json();
+
+      let existingCinsInDb: string[] = [];
+      try {
+        const supabase = (await import('../_shared/supabase.ts')).getSupabaseAdminClient();
+        const { data: compRows } = await supabase.from('companies').select('cin');
+        if (compRows) {
+          existingCinsInDb = compRows.map((c) => c.cin).filter(Boolean) as string[];
+        }
+      } catch (err) {
+        console.warn('Could not query database for duplicate CIN check:', err);
+      }
+
+      const valRes = validateCompanyMasterData({
+        cin: body.cin,
+        companyName: body.companyName,
+        entityType: body.entityType,
+        incorporationDate: body.incorporationDate,
+        stateCode: body.stateCode,
+        roc: body.roc,
+        existingCinsInDb,
+      });
+
+      return jsonResponse({
+        valid: valRes.valid,
+        errors: valRes.errors,
+        masterRecord: valRes.masterRecord ?? null,
+      });
+    }
+
+    await getAuthContext(req);
 
     // GET /lookup-api/cin/:cin
     const cinMatch = path.match(/\/cin\/([^/]+)$/);

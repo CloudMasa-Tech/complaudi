@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ApiError, del, download, patch, post, put, upload, resolveApiUrl } from '../api/client';
+import { ApiError, del, forceDownload, patch, post, put, upload, view, resolveApiUrl } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
 import type { BusinessType, Company, Director, EntityType, SyncResult } from '../api/types';
@@ -111,105 +111,181 @@ interface DocumentItem {
   uploadedBy?: { id: string; name: string; email: string };
 }
 
-function DocumentsManager({ companyId, categoryFilter, title, note }: {
+interface DocumentSlotCardProps {
   companyId: string;
-  categoryFilter?: string;
-  title?: string;
+  docType: 'pan' | 'gst' | 'msme' | 'dpiit' | 'dsc' | 'master_data' | 'mca_report';
+  title: string;
   note?: string;
-}) {
-  const { data, initial, reload } = useResource<{ rows: DocumentItem[] }>(`/documents?companyId=${companyId}`, [companyId]);
-  const [uploading, setUploading] = useState(false);
+  documents: DocumentItem[];
+  onReload: () => void;
+}
+
+function DocumentSlotCard({ companyId, docType, title, note, documents, onReload }: DocumentSlotCardProps) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const docs = data?.rows || [];
-  const filtered = categoryFilter
-    ? docs.filter((d) => (d.label || d.fileName).toLowerCase().includes(categoryFilter.toLowerCase()))
-    : docs;
+  const existingDoc = documents.find((d) => (d.label || '').toLowerCase() === docType.toLowerCase());
 
-  async function handleUpload(file: File, defaultLabel: string) {
-    setUploading(true);
+  async function handleSave() {
+    if (!selectedFile) return;
+    setSaving(true);
     setErr(null);
     try {
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', selectedFile);
       form.append('companyId', companyId);
-      form.append('label', defaultLabel);
+      form.append('label', docType);
       await upload('/documents', form);
-      reload();
+
+      if (existingDoc) {
+        try {
+          await del(`/documents/${existingDoc.id}`);
+        } catch (_e) {
+          // ignore non-fatal cleanup error
+        }
+      }
+
+      setSelectedFile(null);
+      onReload();
     } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Upload failed');
+      setErr(e instanceof ApiError ? e.message : 'Failed to save document');
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   }
 
-  async function handleDelete(docId: string) {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(doc: DocumentItem) {
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    setDeleting(true);
+    setErr(null);
     try {
-      await del(`/documents/${docId}`);
-      reload();
+      await del(`/documents/${doc.id}`);
+      onReload();
     } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Delete failed');
+      setErr(e instanceof ApiError ? e.message : 'Failed to delete document');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleView(doc: DocumentItem) {
+    try {
+      await view(doc.id);
+    } catch (e: any) {
+      setErr(e instanceof ApiError ? e.message : 'Could not view document');
     }
   }
 
   return (
-    <Card title={title || "Documents & Certificates"} note={note || `${filtered.length} document(s) attached`}>
+    <Card title={title} note={note || `Persistent document management`}>
       <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {err && <ErrorNote error={err} />}
-        {initial && <Loading label="Loading documents…" />}
 
-        {filtered.length > 0 && (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Document / Label</th>
-                  <th>File Name</th>
-                  <th>Size</th>
-                  <th>Uploaded</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((d) => (
-                  <tr key={d.id}>
-                    <td>
-                      <span style={{ fontWeight: 550 }}>{d.label || d.fileName}</span>
-                    </td>
-                    <td className="mono tiny">{d.fileName}</td>
-                    <td className="tiny muted">{(d.sizeBytes / 1024).toFixed(1)} KB</td>
-                    <td className="tiny muted">{fmtDate(d.createdAt)}</td>
-                    <td>
-                      <div className="row" style={{ gap: 6 }}>
-                        <button type="button" className="btn-sm" onClick={() => void download(d.id, d.fileName)}>View / Download</button>
-                        <button type="button" className="btn-sm btn-ghost btn-danger" onClick={() => void handleDelete(d.id)}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {selectedFile ? (
+          <div style={{ padding: 12, borderRadius: 6, border: '1px dashed var(--accent)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <strong style={{ fontSize: '0.95rem' }}>📄 {selectedFile.name}</strong>
+                <div className="tiny muted">{(selectedFile.size / 1024).toFixed(1)} KB · Ready to save</div>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <button type="button" className="btn-sm btn-primary" disabled={saving} onClick={() => void handleSave()}>
+                  {saving ? <><Spinner /> Saving…</> : 'Save Document'}
+                </button>
+                <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setSelectedFile(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : existingDoc ? (
+          <div style={{ padding: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--foreground)' }}>
+                  📄 {existingDoc.fileName}
+                </div>
+                <div className="tiny muted" style={{ marginTop: 2 }}>
+                  Uploaded: {fmtDate(existingDoc.createdAt)} · {(existingDoc.sizeBytes / 1024).toFixed(1)} KB
+                </div>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <button type="button" className="btn-sm" disabled={deleting} onClick={() => void handleView(existingDoc)}>
+                  View
+                </button>
+                <button type="button" className="btn-sm" disabled={deleting} onClick={() => void forceDownload(existingDoc.id, existingDoc.fileName)}>
+                  Download
+                </button>
+                <button type="button" className="btn-sm btn-outline" disabled={deleting} onClick={() => fileInputRef.current?.click()}>
+                  Replace
+                </button>
+                <button type="button" className="btn-sm btn-ghost btn-danger" disabled={deleting} onClick={() => void handleDelete(existingDoc)}>
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 6, border: '1px solid var(--border)' }}>
+            <span className="tiny dim">No document uploaded yet for {title}.</span>
+            <button type="button" className="btn-sm" onClick={() => fileInputRef.current?.click()}>
+              Choose File
+            </button>
           </div>
         )}
 
-        {filtered.length === 0 && !initial && (
-          <div className="tiny dim">No {categoryFilter ? `${categoryFilter} ` : ''}documents attached yet.</div>
-        )}
-
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
-          <span className="tiny dim" style={{ fontWeight: 500 }}>Upload {categoryFilter ? `${categoryFilter} Certificate / Document` : 'File'}</span>
-          <div className="row" style={{ gap: 12, marginTop: 8, alignItems: 'center' }}>
-            <input type="file" disabled={uploading} onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (file) void handleUpload(file, categoryFilter ? `${categoryFilter.toUpperCase()} Certificate` : file.name);
-            }} />
-            {uploading && <Spinner />}
-          </div>
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) setSelectedFile(file);
+          }}
+        />
       </div>
     </Card>
+  );
+}
+
+function CompanyDocumentSlotsManager({ companyId, filterType }: { companyId: string; filterType?: 'pan' | 'gst' | 'msme' | 'dpiit' | 'dsc' | 'master_data' | 'mca_report' }) {
+  const { data, initial, reload } = useResource<{ rows: DocumentItem[] }>(`/documents?companyId=${companyId}`, [companyId]);
+  const docs = data?.rows || [];
+
+  if (initial) return <Loading label="Loading document manager..." />;
+
+  const slots = [
+    { docType: 'pan' as const, title: 'PAN Certificate / Document' },
+    { docType: 'gst' as const, title: 'GST Certificate' },
+    { docType: 'msme' as const, title: 'MSME Certificate' },
+    { docType: 'dpiit' as const, title: 'Startup Certificate' },
+    { docType: 'dsc' as const, title: 'DSC Certificate' },
+    { docType: 'master_data' as const, title: 'Master Data' },
+    { docType: 'mca_report' as const, title: 'MCA Report' },
+  ];
+
+  const filteredSlots = filterType
+    ? slots.filter((s) => s.docType === filterType)
+    : slots;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {filteredSlots.map((s) => (
+        <DocumentSlotCard
+          key={s.docType}
+          companyId={companyId}
+          docType={s.docType}
+          title={s.title}
+          documents={docs}
+          onReload={reload}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -573,43 +649,39 @@ export function CompanyEdit() {
         )}
       </form>
 
+      {showTab('incometax') && (
+        <CompanyDocumentSlotsManager companyId={company.id} filterType="pan" />
+      )}
+
       {/* Specific Certificate Managers per tab */}
       {showTab('gst') && (
         <>
           <Registrations company={company} busy={busy} errors={errors} run={run} showOnly="gst" />
-          <DocumentsManager companyId={company.id} categoryFilter="gst" title="GST Certificates & Documents" />
+          <CompanyDocumentSlotsManager companyId={company.id} filterType="gst" />
         </>
       )}
 
       {showTab('msme') && (
         <>
           <Registrations company={company} busy={busy} errors={errors} run={run} showOnly="msme" />
-          <DocumentsManager companyId={company.id} categoryFilter="msme" title="MSME / Udyam Certificates" />
+          <CompanyDocumentSlotsManager companyId={company.id} filterType="msme" />
         </>
       )}
 
       {showTab('dpiit') && (
-        <DocumentsManager companyId={company.id} categoryFilter="dpiit" title="DPIIT / Startup Certificates" />
+        <CompanyDocumentSlotsManager companyId={company.id} filterType="dpiit" />
       )}
 
       {showTab('dsc') && (
-        <DocumentsManager companyId={company.id} categoryFilter="dsc" title="Digital Signature (DSC) Certificates" />
+        <CompanyDocumentSlotsManager companyId={company.id} filterType="dsc" />
       )}
 
-      {showTab('incometax') && (
-        <DocumentsManager companyId={company.id} categoryFilter="tax" title="Income Tax Documents & Certificates" />
-      )}
-
-      {showTab('pf') && (
-        <DocumentsManager companyId={company.id} categoryFilter="pf" title="PF / EPFO Certificates & Documents" />
-      )}
-
-      {showTab('esi') && (
-        <DocumentsManager companyId={company.id} categoryFilter="esi" title="ESI / ESIC Certificates & Documents" />
-      )}
-
-      {showTab('documents') && (
-        <DocumentsManager companyId={company.id} title="Master Document & Certificate Manager" />
+      {(showTab('documents') || showTab('all')) && (
+        <Card title="Company Documents Management">
+          <div className="card-body">
+            <CompanyDocumentSlotsManager companyId={company.id} />
+          </div>
+        </Card>
       )}
 
       {showTab('directors') && (
@@ -618,6 +690,13 @@ export function CompanyEdit() {
 
       {(showTab('import') || showTab('all')) && (
         <McaImport company={company} busy={busy} run={run} />
+      )}
+
+      {showTab('import') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
+          <CompanyDocumentSlotsManager companyId={company.id} filterType="master_data" />
+          <CompanyDocumentSlotsManager companyId={company.id} filterType="mca_report" />
+        </div>
       )}
 
       {/* Save Button */}
@@ -638,6 +717,7 @@ interface McaResult {
   matchedBy: string;
   applied: { field: string; from: string | null; to: string }[];
   skipped: { field: string; why: string }[];
+  warnings?: string[];
   recognisedColumns: string[];
   unrecognisedColumns: string[];
   rowsInFile: number;
@@ -663,12 +743,29 @@ function McaImport({ company, busy, run }: {
 
         {result && (
           <div className="alert alert-info">
-            <strong>
-              Matched {result.matchedBy === 'cin' ? 'on the CIN' : 'the only company in the file'} out of{' '}
-              {result.rowsInFile} row{result.rowsInFile === 1 ? '' : 's'}.
-            </strong>
+            {result.matchedBy === 'none' ? (
+              <strong>File processed — no readable data extracted.</strong>
+            ) : (
+              <strong>
+                Matched {result.matchedBy === 'cin' ? 'on the CIN' : 'the selected company'} out of{' '}
+                {result.rowsInFile} row{result.rowsInFile === 1 ? '' : 's'}.
+              </strong>
+            )}
+
+            {result.warnings && result.warnings.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                {result.warnings.map((w, idx) => (
+                  <div key={idx} style={{ color: 'var(--amber-11, #b45309)', fontWeight: 500 }}>ℹ️ {w}</div>
+                ))}
+              </div>
+            )}
+
             {result.applied.length === 0 ? (
-              <div style={{ marginTop: 6 }}>Everything in the file already matched what was on record.</div>
+              <div style={{ marginTop: 6 }}>
+                {result.matchedBy === 'none'
+                  ? 'No fields were modified because no recognizable company data could be extracted.'
+                  : 'Everything in the file already matched what was on record.'}
+              </div>
             ) : (
               <div style={{ marginTop: 6 }}>
                 {result.applied.map((a) => (
@@ -678,9 +775,12 @@ function McaImport({ company, busy, run }: {
                 ))}
               </div>
             )}
-            <div style={{ marginTop: 6 }} className="tiny">
-              The engine re-ran: {result.sync.created} new obligations, {result.sync.removed} withdrawn.
-            </div>
+
+            {result.matchedBy !== 'none' && (
+              <div style={{ marginTop: 6 }} className="tiny">
+                The engine re-ran: {result.sync.created} new obligations, {result.sync.removed} withdrawn.
+              </div>
+            )}
           </div>
         )}
 
@@ -898,20 +998,6 @@ function Registrations({
       {(!showOnly || showOnly === 'gst') && (
         <Card title="GST Registrations" note="One set of returns is generated per GSTIN">
           <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="dropzone" onClick={() => document.getElementById('gst-upload')?.click()}>
-              {busy ? 'Reading…' : 'Drop a GST Certificate PDF to extract'}
-            </div>
-            <input id="gst-upload" type="file" accept="application/pdf" hidden onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (!file) return;
-              void run(async () => {
-                const form = new FormData();
-                form.append('file', file);
-                await upload(`/companies/${company.id}/import-gst`, form);
-              });
-            }} />
-            
             {company.gstRegistrations.map((g) => (
               <div key={g.id} className="file-row">
                 <div className="stack" style={{ flex: 1 }}>
@@ -963,22 +1049,6 @@ function Registrations({
       {(!showOnly || showOnly === 'msme') && (
         <Card title="Udyam (MSME) Registration">
           <div className="card-body grid grid-3" style={{ alignItems: 'end' }}>
-            <div style={{ gridColumn: 'span 3', paddingBottom: 10 }}>
-              <div className="dropzone" onClick={() => document.getElementById('udyam-upload')?.click()}>
-                {busy ? 'Reading…' : 'Drop an MSME/Udyam Certificate PDF to extract'}
-              </div>
-              <input id="udyam-upload" type="file" accept="application/pdf" hidden onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                void run(async () => {
-                  const form = new FormData();
-                  form.append('file', file);
-                  await upload(`/companies/${company.id}/import-udyam`, form);
-                });
-              }} />
-            </div>
-
             <Field label="Udyam number" error={local.udyam ?? errors['udyamNumber']}>
               <input value={msme.udyamNumber}
                      onChange={(e) => { setMsme({ ...msme, udyamNumber: e.target.value.toUpperCase() }); setLocalError('udyam', null); }} />

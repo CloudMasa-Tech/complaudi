@@ -5,6 +5,7 @@ import { getSupabaseAdminClient } from '../_shared/database.ts';
 import { AppError, BadRequestError } from '../_shared/errors.ts';
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
+import { validateCompanyMasterData } from '../_shared/companyValidation.ts';
 import { env } from '../_shared/env.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
@@ -91,8 +92,33 @@ Deno.serve(async (req: Request) => {
         entityType: z.enum(['PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'LLP', 'PARTNERSHIP', 'PROPRIETORSHIP', 'SECTION_8', 'UNREGISTERED']),
         stateCode: z.string().min(2).max(10),
         cin: z.string().max(21).optional().nullable(),
+        incorporationDate: z.string().optional().nullable(),
       });
       const body = await parseJsonBody(req, schema);
+
+      // Server-side Company Master Data & Duplicate CIN Validation
+      let existingCinsInDb: string[] = [];
+      try {
+        const { data: compRows } = await supabase.from('companies').select('cin');
+        if (compRows) {
+          existingCinsInDb = compRows.map((c: any) => c.cin).filter(Boolean) as string[];
+        }
+      } catch (err) {
+        console.warn('Could not query database for duplicate CIN check:', err);
+      }
+
+      const valResult = validateCompanyMasterData({
+        cin: body.cin,
+        companyName: body.companyName,
+        entityType: body.entityType,
+        incorporationDate: body.incorporationDate,
+        stateCode: body.stateCode,
+        existingCinsInDb,
+      });
+
+      if (!valResult.valid) {
+        throw new BadRequestError('Company validation failed', valResult.errors);
+      }
 
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email: body.email,

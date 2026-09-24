@@ -1,8 +1,5 @@
-/**
- * MCA company master data import.
- */
-import { decodeCin, CIN_REGEX } from './india';
-import type { Buffer } from 'node:buffer';
+// supabase/functions/_shared/mcaMasterData.ts
+import { decodeCin, CIN_REGEX } from './india.ts';
 
 const FIELD_ALIASES: Record<string, string[]> = {
   cin: [
@@ -50,9 +47,9 @@ const FIELD_ALIASES: Record<string, string[]> = {
 
 const normaliseHeader = (h: string): string => h.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-export function decodeCsvBuffer(buffer: Buffer): string {
+export function decodeCsvBuffer(buffer: Uint8Array): string {
   if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
-    return buffer.toString('utf8', 3);
+    return new TextDecoder('utf-8').decode(buffer.subarray(3));
   }
   if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
     return new TextDecoder('utf-16le').decode(buffer.subarray(2));
@@ -73,7 +70,7 @@ export function decodeCsvBuffer(buffer: Buffer): string {
   if (odd > 16 && even < 4) return new TextDecoder('utf-16le').decode(buffer);
   if (even > 16 && odd < 4) return new TextDecoder('utf-16be').decode(buffer);
 
-  return buffer.toString('utf8');
+  return new TextDecoder('utf-8').decode(buffer);
 }
 
 const guessDelimiter = (text: string): string => {
@@ -373,4 +370,18 @@ export function parseMcaMasterDataPdf(text: string): McaParseResult {
   }
 
   return { records, recognisedColumns, unrecognisedColumns: [], rowCount: records.length };
+}
+
+export function extractTextFromPdfBuffer(buffer: Uint8Array): string {
+  const decoder = new TextDecoder('latin1');
+  const raw = decoder.decode(buffer);
+  
+  const textBlocks: string[] = [];
+  const regex = /\(([^()]{2,})\)/g;
+  let match;
+  while ((match = regex.exec(raw)) !== null) {
+    textBlocks.push(match[1]);
+  }
+  
+  return textBlocks.join(' ') || raw.replace(/[^\x20-\x7E\n]/g, ' ');
 }

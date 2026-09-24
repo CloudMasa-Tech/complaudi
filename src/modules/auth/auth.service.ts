@@ -118,6 +118,16 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
   const phone = normalisePhone(input.phone);
   if (!phone) throw new BadRequestError('Enter a 10-digit Indian mobile number.');
 
+  if (input.cin && input.cin.trim()) {
+    const existingComp = await prisma.company.findFirst({
+      where: { cin: input.cin.trim().toUpperCase() },
+      select: { legalName: true },
+    });
+    if (existingComp) {
+      throw new ConflictError(`CIN ${input.cin.trim().toUpperCase()} is already registered in Complaudi under entity "${existingComp.legalName}".`);
+    }
+  }
+
   // A CIN settles these, so it overrides whatever the form defaulted to.
   const decoded = input.cin ? decodeCin(input.cin) : null;
   const entityType = (decoded?.entityType as TrialSignupInput['entityType']) ?? input.entityType;

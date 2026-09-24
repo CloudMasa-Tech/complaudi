@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { decodeCin, isValidStateCode, normalisePhone } from '../../lib/india';
 import { businessTypeSchema, entityTypeSchema } from '../companies/companies.schemas';
 
+import { validateCompanyMasterData } from '../../lib/companyValidation';
+
 export const registerSchema = z.object({
   organizationName: z.string().min(2).max(120),
   name: z.string().min(2).max(120),
@@ -50,10 +52,25 @@ export const trialSignupSchema = z
     businessType: businessTypeSchema.optional().nullable(),
   })
   .superRefine((data, ctx) => {
-    if (data.cin && !decodeCin(data.cin)) {
-      ctx.addIssue({ code: 'custom', path: ['cin'], message: 'That is not a valid CIN — 21 characters, e.g. U72900TN2020PTC138472.' });
+    if (data.cin && data.cin.trim()) {
+      const valRes = validateCompanyMasterData({
+        cin: data.cin,
+        companyName: data.companyName,
+        entityType: data.entityType,
+        incorporationDate: data.incorporationDate,
+        stateCode: data.stateCode,
+      });
+
+      if (!valRes.valid) {
+        for (const issue of valRes.errors) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [issue.field],
+            message: issue.message,
+          });
+        }
+      }
     }
-    // The CIN supplies the state; only ask for it when there is no CIN.
     const decodedState = data.cin ? decodeCin(data.cin)?.stateCode : null;
     if (!decodedState && !(data.stateCode && isValidStateCode(data.stateCode))) {
       ctx.addIssue({

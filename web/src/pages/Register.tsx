@@ -4,7 +4,7 @@ import { ApiError, post, tokens } from '../api/client';
 import type { BusinessType, EntityType } from '../api/types';
 import { BRAND_TAGLINE } from '../components/Layout';
 import { BUSINESS_TYPE_LABEL, Field, Spinner } from '../components/ui';
-
+import { validateCompanyMasterData } from '../lib/companyValidation';
 
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
   { value: 'PRIVATE_LIMITED', label: 'Private Limited Company' },
@@ -23,8 +23,6 @@ const STATES = [
   'AN','AP','AR','AS','BR','CG','CH','DL','DNDD','GA','GJ','HP','HR','JH','JK','KA','KL','LA','LD',
   'MH','ML','MN','MP','MZ','NL','OD','OT','PB','PY','RJ','SK','TG','TN','TR','UK','UP','WB',
 ];
-
-const CIN_SHAPE = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/;
 
 function fieldErrors(details: unknown): Record<string, string> {
   const out: Record<string, string> = {};
@@ -48,21 +46,76 @@ export function Register() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => {
-    setForm((f) => ({ ...f, [k]: v }));
+    const updated = { ...form, [k]: v };
+    setForm(updated);
     setErrors((e) => ({ ...e, [k]: '' }));
+
+    // Run client-side validation when CIN or company fields change
+    if (updated.cin.trim()) {
+      const val = validateCompanyMasterData({
+        cin: updated.cin.trim(),
+        companyName: updated.companyName,
+        entityType: updated.entityType,
+        incorporationDate: updated.incorporationDate,
+        stateCode: updated.stateCode,
+      });
+
+      // Auto-fill matching master fields when user enters a valid CIN and field is currently empty
+      if (val.masterRecord && k === 'cin') {
+        if (!updated.companyName && val.masterRecord.legalName) {
+          updated.companyName = val.masterRecord.legalName;
+        }
+        if (val.masterRecord.entityType) {
+          updated.entityType = val.masterRecord.entityType as EntityType;
+        }
+        if (val.masterRecord.stateCode) {
+          updated.stateCode = val.masterRecord.stateCode;
+        }
+        if (val.masterRecord.incorporationDate && !updated.incorporationDate) {
+          updated.incorporationDate = val.masterRecord.incorporationDate;
+        }
+        setForm({ ...updated });
+      }
+
+      const newErrors: Record<string, string> = {};
+      if (!val.valid) {
+        for (const issue of val.errors) {
+          newErrors[issue.field] = issue.message;
+        }
+      }
+      setErrors(newErrors);
+    }
   };
 
-  // A well-formed CIN carries the entity type and state, so the form stops
-  // asking for them. The server does the actual decoding — this only decides
-  // what to show.
-  const cinCarriesTheRest = CIN_SHAPE.test(form.cin.trim().toUpperCase());
   const isIndividual = form.entityType === 'UNREGISTERED';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    setErrors({});
+
+    // 1. Enforce client-side validation first
+    if (form.cin.trim()) {
+      const val = validateCompanyMasterData({
+        cin: form.cin.trim(),
+        companyName: form.companyName,
+        entityType: form.entityType,
+        incorporationDate: form.incorporationDate,
+        stateCode: form.stateCode,
+      });
+
+      if (!val.valid) {
+        const fieldErrs: Record<string, string> = {};
+        for (const issue of val.errors) {
+          fieldErrs[issue.field] = issue.message;
+        }
+        setErrors(fieldErrs);
+        setError('Please fix the company validation errors before proceeding.');
+        setBusy(false);
+        return;
+      }
+    }
+
     try {
       const body: Record<string, unknown> = {
         name: form.name.trim(),
@@ -72,10 +125,10 @@ export function Register() {
         companyName: form.companyName.trim(),
         incorporationDate: form.incorporationDate,
         entityType: form.entityType,
+        stateCode: form.stateCode,
       };
       if (form.businessType) body.businessType = form.businessType;
       if (!isIndividual && form.cin.trim()) body.cin = form.cin.trim().toUpperCase();
-      if (!cinCarriesTheRest) body.stateCode = form.stateCode;
 
       const result = await post<{ accessToken: string; refreshToken: string }>('/auth/register-trial', body);
       tokens.set(result.accessToken, result.refreshToken);
@@ -145,9 +198,7 @@ export function Register() {
               ) : (
                 <Field
                   label="CIN"
-                  hint={cinCarriesTheRest
-                    ? 'Entity type and state will be read from this'
-                    : 'Optional — if you have it, we read the entity type and state from it'}
+                  hint="Optional — if provided, company details are validated against MCA master data"
                   error={errors.cin}
                 >
                   <input value={form.cin} placeholder="U72900TN2020PTC138472"
@@ -168,34 +219,31 @@ export function Register() {
                 </Field>
               )}
 
-              {!cinCarriesTheRest && (
-                <>
-                  <Field
-                    label="Entity type"
-                    hint={isIndividual
-                      ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants — anything not registered under the Companies Act. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
-                      : undefined}
-                  >
-                    <select value={form.entityType} onChange={(e) => set('entityType', e.target.value as EntityType)}>
-                      {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </Field>
-                  {isIndividual && (
-                    <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
-                      <select value={form.businessType}
-                              onChange={(e) => set('businessType', e.target.value as BusinessType)}>
-                        <option value="">— Select —</option>
-                        {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
-                      </select>
-                    </Field>
-                  )}
-                  <Field label="State" hint="Drives professional tax and ESI thresholds" error={errors.stateCode}>
-                    <select value={form.stateCode} onChange={(e) => set('stateCode', e.target.value)}>
-                      {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </Field>
-                </>
+              <Field
+                label="Entity type"
+                hint={isIndividual
+                  ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants — anything not registered under the Companies Act. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
+                  : undefined}
+                error={errors.entityType}
+              >
+                <select value={form.entityType} onChange={(e) => set('entityType', e.target.value as EntityType)}>
+                  {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </Field>
+              {isIndividual && (
+                <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
+                  <select value={form.businessType}
+                          onChange={(e) => set('businessType', e.target.value as BusinessType)}>
+                    <option value="">— Select —</option>
+                    {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
+                  </select>
+                </Field>
               )}
+              <Field label="State" hint="Drives professional tax and ESI thresholds" error={errors.stateCode}>
+                <select value={form.stateCode} onChange={(e) => set('stateCode', e.target.value)}>
+                  {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
             </div>
 
             {error && <div className="alert alert-error">{error}</div>}

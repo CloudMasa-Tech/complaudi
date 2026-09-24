@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { qs, resolveApiUrl } from '../api/client';
+import { view, forceDownload, qs, resolveApiUrl } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
 import type { Company, CompanyProfile, Overview, EvaluatedRegistration } from '../api/types';
@@ -10,12 +10,91 @@ import {
   SeverityDot, Stat, fmtDate, titleise, initials,
 } from '../components/ui';
 
+interface DocumentItem {
+  id: string;
+  companyId: string;
+  fileName: string;
+  label: string | null;
+  createdAt: string;
+}
+
 const SEVERITY_COLOUR: Record<string, string> = {
   CRITICAL: 'var(--critical)', HIGH: 'var(--high)', MEDIUM: 'var(--medium)', LOW: 'var(--text-3)',
 };
 
+function EyeIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 
-function RegistrationBreakdownDrawer({ profile, registrations, onClose }: { profile: CompanyProfile, registrations: EvaluatedRegistration[], onClose: () => void }) {
+function DownloadIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function DocumentActionButtons({ doc, style }: { doc: DocumentItem; style?: React.CSSProperties }) {
+  return (
+    <div className="doc-action-group" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, zIndex: 5, ...style }}>
+      <button
+        type="button"
+        className="btn-xs btn-outline icon-btn-compact"
+        title="View Documents"
+        aria-label="View Documents"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 26,
+          height: 26,
+          padding: 0,
+          borderRadius: 4,
+          border: '1px solid var(--border-strong, #cbd5e1)',
+          background: 'var(--surface-1, #ffffff)',
+          color: 'var(--text-1, #1e293b)',
+          cursor: 'pointer',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        }}
+        onClick={(e) => { e.stopPropagation(); void view(doc.id); }}
+      >
+        <EyeIcon size={14} />
+      </button>
+      <button
+        type="button"
+        className="btn-xs btn-outline icon-btn-compact"
+        title="Download Documents"
+        aria-label="Download Documents"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 26,
+          height: 26,
+          padding: 0,
+          borderRadius: 4,
+          border: '1px solid var(--border-strong, #cbd5e1)',
+          background: 'var(--surface-1, #ffffff)',
+          color: 'var(--text-1, #1e293b)',
+          cursor: 'pointer',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        }}
+        onClick={(e) => { e.stopPropagation(); void forceDownload(doc.id, doc.fileName); }}
+      >
+        <DownloadIcon size={14} />
+      </button>
+    </div>
+  );
+}
+
+function RegistrationBreakdownDrawer({ profile, registrations, docs, onClose }: { profile: CompanyProfile, registrations: EvaluatedRegistration[], docs: DocumentItem[], onClose: () => void }) {
   return (
     <Drawer onClose={onClose}>
       <header className="drawer-head">
@@ -23,80 +102,107 @@ function RegistrationBreakdownDrawer({ profile, registrations, onClose }: { prof
         <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close">✕</button>
       </header>
       <div className="drawer-body">
-        {registrations.map(r => (
-          <div key={r.id} className="card stack" style={{ padding: 16, gap: 8 }}>
-            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600 }}>{r.title}</span>
-              <Badge value={
-                r.status === 'REGISTERED' ? 'COMPLETED' 
-                : r.status === 'ELIGIBLE' || r.status === 'PENDING_APPLICATION' ? 'WAIVED' 
-                : 'DUE'
-              }>
-                {titleise(r.status.replace(/_/g, ' '))}
-              </Badge>
-            </div>
-            <p className="tiny dim" style={{ margin: 0 }}>{r.reason}</p>
-            {(r.status === 'MANDATORY' || r.status === 'ELIGIBLE' || r.status === 'EXPIRED_RENEWAL_DUE') && (
-              <div className="row" style={{ gap: 12, marginTop: 4 }}>
-                <Link className="btn btn-sm btn-primary" to={`/companies/${profile.id}/edit`}>Add number to profile</Link>
-                {r.ctaUrl && (
-                  <a className="btn btn-sm btn-outline" href={r.ctaUrl} target="_blank" rel="noopener noreferrer">
-                    Register externally →
-                  </a>
-                )}
+        {registrations.map(r => {
+          const docTypeKey = r.id === 'GSTIN' ? 'gst' : r.id === 'MSME' ? 'msme' : r.id === 'DPIIT' ? 'dpiit' : r.id === 'PAN' ? 'pan' : r.id.toLowerCase();
+          const doc = docs.find(d => (d.label || '').toLowerCase() === docTypeKey);
+
+          return (
+            <div key={r.id} className="card stack" style={{ padding: 16, gap: 8 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600 }}>{r.title}</span>
+                <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                  {doc && <DocumentActionButtons doc={doc} />}
+                  <Badge value={
+                    r.status === 'REGISTERED' ? 'COMPLETED' 
+                    : r.status === 'ELIGIBLE' || r.status === 'PENDING_APPLICATION' ? 'WAIVED' 
+                    : 'DUE'
+                  }>
+                    {titleise(r.status.replace(/_/g, ' '))}
+                  </Badge>
+                </div>
               </div>
-            )}
-          </div>
-        ))}
+              <p className="tiny dim" style={{ margin: 0 }}>{r.reason}</p>
+
+              {(r.status === 'MANDATORY' || r.status === 'ELIGIBLE' || r.status === 'EXPIRED_RENEWAL_DUE') && (
+                <div className="row" style={{ gap: 12, marginTop: 4 }}>
+                  <Link className="btn btn-sm btn-primary" to={`/companies/${profile.id}/edit`}>Add number to profile</Link>
+                  {r.ctaUrl && (
+                    <a className="btn btn-sm btn-outline" href={r.ctaUrl} target="_blank" rel="noopener noreferrer">
+                      Register externally →
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </Drawer>
   );
 }
 
-/** One registration. Held ones are marked; the rest say so and step back. */
-function Reg({ label, value, foot, badgeUrl, badgeStyle }: { label: string; value: string | null; foot?: string; badgeUrl?: string; badgeStyle?: React.CSSProperties }) {
-  const hasValue = value !== null;
-  const displayValue = hasValue ? value : 'Not held';
+/** Clean card layout with left-aligned details and large right-aligned logo */
+function RegCard({
+  title,
+  subTitle,
+  idLabel,
+  idValue,
+  statusLabel,
+  tone,
+  logoUrl,
+  doc,
+}: {
+  title: string;
+  subTitle?: string;
+  idLabel?: string;
+  idValue: string | null;
+  statusLabel?: string;
+  tone?: 'good' | 'bad' | 'warn' | 'idle';
+  logoUrl?: string;
+  doc?: DocumentItem;
+}) {
+  const hasValue = idValue !== null && idValue !== 'Not held' && idValue !== 'Not registered' && idValue !== 'Not enrolled';
+  const displayValue = idValue ?? 'Not held';
+  const statusTone = tone ?? (hasValue ? 'good' : 'idle');
 
-  const badgeBackground: React.CSSProperties = hasValue
-    ? {}
-    : {
-        background: 'rgba(255, 255, 255, 0.25)',
-        width: '24px', height: '24px', borderRadius: '50%',
-        position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'var(--text)',
-      };
+  const statusColour = statusTone === 'good' ? 'var(--good)'
+    : statusTone === 'bad' ? 'var(--critical)'
+    : statusTone === 'warn' ? 'var(--high)'
+    : 'var(--text-3)';
 
   return (
     <div className={`reg-tile ${hasValue ? 'held' : 'empty'}`}>
-      <span className="reg-label">{label}</span>
-      <span className={`reg-value${hasValue ? '' : ' na'}`}>{displayValue}</span>
-      {foot && <span className="reg-foot">{foot}</span>}
-      {badgeUrl && (
-        <img className="reg-badge" src={badgeUrl} alt={label} style={{
-          position: 'absolute', top: '50%', right: 4, transform: 'translateY(-50%)', width: 88, height: 88, objectFit: 'contain',
-          opacity: hasValue ? 1 : 0.4, filter: hasValue ? 'none' : 'grayscale(100%)',
-          ...badgeStyle,
-          ...badgeBackground
-        }} />
-      )}
-    </div>
-  );
-}
+      {/* Left Content Area */}
+      <div className="card-left-content">
+        <div className="card-title-row">
+          {statusTone !== 'idle' && <span className="dot" style={{ background: statusColour, flexShrink: 0 }} />}
+          <span className="card-title">{title}</span>
+        </div>
 
-/** A standing question with a one-word answer, coloured by the answer. */
-function Status({ label, value, foot, tone }: {
-  label: string; value: string; foot: string; tone: 'good' | 'bad' | 'warn' | 'idle';
-}) {
-  const colour = tone === 'good' ? 'var(--good)' : tone === 'bad' ? 'var(--critical)'
-    : tone === 'warn' ? 'var(--high)' : 'var(--text-3)';
-  return (
-    <div className="status-pill">
-      <span className="dot" style={{ background: colour }} />
-      <div className="stack" style={{ minWidth: 0, gap: 1 }}>
-        <span className="status-pill-label">{label}</span>
-        <span className="status-pill-value" style={{ color: colour }}>{value}</span>
-        <span className="status-pill-foot">{foot}</span>
+        <div className="card-details-stack">
+          {subTitle && <div className="card-subtitle">{subTitle}</div>}
+          <div className="card-id-row">
+            {idLabel && <span className="card-id-label">{idLabel}: </span>}
+            <span className={`card-id-value ${hasValue ? '' : 'na'}`}>{displayValue}</span>
+          </div>
+          {statusLabel && (
+            <div className="card-status-text" style={{ color: statusTone !== 'idle' ? statusColour : 'var(--text-3)' }}>
+              {statusLabel}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right Area: Top-right Document Actions + Large Right-Aligned Logo */}
+      <div className="card-right-area">
+        {doc ? (
+          <DocumentActionButtons doc={doc} style={{ alignSelf: 'flex-end' }} />
+        ) : (
+          <div style={{ height: 24 }} />
+        )}
+        {logoUrl && (
+          <img src={logoUrl} alt={title} className="card-logo-large" />
+        )}
       </div>
     </div>
   );
@@ -117,11 +223,6 @@ const KYC_VIEW = {
 
 /**
  * The entity itself, before anything it owes.
- *
- * Three bands, because a reviewer asks three questions in order: who is this,
- * is it in good standing, and what does it hold. A flat grid of equal tiles
- * answered all three at the same volume — and gave a blank the same weight as
- * a registration number.
  */
 function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logoStorageKey?: string | null }) {
   const { dsc, mcaKyc, msme, gstins, dpiit } = profile;
@@ -129,111 +230,197 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
   const dscView = DSC_VIEW[dsc.status];
   const kycView = KYC_VIEW[mcaKyc.status];
 
-  const regCards = [
+  const { data: docsData } = useResource<{ rows: DocumentItem[] }>(`/documents?companyId=${profile.id}`, [profile.id]);
+  const docs = docsData?.rows || [];
+
+  const panDoc = docs.find((d) => (d.label || '').toLowerCase() === 'pan');
+  const msmeDoc = docs.find((d) => (d.label || '').toLowerCase() === 'msme');
+  const gstDoc = docs.find((d) => (d.label || '').toLowerCase() === 'gst');
+  const dpiitDoc = docs.find((d) => (d.label || '').toLowerCase() === 'dpiit');
+  const dscDoc = docs.find((d) => (d.label || '').toLowerCase() === 'dsc');
+  const mcaDoc = docs.find((d) => ['master_data', 'mca_report', 'mca'].includes((d.label || '').toLowerCase()));
+  const kycDoc = docs.find((d) => ['kyc', 'dir3', 'dir3_kyc'].includes((d.label || '').toLowerCase()));
+  const daDoc = docs.find((d) => ['da', 'director_audit'].includes((d.label || '').toLowerCase()));
+  const r3Doc = docs.find((d) => ['r3', 'dir3_return', 'mca_return'].includes((d.label || '').toLowerCase()));
+  const pfDoc = docs.find((d) => (d.label || '').toLowerCase() === 'pf');
+  const esiDoc = docs.find((d) => (d.label || '').toLowerCase() === 'esi');
+
+  const allCards = [
+    {
+      id: 'PAN',
+      hasData: Boolean(profile.pan || panDoc),
+      render: (
+        <RegCard
+          key="pan"
+          title="PAN"
+          subTitle="Income Tax PAN"
+          idLabel="PAN Number"
+          idValue={profile.pan ?? null}
+          statusLabel={profile.pan ? 'Available & Valid' : panDoc ? 'Document Uploaded' : 'Not available'}
+          logoUrl="/pan.svg?v=3"
+          doc={panDoc}
+        />
+      ),
+    },
     {
       id: 'MSME',
-      hasData: Boolean(msme?.udyamNumber),
+      hasData: Boolean(msme?.udyamNumber || msmeDoc),
       render: (
-        <Reg
+        <RegCard
           key="msme"
-          label="MSME · Udyam"
-          value={msme?.udyamNumber ?? null}
-          foot={msme ? `${titleise(msme.category)}${msme.registeredOn ? ` · ${fmtDate(msme.registeredOn)}` : ''}` : 'Not registered'}
-          badgeUrl="/msme.webp?v=3"
+          title="MSME / UDYAM"
+          subTitle="Udyam Registration"
+          idLabel="Udyam Number"
+          idValue={msme?.udyamNumber ?? null}
+          statusLabel={msme ? `Registered${msme.category ? ` · ${titleise(msme.category)}` : ''}` : msmeDoc ? 'Document Uploaded' : 'Not registered'}
+          logoUrl="/msme.webp?v=3"
+          doc={msmeDoc}
         />
       ),
     },
     {
       id: 'GSTIN',
-      hasData: live.length > 0 && Boolean(live[0]?.gstin),
+      hasData: Boolean((live.length > 0 && live[0]?.gstin) || gstDoc),
       render: (
-        <Reg
+        <RegCard
           key="gstin"
-          label="GSTIN"
-          value={live[0]?.gstin ?? null}
-          foot={
-            live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more state${live.length === 2 ? '' : 's'}`
-              : live.length === 1 ? live[0]!.stateCode : 'Not registered'
+          title="GST"
+          subTitle="GST Registration"
+          idLabel="GSTIN"
+          idValue={live[0]?.gstin ?? null}
+          statusLabel={
+            live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more states`
+              : live.length === 1 ? `${live[0]!.stateCode} · Registered` : gstDoc ? 'Document Uploaded' : 'Not registered'
           }
-          badgeUrl="/gst.webp?v=3"
+          logoUrl="/gst.webp?v=3"
+          doc={gstDoc}
         />
       ),
     },
     {
       id: 'DPIIT',
-      hasData: Boolean(dpiit?.number),
+      hasData: Boolean(dpiit?.number || dpiitDoc),
       render: (
-        <Reg
+        <RegCard
           key="dpiit"
-          label="DPIIT · Startup India"
-          value={dpiit?.number ?? null}
-          foot={dpiit?.recognisedOn ? `Recognised ${fmtDate(dpiit.recognisedOn)}` : dpiit ? undefined : 'Not recognised'}
-          badgeUrl="/dpiit.webp?v=3"
+          title="DPIIT / STARTUP"
+          subTitle="DPIIT Recognition"
+          idLabel="DPIIT Number"
+          idValue={dpiit?.number ?? null}
+          statusLabel={dpiit?.recognisedOn ? `Recognised · ${fmtDate(dpiit.recognisedOn)}` : dpiit ? 'Recognised' : dpiitDoc ? 'Document Uploaded' : 'Not recognised'}
+          logoUrl="/dpiit.webp?v=3"
+          doc={dpiitDoc}
+        />
+      ),
+    },
+    {
+      id: 'MCA',
+      hasData: Boolean(profile.registrationNumber || mcaDoc),
+      render: (
+        <RegCard
+          key="mca"
+          title="MCA"
+          subTitle="MCA Master Data"
+          idLabel="Registration No"
+          idValue={profile.registrationNumber || null}
+          statusLabel={mcaDoc ? 'Document Uploaded' : profile.registrationNumber ? 'Master Data Recorded' : 'Not recorded'}
+          logoUrl="/mca.svg?v=3"
+          doc={mcaDoc}
+        />
+      ),
+    },
+    {
+      id: 'KYC',
+      hasData: Boolean(mcaKyc.status === 'MET' || kycDoc || mcaDoc),
+      render: (
+        <RegCard
+          key="kyc"
+          title="KYC"
+          subTitle="Director DIR-3 KYC"
+          idLabel="Status"
+          idValue={kycView.word}
+          tone={kycView.tone}
+          statusLabel={
+            mcaKyc.status === 'NOT_APPLICABLE'
+              ? 'No DIN on record'
+              : `${mcaKyc.periodLabel ?? ''}${mcaKyc.dueDate ? ` · due ${fmtDate(mcaKyc.dueDate)}` : ''}`
+          }
+          logoUrl="/kyc.svg?v=3"
+          doc={kycDoc || mcaDoc}
         />
       ),
     },
     {
       id: 'PF',
-      hasData: Boolean(profile.epfoCode),
+      hasData: Boolean(profile.epfoCode || pfDoc),
       render: (
-        <Reg key="epfo" label="PF · EPFO" value={profile.epfoCode} foot={profile.epfoCode ? undefined : 'Not enrolled'} badgeUrl="/epfo.png?v=3" />
+        <RegCard
+          key="epfo"
+          title="PF"
+          subTitle="EPFO Registration"
+          idLabel="PF Code"
+          idValue={profile.epfoCode ?? null}
+          statusLabel={profile.epfoCode ? 'Enrolled' : pfDoc ? 'Document Uploaded' : 'Not enrolled'}
+          logoUrl="/epfo.png?v=3"
+          doc={pfDoc}
+        />
       ),
     },
     {
       id: 'ESI',
-      hasData: Boolean(profile.esicCode),
+      hasData: Boolean(profile.esicCode || esiDoc),
       render: (
-        <Reg key="esic" label="ESI · ESIC" value={profile.esicCode} foot={profile.esicCode ? undefined : 'Not enrolled'} badgeUrl="/esic.png?v=3" />
-      ),
-    },
-  ];
-
-  const mcaDscCards = [
-    {
-      id: 'MCA_KYC',
-      hasData: mcaKyc.status === 'MET',
-      render: (
-        <Status
-          key="mcaKyc"
-          label="MCA KYC · DIR-3"
-          value={kycView.word}
-          tone={kycView.tone}
-          foot={
-            mcaKyc.status === 'NOT_APPLICABLE'
-              ? 'No DIN on record, so none is raised'
-              : `${mcaKyc.periodLabel ?? ''}${mcaKyc.dueDate ? ` · due ${fmtDate(mcaKyc.dueDate)}` : ''}`
-          }
+        <RegCard
+          key="esic"
+          title="ESI"
+          subTitle="ESIC Registration"
+          idLabel="ESI Code"
+          idValue={profile.esicCode ?? null}
+          statusLabel={profile.esicCode ? 'Enrolled' : esiDoc ? 'Document Uploaded' : 'Not enrolled'}
+          logoUrl="/esic.png?v=3"
+          doc={esiDoc}
         />
       ),
     },
     {
-      id: 'DSC',
-      hasData: dsc.status !== 'NOT_RECORDED',
+      id: 'DA',
+      hasData: Boolean(dsc.status !== 'NOT_RECORDED' || daDoc || dscDoc),
       render: (
-        <Status
-          key="dsc"
-          label="DSC"
-          value={dscView.word}
+        <RegCard
+          key="da"
+          title="DA · Director Audit"
+          subTitle="DSC & Expiry Audit"
+          idLabel="Status"
+          idValue={dscView.word}
           tone={dscView.tone}
-          foot={
-            dsc.status === 'NOT_RECORDED'
-              ? `No expiry on record for ${dsc.total} director${dsc.total === 1 ? '' : 's'}`
-              : `${dsc.active} of ${dsc.total} current${dsc.nextExpiry ? ` · next expires ${fmtDate(dsc.nextExpiry)}` : ''}`
-          }
+          statusLabel={`${dsc.active} of ${dsc.total} directors active`}
+          logoUrl="/da.svg?v=3"
+          doc={daDoc || dscDoc}
+        />
+      ),
+    },
+    {
+      id: 'R3',
+      hasData: Boolean(profile.directors.length > 0 || r3Doc || mcaDoc),
+      render: (
+        <RegCard
+          key="r3"
+          title="R3 · DIR-3 Return"
+          subTitle="DIR-3 Return Filing"
+          idLabel="Filing"
+          idValue={profile.directors.length > 0 ? 'Compliant' : 'Not required'}
+          tone={profile.directors.length > 0 ? 'good' : 'idle'}
+          statusLabel={profile.directors.length > 0 ? `${profile.directors.length} director DIN(s) filed` : 'No directors recorded'}
+          logoUrl="/r3.svg?v=3"
+          doc={r3Doc || mcaDoc}
         />
       ),
     },
   ];
 
-  const sortedRegCards = [
-    ...regCards.filter((c) => c.hasData),
-    ...regCards.filter((c) => !c.hasData),
-  ];
-
-  const sortedMcaDscCards = [
-    ...mcaDscCards.filter((c) => c.hasData),
-    ...mcaDscCards.filter((c) => !c.hasData),
-  ];
+  const filledCards = allCards.filter((c) => c.hasData);
+  const unfilledCards = allCards.filter((c) => !c.hasData);
+  const sortedCards = [...filledCards, ...unfilledCards];
 
   return (
     <div className="card">
@@ -254,12 +441,6 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           </span>
         </div>
         <div className="entity-id-wrap">
-          {profile.pan && (
-            <div className="id-badge-outline">
-              <span className="id-badge-outline-label">PAN</span>
-              <span className="id-badge-outline-value">{profile.pan}</span>
-            </div>
-          )}
           {profile.registrationNumber && profile.registrationLabel !== 'PAN' && (
             <div className="id-badge-outline">
               <span className="id-badge-outline-label">{profile.registrationLabel}</span>
@@ -269,14 +450,9 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
         </div>
       </header>
 
-      {/* Row 1: Only 5 Registration Widgets */}
+      {/* Grid of Registration & Status Cards, dynamically ordered */}
       <div className="reg-grid">
-        {sortedRegCards.map((c) => c.render)}
-      </div>
-
-      {/* Row 2: MCA KYC + DSC Widgets */}
-      <div className="status-strip">
-        {sortedMcaDscCards.map((c) => c.render)}
+        {sortedCards.map((c) => c.render)}
       </div>
 
       <div className="row" style={{ padding: '0 18px 8px' }}>
@@ -409,6 +585,7 @@ export function Dashboard() {
     `/dashboard/overview${qs({ companyId: selectedId ?? undefined })}`,
     [selectedId],
   );
+  const { data: docsData } = useResource<{ rows: DocumentItem[] }>(selectedId ? `/documents?companyId=${selectedId}` : null, [selectedId]);
 
   if (error) return <ErrorNote error={error} />;
   if (initial || !data) return <Loading label="Building the compliance picture" />;
@@ -584,7 +761,14 @@ export function Dashboard() {
         </div>
       )}
 
-      {drawerOpen && data.profile && <RegistrationBreakdownDrawer profile={data.profile} registrations={data.registrations} onClose={() => setDrawerOpen(false)} />}
+      {drawerOpen && data.profile && (
+        <RegistrationBreakdownDrawer
+          profile={data.profile}
+          registrations={data.registrations}
+          docs={docsData?.rows || []}
+          onClose={() => setDrawerOpen(false)}
+        />
+      )}
     </>
   );
 }

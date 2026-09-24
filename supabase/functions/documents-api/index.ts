@@ -84,6 +84,11 @@ Deno.serve(async (req: Request) => {
 
       if (uploadError) throw new AppError(uploadError.message, 500);
 
+      const sha256Buffer = await crypto.subtle.digest('SHA-256', fileBuffer);
+      const sha256Hex = Array.from(new Uint8Array(sha256Buffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
       const docId = crypto.randomUUID();
       const { data: document, error: dbError } = await supabase
         .from('documents')
@@ -93,12 +98,13 @@ Deno.serve(async (req: Request) => {
           complianceItemId: complianceItemId || null,
           fileName,
           storageKey,
+          storageDriver: 'supabase',
           mimeType,
           sizeBytes,
+          sha256: sha256Hex,
           label: label || fileName,
           uploadedById: authCtx.userId,
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         })
         .select('*, uploadedBy:users(id, name, email)')
         .single();

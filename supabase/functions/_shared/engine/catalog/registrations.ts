@@ -20,6 +20,8 @@ export interface RegistrationRule {
   evaluate: (profile: any) => EvaluatedRegistration;
 }
 
+const hasVal = (v: unknown): boolean => typeof v === 'string' ? v.trim().length > 0 : Boolean(v);
+
 export const registrationCatalog: RegistrationRule[] = [
   {
     id: 'mca_cin',
@@ -27,7 +29,7 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'MCA',
     isEligible: (profile) => ['PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'SECTION_8'].includes(profile.entityType),
     evaluate: (profile) => {
-      const isCompleted = !!profile.registrationNumber;
+      const isCompleted = hasVal(profile.registrationNumber);
       return {
         id: 'mca_cin',
         title: 'MCA Incorporation (CIN)',
@@ -43,7 +45,7 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'MCA',
     isEligible: (profile) => profile.entityType === 'LLP',
     evaluate: (profile) => {
-      const isCompleted = !!profile.registrationNumber;
+      const isCompleted = hasVal(profile.registrationNumber);
       return {
         id: 'mca_llpin',
         title: 'LLP Incorporation (LLPIN)',
@@ -59,7 +61,8 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'GST',
     isEligible: () => true,
     evaluate: (profile) => {
-      const isCompleted = profile.gstins?.length > 0;
+      const activeGstins = (profile.gstins || []).filter((g: any) => hasVal(g?.gstin) && g.isActive !== false);
+      const isCompleted = activeGstins.length > 0;
       const turnover = profile.annualTurnover ?? 0;
       const isRequired = turnover >= 20_00_000;
       return {
@@ -68,7 +71,7 @@ export const registrationCatalog: RegistrationRule[] = [
         authority: 'GST',
         status: isCompleted ? 'REGISTERED' : isRequired ? 'MANDATORY' : 'ELIGIBLE',
         reason: isCompleted
-          ? `Completed with ${profile.gstins.length} active GSTINs`
+          ? `Completed with ${activeGstins.length} active GSTINs`
           : isRequired
             ? `Required: your turnover (₹${(turnover/100000).toFixed(1)}L) crosses the ₹20 lakh GST threshold`
             : `Eligible / Not Mandatory Currently (Turnover is ₹${(turnover/100000).toFixed(1)}L). Optional / Register when required.`,
@@ -82,7 +85,7 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'MSME',
     isEligible: () => true,
     evaluate: (profile) => {
-      const isCompleted = profile.msme !== null;
+      const isCompleted = hasVal(profile.msme?.udyamNumber);
       return {
         id: 'msme',
         title: 'MSME / Udyam',
@@ -101,7 +104,7 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'LABOUR',
     isEligible: () => true,
     evaluate: (profile) => {
-      const isCompleted = profile.epfoCode !== null;
+      const isCompleted = hasVal(profile.epfoCode);
       const empCount = profile.employeeCount ?? 0;
       const isRequired = empCount >= 20;
       return {
@@ -124,7 +127,7 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'LABOUR',
     isEligible: () => true,
     evaluate: (profile) => {
-      const isCompleted = profile.esicCode !== null;
+      const isCompleted = hasVal(profile.esicCode);
       const empCount = profile.employeeCount ?? 0;
       const threshold = (profile.stateCode === 'MH' || profile.stateCode === 'CH') ? 20 : 10;
       const isRequired = empCount >= threshold;
@@ -148,7 +151,7 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'DPIIT',
     isEligible: (profile) => ['PRIVATE_LIMITED', 'LLP', 'PARTNERSHIP'].includes(profile.entityType),
     evaluate: (profile) => {
-      const isCompleted = profile.dpiit !== null;
+      const isCompleted = hasVal(profile.dpiit?.number);
       return {
         id: 'dpiit',
         title: 'Startup India (DPIIT)',
@@ -165,10 +168,10 @@ export const registrationCatalog: RegistrationRule[] = [
     id: 'shop_est',
     title: 'Shop & Establishment',
     authority: 'LABOUR',
-    isEligible: (profile) => !!profile.shopAndEstablishment || profile.businessType === 'SHOP_RETAIL' || profile.businessType === 'FOOD_RESTAURANT' ||
+    isEligible: (profile) => hasVal(profile.shopAndEstablishment) || profile.businessType === 'SHOP_RETAIL' || profile.businessType === 'FOOD_RESTAURANT' ||
                          (!!profile.industry && /(retail|shop|restaurant|cafe|clinic|hospital|gym|manufacturing|factory|warehouse|logistics)/i.test(profile.industry)),
     evaluate: (profile) => {
-      const isCompleted = !!profile.shopAndEstablishment;
+      const isCompleted = hasVal(profile.shopAndEstablishment);
       return {
         id: 'shop_est',
         title: 'Shop & Establishment',
@@ -185,9 +188,9 @@ export const registrationCatalog: RegistrationRule[] = [
     id: 'fssai',
     title: 'FSSAI License',
     authority: 'LABOUR',
-    isEligible: (profile) => !!profile.fssai || profile.businessType === 'FOOD_RESTAURANT',
+    isEligible: (profile) => hasVal(profile.fssai) || profile.businessType === 'FOOD_RESTAURANT',
     evaluate: (profile) => {
-      const isCompleted = !!profile.fssai;
+      const isCompleted = hasVal(profile.fssai);
       return {
         id: 'fssai',
         title: 'FSSAI License',
@@ -206,10 +209,10 @@ export const registrationCatalog: RegistrationRule[] = [
     authority: 'INCOME_TAX',
     isEligible: (profile) => {
       const PT_STATES = ['AP', 'AS', 'BR', 'CG', 'GJ', 'JH', 'KA', 'KL', 'MP', 'MH', 'MN', 'ML', 'MZ', 'NL', 'PY', 'SK', 'TN', 'TG', 'TR', 'WB'];
-      return !!profile.professionalTax || PT_STATES.includes(profile.stateCode ?? '');
+      return hasVal(profile.professionalTax) || PT_STATES.includes(profile.stateCode ?? '');
     },
     evaluate: (profile) => {
-      const isCompleted = !!profile.professionalTax;
+      const isCompleted = hasVal(profile.professionalTax);
       return {
         id: 'pt',
         title: 'Professional Tax (PT)',
@@ -226,10 +229,10 @@ export const registrationCatalog: RegistrationRule[] = [
     id: 'trade_license',
     title: 'Trade License',
     authority: 'LABOUR',
-    isEligible: (profile) => !!profile.tradeLicense || profile.businessType === 'SHOP_RETAIL' || profile.businessType === 'FOOD_RESTAURANT' ||
+    isEligible: (profile) => hasVal(profile.tradeLicense) || profile.businessType === 'SHOP_RETAIL' || profile.businessType === 'FOOD_RESTAURANT' ||
                          (!!profile.industry && /(retail|shop|restaurant|cafe|clinic|hospital|gym|manufacturing|factory|warehouse|logistics)/i.test(profile.industry)),
     evaluate: (profile) => {
-      const isCompleted = !!profile.tradeLicense;
+      const isCompleted = hasVal(profile.tradeLicense);
       return {
         id: 'trade_license',
         title: 'Trade License',

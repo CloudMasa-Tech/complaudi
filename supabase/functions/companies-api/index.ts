@@ -7,6 +7,15 @@ import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
+import {
+  decodeCsvBuffer,
+  extractTextFromPdfBuffer,
+  parseMcaMasterData,
+  parseMcaMasterDataPdf,
+  type McaParseResult,
+} from '../_shared/mcaMasterData.ts';
+import { extractGstInfo, extractUdyamInfo } from '../_shared/certificateExtractor.ts';
+import { looksLikePdf, previewCompanyImport } from '../_shared/companyDocumentImport.ts';
 
 Deno.serve(async (req: Request) => {
   const corsResponse = handleCors(req);
@@ -39,6 +48,20 @@ Deno.serve(async (req: Request) => {
 
     // ── Protected Routes ─────────────────────────────────────────────────────
     const authCtx = await getAuthContext(req);
+
+    // POST /import-preview
+    if (req.method === 'POST' && path === '/import-preview') {
+      requireCapability(authCtx, 'company.create');
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      if (!file) throw new BadRequestError('Attach the file under the "file" field of a multipart request.');
+      const buffer = new Uint8Array(await file.arrayBuffer());
+      const preview = previewCompanyImport(buffer);
+      return jsonResponse({
+        ...preview,
+        fileName: file.name,
+      });
+    }
 
     // GET /companies
     if (req.method === 'GET' && (path === '' || path === '/')) {
@@ -236,6 +259,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // POST /companies/:id/restore
+    const restoreMatch = path.match(/^\/([a-f0-9-]+)\/restore$/);
+    if (req.method === 'POST' && restoreMatch) {
+      const companyId = restoreMatch[1];
+      await assertCan(authCtx, companyId, 'company.archive');
+      const { data: restored, error } = await supabase
+        .from('companies')
+        .update({ isActive: true })
+        .eq('id', companyId)
+        .select()
+        .single();
+
+      if (error) throw new AppError(error.message, 400);
+      return jsonResponse(serialiseBigInt(restored));
+    }
+
     // GET /companies/:id/members
     const membersMatch = path.match(/^\/([a-f0-9-]+)\/members$/);
     if (req.method === 'GET' && membersMatch) {
@@ -295,7 +334,6 @@ Deno.serve(async (req: Request) => {
       });
       const body = await parseJsonBody(req, schema);
 
-      // 1. Check if user exists in users table
       let { data: targetUser } = await supabase
         .from('users')
         .select('*')
@@ -303,7 +341,6 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (!targetUser) {
-        // Create user in Supabase Auth and users table
         const tempPassword = `Temp@${crypto.randomUUID().slice(0, 8)}`;
         const { data: newAuthUser, error: authErr } = await supabase.auth.admin.createUser({
           email: body.email,
@@ -336,7 +373,6 @@ Deno.serve(async (req: Request) => {
         targetUser = newUser;
       }
 
-      // 2. Upsert company membership grant
       const { data: membership, error: memErr } = await supabase
         .from('company_memberships')
         .upsert({
@@ -372,6 +408,36 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(result, 201);
     }
 
+    // GET /companies/:id/deletion-impact
+    const deletionImpactMatch = path.match(/^\/([a-f0-9-]+)\/deletion-impact$/);
+    if (req.method === 'GET' && deletionImpactMatch) {
+      const companyId = deletionImpactMatch[1];
+      await assertCan(authCtx, companyId, 'company.view');
+
+      const { data: comp, error: compErr } = await supabase
+        .from('companies')
+        .select('id, legalName, isActive')
+        .eq('id', companyId)
+        .single();
+
+      if (compErr || !comp) throw new NotFoundError('Company not found');
+
+      const [{ count: items }, { count: completed }, { count: documents }, { count: tasks }] = await Promise.all([
+        supabase.from('compliance_items').select('*', { count: 'exact', head: true }).eq('companyId', companyId),
+        supabase.from('compliance_items').select('*', { count: 'exact', head: true }).eq('companyId', companyId).eq('status', 'COMPLETED'),
+        supabase.from('documents').select('*', { count: 'exact', head: true }).eq('companyId', companyId),
+        supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('companyId', companyId),
+      ]);
+
+      return jsonResponse({
+        company: { id: comp.id, legalName: comp.legalName, isActive: comp.isActive },
+        items: items || 0,
+        completed: completed || 0,
+        documents: documents || 0,
+        tasks: tasks || 0,
+      });
+    }
+
     // POST /companies/:id/permanent-delete
     const permDeleteMatch = path.match(/^\/([a-f0-9-]+)\/permanent-delete$/);
     if (req.method === 'POST' && permDeleteMatch) {
@@ -387,6 +453,274 @@ Deno.serve(async (req: Request) => {
 
       if (error) throw new AppError(error.message, 400);
       return jsonResponse({ deleted: true, impact: rpcResult });
+    }
+
+    // POST /companies/:id/import-mca
+    const importMcaMatch = path.match(/^\/([a-f0-9-]+)\/import-mca$/);
+    if (req.method === 'POST' && importMcaMatch) {
+      const companyId = importMcaMatch[1];
+      await assertCan(authCtx, companyId, 'company.edit');
+
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      if (!file) throw new BadRequestError('Attach the file under the "file" field of a multipart request.');
+      const buffer = new Uint8Array(await file.arrayBuffer());
+
+      let parsed: McaParseResult;
+      if (looksLikePdf(buffer)) {
+        const text = extractTextFromPdfBuffer(buffer);
+        parsed = parseMcaMasterDataPdf(text);
+      } else {
+        const csv = decodeCsvBuffer(buffer);
+        parsed = parseMcaMasterData(csv);
+      }
+
+      if (parsed.records.length === 0) {
+        const message = parsed.unrecognisedColumns.length > 0
+          ? `No data could be extracted from this file (saw headers: ${parsed.unrecognisedColumns.join(', ')}). Nothing was changed.`
+          : 'No data could be extracted from this file — nothing was changed.';
+
+        return jsonResponse(serialiseBigInt({
+          matchedBy: 'none',
+          applied: [],
+          skipped: [],
+          warnings: [message],
+          recognisedColumns: parsed.recognisedColumns || [],
+          unrecognisedColumns: parsed.unrecognisedColumns || [],
+          rowsInFile: parsed.rowCount || 0,
+          sync: { applicableRules: 0, inapplicableRules: 0, created: 0, updated: 0, removed: 0 },
+        }));
+      }
+
+      const { data: company, error: getErr } = await supabase.from('companies').select('*').eq('id', companyId).single();
+      if (getErr || !company) throw new NotFoundError('Company not found');
+
+      const byCin = company.cin ? parsed.records.find((r) => r.cin === company.cin) : undefined;
+      const record = byCin ?? (parsed.records.length === 1 ? parsed.records[0]! : parsed.records[0]!);
+
+      const warnings: string[] = [];
+      if (!record.cin) {
+        warnings.push('No CIN found in file — existing company CIN in database was left unchanged.');
+      }
+
+      const applied: Array<{ field: string; from: string | null; to: string }> = [];
+      const skipped: Array<{ field: string; why: string }> = [];
+      const updatePayload: Record<string, unknown> = {};
+
+      const take = <T>(
+        field: string,
+        incoming: T | null,
+        current: unknown,
+        write: (v: T) => void,
+        show: (v: T) => string = (v) => String(v)
+      ) => {
+        if (incoming === null || incoming === undefined || incoming === '') {
+          skipped.push({ field, why: 'not present in the file' });
+          return;
+        }
+        const before = current === null || current === undefined ? null : show(current as T);
+        const after = show(incoming);
+        if (before === after) return;
+        write(incoming);
+        applied.push({ field, from: before, to: after });
+      };
+
+      // EXPLICIT TIER 3 RULE: Only assign cin if non-empty; never overwrite DB CIN with null/blank
+      take('cin', record.cin, company.cin, (v) => {
+        if (v && typeof v === 'string' && v.trim().length > 0) {
+          updatePayload.cin = v.trim().toUpperCase();
+        }
+      });
+      take('legalName', record.name, company.legalName, (v) => { updatePayload.legalName = v; });
+      take(
+        'incorporationDate',
+        record.incorporatedOn ? record.incorporatedOn.toISOString().slice(0, 10) : null,
+        company.incorporationDate ? String(company.incorporationDate).slice(0, 10) : null,
+        (v) => { updatePayload.incorporationDate = v; }
+      );
+      take('stateCode', record.stateCode, company.stateCode, (v) => { updatePayload.stateCode = v; });
+      take('entityType', record.entityType, company.entityType, (v) => { updatePayload.entityType = v; });
+      take('industry', record.industry, company.industry, (v) => { updatePayload.industry = v; });
+      take('paidUpCapital', record.paidUpCapital, company.paidUpCapital, (v) => { updatePayload.paidUpCapital = v; });
+      take('authorisedCapital', record.authorisedCapital, company.authorisedCapital, (v) => { updatePayload.authorisedCapital = v; });
+      take('registeredAddress', record.address, company.registeredAddress, (v) => { updatePayload.registeredAddress = v; });
+      take('companyStatus', record.status, company.companyStatus, (v) => { updatePayload.companyStatus = v; });
+      take('companyCategory', record.companyCategory, company.companyCategory, (v) => { updatePayload.companyCategory = v; });
+      take('companySubCategory', record.companySubCategory, company.companySubCategory, (v) => { updatePayload.companySubCategory = v; });
+      take('companyClass', record.companyClass, company.companyClass, (v) => { updatePayload.companyClass = v; });
+
+      if (Object.keys(updatePayload).length > 0) {
+        await supabase.from('companies').update(updatePayload).eq('id', companyId);
+      }
+
+      let directorsAdded = 0;
+      if (record.directors && record.directors.length > 0) {
+        const { data: existingDirs } = await supabase.from('directors').select('*').eq('companyId', companyId);
+        for (const dir of record.directors) {
+          if (!dir.name) continue;
+          const match = dir.din
+            ? (existingDirs || []).find((e: any) => e.din === dir.din)
+            : (existingDirs || []).find((e: any) => e.name?.toLowerCase() === dir.name?.toLowerCase());
+
+          const dirPayload = {
+            name: dir.name,
+            designation: dir.designation || 'Director',
+            status: dir.status || null,
+            ...(dir.din ? { din: dir.din } : {}),
+            ...(dir.appointedOn ? { appointedOn: dir.appointedOn.toISOString().slice(0, 10) } : {}),
+          };
+
+          if (match) {
+            await supabase.from('directors').update(dirPayload).eq('id', match.id);
+          } else {
+            await supabase.from('directors').insert({ id: crypto.randomUUID(), companyId, ...dirPayload });
+            directorsAdded++;
+          }
+        }
+        if (directorsAdded > 0) {
+          applied.push({ field: 'directors', from: null, to: `Added ${directorsAdded} directors from Signatory Details` });
+        }
+      }
+
+      return jsonResponse(serialiseBigInt({
+        matchedBy: byCin ? 'cin' : 'selected-company',
+        applied,
+        skipped,
+        warnings,
+        recognisedColumns: parsed.recognisedColumns,
+        unrecognisedColumns: parsed.unrecognisedColumns,
+        rowsInFile: parsed.rowCount,
+        sync: { applicableRules: 0, inapplicableRules: 0, created: 0, updated: 0, removed: 0 },
+      }));
+    }
+
+    // POST /companies/:id/import-gst
+    const importGstMatch = path.match(/^\/([a-f0-9-]+)\/import-gst$/);
+    if (req.method === 'POST' && importGstMatch) {
+      const companyId = importGstMatch[1];
+      await assertCan(authCtx, companyId, 'company.edit');
+
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      if (!file) throw new BadRequestError('Attach the PDF under the "file" field of a multipart request.');
+      const buffer = new Uint8Array(await file.arrayBuffer());
+
+      const text = extractTextFromPdfBuffer(buffer);
+      const info = extractGstInfo(text);
+
+      const storageKey = `${authCtx.organizationId || 'default'}/${companyId}/gst-${file.name}`;
+      await supabase.storage.from('compliance-evidence').upload(storageKey, buffer, { upsert: true, contentType: file.type || 'application/pdf' });
+
+      if (info.gstin) {
+        const { data: existing } = await supabase.from('gst_registrations').select('id').eq('companyId', companyId).eq('gstin', info.gstin).maybeSingle();
+        if (existing) {
+          await supabase.from('gst_registrations').update({
+            certificateKey: storageKey,
+            legalName: info.legalName || null,
+            tradeName: info.tradeName || null,
+            constitution: info.constitution || null,
+            registeredOn: info.registeredOn || null,
+          }).eq('id', existing.id);
+        } else {
+          await supabase.from('gst_registrations').insert({
+            id: crypto.randomUUID(),
+            companyId,
+            gstin: info.gstin,
+            stateCode: info.stateCode || info.gstin.slice(0, 2),
+            legalName: info.legalName || null,
+            tradeName: info.tradeName || null,
+            constitution: info.constitution || null,
+            registeredOn: info.registeredOn || null,
+            certificateKey: storageKey,
+            filingFrequency: 'MONTHLY',
+            isActive: true,
+          });
+        }
+      }
+
+      return jsonResponse({ extracted: info, sync: { applicableRules: 0 } });
+    }
+
+    // POST /companies/:id/import-udyam
+    const importUdyamMatch = path.match(/^\/([a-f0-9-]+)\/import-udyam$/);
+    if (req.method === 'POST' && importUdyamMatch) {
+      const companyId = importUdyamMatch[1];
+      await assertCan(authCtx, companyId, 'company.edit');
+
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      if (!file) throw new BadRequestError('Attach the PDF under the "file" field of a multipart request.');
+      const buffer = new Uint8Array(await file.arrayBuffer());
+
+      const text = extractTextFromPdfBuffer(buffer);
+      const info = extractUdyamInfo(text);
+
+      const storageKey = `${authCtx.organizationId || 'default'}/${companyId}/udyam-${file.name}`;
+      await supabase.storage.from('compliance-evidence').upload(storageKey, buffer, { upsert: true, contentType: file.type || 'application/pdf' });
+
+      if (info.udyamNumber) {
+        const { data: existing } = await supabase.from('msme_registrations').select('id').eq('companyId', companyId).maybeSingle();
+        const categoryVal = (info.organisationType as any) || 'MICRO';
+        if (existing) {
+          await supabase.from('msme_registrations').update({
+            certificateKey: storageKey,
+            udyamNumber: info.udyamNumber,
+            category: categoryVal,
+            enterpriseName: info.enterpriseName || null,
+            majorActivity: info.majorActivity || null,
+            socialCategory: info.socialCategory || null,
+            registeredOn: info.registeredOn || null,
+          }).eq('id', existing.id);
+        } else {
+          await supabase.from('msme_registrations').insert({
+            id: crypto.randomUUID(),
+            companyId,
+            udyamNumber: info.udyamNumber,
+            category: categoryVal,
+            enterpriseName: info.enterpriseName || null,
+            majorActivity: info.majorActivity || null,
+            socialCategory: info.socialCategory || null,
+            registeredOn: info.registeredOn || null,
+            certificateKey: storageKey,
+          });
+        }
+      }
+
+      return jsonResponse({ extracted: info, sync: { applicableRules: 0 } });
+    }
+
+    // POST & DELETE /companies/:id/logo
+    const logoActionMatch = path.match(/^\/([a-f0-9-]+)\/logo$/);
+    if (logoActionMatch && req.method !== 'GET') {
+      const companyId = logoActionMatch[1];
+      await assertCan(authCtx, companyId, 'company.edit');
+
+      if (req.method === 'POST') {
+        const formData = await req.formData();
+        const file = formData.get('file') as File | null;
+        if (!file) throw new BadRequestError('Attach the logo under the "file" field.');
+        const buffer = new Uint8Array(await file.arrayBuffer());
+
+        const { data: company } = await supabase.from('companies').select('organizationId, logoStorageKey').eq('id', companyId).single();
+        if (!company) throw new NotFoundError('Company not found');
+
+        const storageKey = `${company.organizationId || 'default'}/${companyId}/logo-${file.name}`;
+        await supabase.storage.from('compliance-evidence').upload(storageKey, buffer, { upsert: true, contentType: file.type || 'image/png' });
+
+        await supabase.from('companies').update({ logoStorageKey: storageKey }).eq('id', companyId);
+        return jsonResponse({ url: `/functions/v1/companies-api/companies/${companyId}/logo` });
+      }
+
+      if (req.method === 'DELETE') {
+        const { data: company } = await supabase.from('companies').select('logoStorageKey').eq('id', companyId).single();
+        if (company && company.logoStorageKey) {
+          try {
+            await supabase.storage.from('compliance-evidence').remove([company.logoStorageKey]);
+          } catch (_e) {}
+          await supabase.from('companies').update({ logoStorageKey: null }).eq('id', companyId);
+        }
+        return new Response(null, { status: 204 });
+      }
     }
 
     // POST /companies/:id/directors

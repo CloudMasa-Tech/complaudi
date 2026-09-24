@@ -154,22 +154,6 @@ Deno.serve(async (req) => {
 
         if (comp) {
           const msmeReg = Array.isArray(comp.msmeRegistration) ? comp.msmeRegistration[0] || null : comp.msmeRegistration;
-          registrations = evaluateRegistrations({
-            entityType: comp.entityType,
-            annualTurnover: Number(comp.annualTurnover || 0),
-            employeeCount: comp.employeeCount || 0,
-            stateCode: comp.stateCode,
-            gstRegistrations: comp.gstRegistrations || [],
-            msmeRegistration: msmeReg,
-            dpiitRegistration: comp.dpiitRecognitionNumber ? { number: comp.dpiitRecognitionNumber, recognisedOn: comp.dpiitRecognisedOn } : null,
-            epfoCode: comp.epfoCode || null,
-            esicCode: comp.esicCode || null,
-            shopAndEstablishment: comp.shopAndEstablishment || null,
-            fssai: comp.fssai || null,
-            professionalTax: comp.professionalTax || null,
-            tradeLicense: comp.tradeLicense || null,
-          });
-
           const serving = (comp.directors || []).filter((d: any) => !d.resignedOn);
           const activeDsc = serving.filter((d: any) => d.dscExpiresOn && new Date(d.dscExpiresOn) >= now);
 
@@ -180,13 +164,13 @@ Deno.serve(async (req) => {
             businessType: comp.businessType,
             industry: comp.industry,
             registrationLabel: comp.entityType === 'LLP' ? 'LLPIN' : comp.cin ? 'CIN' : 'PAN',
-            registrationNumber: comp.llpin || comp.cin || comp.pan,
+            registrationNumber: comp.llpin || comp.cin || comp.pan || null,
             incorporationDate: comp.incorporationDate ? formatDate(new Date(comp.incorporationDate)) : null,
             ageYears: comp.incorporationDate ? now.getFullYear() - new Date(comp.incorporationDate).getFullYear() : null,
-            pan: comp.pan,
+            pan: comp.pan || null,
             annualTurnover: Number(comp.annualTurnover || 0),
             employeeCount: comp.employeeCount || 0,
-            stateCode: comp.stateCode,
+            stateCode: comp.stateCode || null,
             directors: (serving || []).map((d: any) => ({
               id: d.id,
               name: d.name,
@@ -195,15 +179,15 @@ Deno.serve(async (req) => {
               dscExpiresOn: d.dscExpiresOn ? formatDate(new Date(d.dscExpiresOn)) : null,
               dscStatus: !d.dscExpiresOn ? 'NOT_RECORDED' : new Date(d.dscExpiresOn) >= now ? 'ACTIVE' : 'EXPIRED',
             })),
-            msme: msmeReg ? { udyamNumber: msmeReg.udyamNumber, category: msmeReg.category, registeredOn: msmeReg.registeredOn } : null,
+            msme: msmeReg && msmeReg.udyamNumber?.trim() ? { udyamNumber: msmeReg.udyamNumber.trim(), category: msmeReg.category, registeredOn: msmeReg.registeredOn } : null,
             gstins: (comp.gstRegistrations || []).map((g: any) => ({ gstin: g.gstin, stateCode: g.stateCode, isActive: g.isActive })),
-            dpiit: comp.dpiitRecognitionNumber ? { number: comp.dpiitRecognitionNumber, recognisedOn: comp.dpiitRecognisedOn } : null,
-            epfoCode: comp.epfoCode,
-            esicCode: comp.esicCode,
-            shopAndEstablishment: comp.shopAndEstablishment,
-            fssai: comp.fssai,
-            professionalTax: comp.professionalTax,
-            tradeLicense: comp.tradeLicense,
+            dpiit: comp.dpiitRecognitionNumber && comp.dpiitRecognitionNumber.trim() ? { number: comp.dpiitRecognitionNumber.trim(), recognisedOn: comp.dpiitRecognisedOn } : null,
+            epfoCode: comp.epfoCode || null,
+            esicCode: comp.esicCode || null,
+            shopAndEstablishment: comp.shopAndEstablishment || null,
+            fssai: comp.fssai || null,
+            professionalTax: comp.professionalTax || null,
+            tradeLicense: comp.tradeLicense || null,
             dsc: {
               status: activeDsc.length > 0 ? 'ACTIVE' : 'NOT_RECORDED',
               active: activeDsc.length,
@@ -212,6 +196,23 @@ Deno.serve(async (req) => {
             },
             mcaKyc: { status: 'NOT_DUE', dueDate: null, periodLabel: null },
           };
+
+          registrations = evaluateRegistrations(profile);
+
+          const registeredCount = registrations.filter((r: any) => r.status === 'REGISTERED').length;
+          const mandatoryCount = registrations.filter((r: any) => r.status === 'MANDATORY' || r.status === 'EXPIRED_RENEWAL_DUE').length;
+          const eligibleCount = registrations.filter((r: any) => r.status === 'ELIGIBLE' || r.status === 'PENDING_APPLICATION').length;
+          
+          console.log(`[Dashboard Registration Evaluation] Company: ${comp.legalName} (ID: ${companyId})`, {
+            cin: comp.cin,
+            constitutionType: comp.entityType,
+            applicableCount: registrations.length,
+            registeredCount,
+            mandatoryCount,
+            eligibleCount,
+            score: `${registeredCount}/${registrations.length}`,
+            registrations: registrations.map((r: any) => ({ id: r.id, title: r.title, status: r.status })),
+          });
         }
       }
 
