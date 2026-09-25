@@ -6,6 +6,7 @@ import { AppError, BadRequestError } from '../_shared/errors.ts';
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
 import { validateCompanyMasterData } from '../_shared/companyValidation.ts';
+import { getCompanyVerificationProvider } from '../_shared/verifications/index.ts';
 import { env } from '../_shared/env.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
@@ -107,12 +108,37 @@ Deno.serve(async (req: Request) => {
         console.warn('Could not query database for duplicate CIN check:', err);
       }
 
+      let masterRecord = null;
+      if (body.cin && typeof body.cin === 'string' && body.cin.trim()) {
+        const verifyRes = await getCompanyVerificationProvider().verifyCompany(body.cin.trim());
+
+        if (!verifyRes.success) {
+          if (verifyRes.error?.code === 'SERVICE_UNAVAILABLE') {
+            throw new AppError(
+              'MCA / BizVerify company verification service is currently unavailable. Registration cannot proceed without MCA verification.',
+              503,
+            );
+          }
+          if (verifyRes.error?.code === 'COMPANY_NOT_FOUND') {
+            throw new BadRequestError(`Company with CIN "${body.cin}" was not found in official MCA records.`, [
+              { field: 'cin', message: verifyRes.error.message },
+            ]);
+          }
+          throw new BadRequestError(`Company verification failed: ${verifyRes.error?.message || 'Verification error'}`, [
+            { field: 'cin', message: verifyRes.error?.message || 'Verification error' },
+          ]);
+        }
+
+        masterRecord = verifyRes.data ?? null;
+      }
+
       const valResult = validateCompanyMasterData({
         cin: body.cin,
         companyName: body.companyName,
         entityType: body.entityType,
         incorporationDate: body.incorporationDate,
         stateCode: body.stateCode,
+        masterRecord,
         existingCinsInDb,
       });
 

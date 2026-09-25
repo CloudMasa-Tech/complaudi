@@ -66,6 +66,10 @@ const schema = z.object({
   REMINDER_CRON: z.string().default('0 8 * * *'),
   TIMEZONE: z.string().default('Asia/Kolkata'),
   REMINDER_OFFSET_DAYS: z.string().default('30,15,7,3,1,0'),
+
+  // Government / MCA verification provider configuration (BizVerify)
+  BIZVERIFY_BASE_URL: z.string().url().default('http://localhost:8000'),
+  BIZVERIFY_SERVICE_TOKEN: z.string().default('dev-bizverify-service-token'),
 });
 
 const parsed = schema.safeParse(process.env);

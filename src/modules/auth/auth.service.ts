@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { User, UserRole } from '@prisma/client';
 import { env } from '../../config/env';
-import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from '../../lib/errors';
+import { AppError, BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from '../../lib/errors';
 import { GRANTABLE_ROLES, capabilitiesOf, seesEveryCompany, type Actor } from '../../lib/access';
 import {
   generateTemporaryPassword,
@@ -111,6 +111,9 @@ export const TRIAL_DAYS = 14;
  * to them, not for running the filings. Everything is kept on upgrade — the
  * role widens, nothing is rebuilt.
  */
+import { validateCompanyMasterData } from '../../lib/companyValidation';
+import { getCompanyVerificationProvider } from '../../lib/verifications';
+
 export async function registerTrial(input: TrialSignupInput): Promise<AuthResult & { trialEndsAt: Date }> {
   const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
   if (existing) throw new ConflictError('An account with this email already exists');
@@ -118,6 +121,7 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
   const phone = normalisePhone(input.phone);
   if (!phone) throw new BadRequestError('Enter a 10-digit Indian mobile number.');
 
+  let masterRecord = null;
   if (input.cin && input.cin.trim()) {
     const existingComp = await prisma.company.findFirst({
       where: { cin: input.cin.trim().toUpperCase() },
@@ -126,12 +130,44 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
     if (existingComp) {
       throw new ConflictError(`CIN ${input.cin.trim().toUpperCase()} is already registered in Complaudi under entity "${existingComp.legalName}".`);
     }
+
+    const verifyRes = await getCompanyVerificationProvider().verifyCompany(input.cin.trim());
+    if (!verifyRes.success) {
+      if (verifyRes.error?.code === 'SERVICE_UNAVAILABLE') {
+        throw new AppError(
+          'MCA / BizVerify company verification service is currently unavailable. Registration cannot proceed without MCA verification.',
+          503,
+          'SERVICE_UNAVAILABLE',
+        );
+      }
+      if (verifyRes.error?.code === 'COMPANY_NOT_FOUND') {
+        throw new BadRequestError(`Company with CIN "${input.cin}" was not found in official MCA records.`, [
+          { field: 'cin', message: verifyRes.error.message },
+        ]);
+      }
+      throw new BadRequestError(`Company verification failed: ${verifyRes.error?.message || 'Verification error'}`, [
+        { field: 'cin', message: verifyRes.error?.message || 'Verification error' },
+      ]);
+    }
+
+    masterRecord = verifyRes.data ?? null;
   }
 
-  // A CIN settles these, so it overrides whatever the form defaulted to.
-  const decoded = input.cin ? decodeCin(input.cin) : null;
-  const entityType = (decoded?.entityType as TrialSignupInput['entityType']) ?? input.entityType;
-  const stateCode = decoded?.stateCode ?? input.stateCode!.toUpperCase();
+  const valResult = validateCompanyMasterData({
+    cin: input.cin,
+    companyName: input.companyName,
+    entityType: input.entityType,
+    incorporationDate: input.incorporationDate,
+    stateCode: input.stateCode,
+    masterRecord,
+  });
+
+  if (!valResult.valid) {
+    throw new BadRequestError('Company validation failed', valResult.errors);
+  }
+
+  const entityType = (masterRecord?.entityType as TrialSignupInput['entityType']) ?? input.entityType;
+  const stateCode = masterRecord?.stateCode ?? input.stateCode!.toUpperCase();
 
   const slug = await uniqueSlug(slugify(input.companyName));
   const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
@@ -166,10 +202,10 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
         entityType,
         businessType: input.businessType ?? null,
         stateCode,
-        cin: decoded?.cin ?? null,
-        incorporationDate: parseDate(input.incorporationDate),
-        isListed: decoded?.listed ?? false,
-        industry: decoded?.industry ?? null,
+        cin: masterRecord?.cin || (input.cin ? input.cin.toUpperCase().trim() : null),
+        incorporationDate: masterRecord?.incorporationDate ? parseDate(masterRecord.incorporationDate) : parseDate(input.incorporationDate),
+        isListed: false,
+        industry: null,
         memberships: { create: [{ userId: created.id, role: 'COMPANY_OWNER', grantedById: created.id }] },
       },
       select: { id: true },

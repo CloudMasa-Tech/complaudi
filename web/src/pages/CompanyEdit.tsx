@@ -302,6 +302,19 @@ export function CompanyEdit() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sync, setSync] = useState<SyncResult | null>(null);
 
+  const [verifyingCin, setVerifyingCin] = useState(false);
+  const [verifiedBadge, setVerifiedBadge] = useState<{
+    legalName?: string;
+    status?: string;
+    incorporationDate?: string;
+    roc?: string;
+    stateCode?: string;
+    verifiedBy?: string | null;
+  } | null>(null);
+  const [cinError, setCinError] = useState<string | null>(null);
+  const [serviceUnavailable, setServiceUnavailable] = useState(false);
+  const [mismatches, setMismatches] = useState<string[]>([]);
+
   // Load the server's copy into the form once, then leave the user's edits alone.
   useEffect(() => {
     if (company && !form) setForm(toForm(company));
@@ -353,7 +366,133 @@ export function CompanyEdit() {
 
   if (initial || !company || !form) return <Loading label="Loading company details..." />;
 
-  const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  async function verifyCin(cinToTest: string, currentForm: ProfileForm) {
+    const rawCin = cinToTest.trim().toUpperCase();
+    if (rawCin.length !== 21) {
+      if (rawCin.length > 0 && !/^[A-Z]{3}[0-9]{4}$/i.test(rawCin)) {
+        setCinError('Invalid CIN length or format. CIN must be 21 alphanumeric characters (e.g. U72900TN2020PTC138472) or 7-character LLPIN.');
+      } else {
+        setCinError(null);
+      }
+      setVerifiedBadge(null);
+      setMismatches([]);
+      return;
+    }
+
+    setVerifyingCin(true);
+    setCinError(null);
+    setServiceUnavailable(false);
+    setMismatches([]);
+
+    try {
+      const res = await post<{
+        valid: boolean;
+        errors: Array<{ field: string; message: string }>;
+        masterRecord: any;
+        verifiedBy: string | null;
+        serviceUnavailable?: boolean;
+      }>('/lookup/validate-company', {
+        cin: rawCin,
+        companyName: currentForm.legalName || undefined,
+        entityType: currentForm.entityType || undefined,
+        incorporationDate: currentForm.incorporationDate || undefined,
+        stateCode: currentForm.stateCode || undefined,
+        currentCompanyId: id,
+      });
+
+      if (res.serviceUnavailable) {
+        setServiceUnavailable(true);
+        setCinError('MCA verification service is temporarily unavailable. Please try again.');
+        return;
+      }
+
+      if (res.masterRecord) {
+        const m = res.masterRecord;
+        setVerifiedBadge({
+          legalName: m.legalName,
+          status: m.status,
+          incorporationDate: m.incorporationDate,
+          roc: m.roc,
+          stateCode: m.stateCode,
+          verifiedBy: res.verifiedBy || 'BizVerify',
+        });
+
+        // Mismatch detection against current company data
+        const diffs: string[] = [];
+        if (m.legalName && company && m.legalName.toUpperCase() !== company.legalName.toUpperCase()) {
+          diffs.push(`Legal Name: Current "${company.legalName}" vs MCA "${m.legalName}"`);
+        }
+        if (m.stateCode && company && m.stateCode !== company.stateCode) {
+          diffs.push(`State: Current "${company.stateCode}" vs MCA "${m.stateCode}"`);
+        }
+        if (m.entityType && company && m.entityType !== company.entityType) {
+          diffs.push(`Entity Type: Current "${company.entityType}" vs MCA "${m.entityType}"`);
+        }
+        if (m.incorporationDate && company && company.incorporationDate && m.incorporationDate !== company.incorporationDate.slice(0, 10)) {
+          diffs.push(`Incorporation Date: Current "${company.incorporationDate.slice(0, 10)}" vs MCA "${m.incorporationDate}"`);
+        }
+        setMismatches(diffs);
+
+        // Update form fields with verified MCA values
+        setForm((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            legalName: m.legalName || prev.legalName,
+            entityType: (m.entityType as EntityType) || prev.entityType,
+            stateCode: m.stateCode && STATES.includes(m.stateCode) ? m.stateCode : prev.stateCode,
+            incorporationDate: m.incorporationDate || prev.incorporationDate,
+            companyStatus: m.status || prev.companyStatus,
+            registeredAddress: m.registeredAddress || prev.registeredAddress,
+            companyCategory: m.companyCategory || prev.companyCategory,
+            companySubCategory: m.companySubCategory || prev.companySubCategory,
+            companyClass: m.companyClass || prev.companyClass,
+            authorisedCapital: typeof m.authorisedCapital === 'number' ? m.authorisedCapital : prev.authorisedCapital,
+          };
+        });
+
+        // Clear stale errors
+        setErrors((prev) => {
+          const next = { ...prev };
+          delete next.cin;
+          delete next.stateCode;
+          delete next.legalName;
+          delete next.entityType;
+          delete next.incorporationDate;
+          return next;
+        });
+      }
+
+      if (!res.valid && res.errors.length > 0) {
+        setCinError(res.errors[0]?.message || 'CIN verification failed.');
+        const errMap: Record<string, string> = {};
+        for (const issue of res.errors) errMap[issue.field] = issue.message;
+        setErrors((prev) => ({ ...prev, ...errMap }));
+      }
+    } catch {
+      setCinError('Unable to verify CIN right now. Please try again.');
+    } finally {
+      setVerifyingCin(false);
+    }
+  }
+
+  const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) => {
+    setForm((f) => {
+      if (!f) return f;
+      const updated = { ...f, [k]: v };
+      if (k === 'cin') {
+        const valStr = String(v).toUpperCase().trim();
+        setVerifiedBadge(null);
+        setMismatches([]);
+        setCinError(null);
+        if (valStr.length === 21) {
+          void verifyCin(valStr, updated);
+        }
+      }
+      return updated;
+    });
+  };
+
   const isCompaniesAct = ['PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'OPC', 'SECTION_8'].includes(form.entityType);
   const isIndividual = form.entityType === 'UNREGISTERED';
 
@@ -508,8 +647,44 @@ export function CompanyEdit() {
                 )}
 
                 {isCompaniesAct ? (
-                  <Field label="CIN" hint={<FieldService field="cin" />} error={errors.cin}>
-                    <input value={form.cin} onChange={(e) => set('cin', e.target.value.toUpperCase())} />
+                  <Field
+                    label="CIN"
+                    hint={verifyingCin ? 'Verifying CIN via BizVerify…' : <FieldService field="cin" />}
+                    error={errors.cin || cinError || undefined}
+                  >
+                    <input
+                      value={form.cin}
+                      onChange={(e) => set('cin', e.target.value.toUpperCase())}
+                      onBlur={(e) => void verifyCin(e.target.value, form)}
+                    />
+                    {verifyingCin && (
+                      <span style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Spinner /> Contacting BizVerify live MCA service…
+                      </span>
+                    )}
+                    {verifiedBadge && !verifyingCin && (
+                      <div className="alert alert-info" style={{ marginTop: 6, padding: '8px 10px', fontSize: 12, borderRadius: 6 }}>
+                        <strong>✓ Verified via {verifiedBadge.verifiedBy}:</strong>{' '}
+                        {verifiedBadge.legalName || 'Official Record'} ({verifiedBadge.status || 'ACTIVE'})
+                        {verifiedBadge.incorporationDate ? ` · Inc. ${verifiedBadge.incorporationDate}` : ''}
+                        {verifiedBadge.roc ? ` · ${verifiedBadge.roc}` : ''}
+                      </div>
+                    )}
+                    {serviceUnavailable && !verifyingCin && (
+                      <div className="alert alert-warn" style={{ marginTop: 6, padding: '8px 10px', fontSize: 12, borderRadius: 6 }}>
+                        <strong>MCA verification service is temporarily unavailable. Please try again.</strong>
+                      </div>
+                    )}
+                    {mismatches.length > 0 && !verifyingCin && (
+                      <div className="alert alert-warn" style={{ marginTop: 6, padding: '8px 10px', fontSize: 12, borderRadius: 6 }}>
+                        <strong>MCA data differs from saved company record:</strong>
+                        <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                          {mismatches.map((m, idx) => (
+                            <li key={idx}>{m}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </Field>
                 ) : form.entityType === 'LLP' ? (
                   <Field label="LLPIN" error={errors.llpin}>

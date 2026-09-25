@@ -3,8 +3,10 @@ import { getAuthContext } from '../_shared/auth.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
 import { UnprocessableError, NotFoundError } from '../_shared/errors.ts';
 import { decodeCin, decodePan, validateGstin } from '../_shared/india.ts';
+import { getSupabaseAdminClient } from '../_shared/database.ts';
 
 import { validateCompanyMasterData } from '../_shared/companyValidation.ts';
+import { getCompanyVerificationProvider } from '../_shared/verifications/index.ts';
 
 const DERIVED_FROM = 'Derived from the identifier itself — no government service was contacted.';
 
@@ -22,13 +24,37 @@ Deno.serve(async (req) => {
 
       let existingCinsInDb: string[] = [];
       try {
-        const supabase = (await import('../_shared/supabase.ts')).getSupabaseAdminClient();
-        const { data: compRows } = await supabase.from('companies').select('cin');
+        const supabase = getSupabaseAdminClient();
+        let query = supabase.from('companies').select('id, cin');
+        if (body.currentCompanyId) {
+          query = query.neq('id', body.currentCompanyId);
+        }
+        const { data: compRows } = await query;
         if (compRows) {
-          existingCinsInDb = compRows.map((c) => c.cin).filter(Boolean) as string[];
+          existingCinsInDb = compRows.map((c: any) => c.cin).filter(Boolean) as string[];
         }
       } catch (err) {
         console.warn('Could not query database for duplicate CIN check:', err);
+      }
+
+      let masterRecord = body.masterRecord ?? null;
+
+      // If CIN is provided, perform live BizVerify verification
+      if (body.cin && typeof body.cin === 'string' && body.cin.trim()) {
+        const verifyRes = await getCompanyVerificationProvider().verifyCompany(body.cin.trim());
+
+        if (!verifyRes.success) {
+          const field = 'cin';
+          const msg = verifyRes.error?.message || 'Company verification failed via BizVerify.';
+          return jsonResponse({
+            valid: false,
+            errors: [{ field, message: msg }],
+            serviceUnavailable: verifyRes.error?.code === 'SERVICE_UNAVAILABLE',
+            errorCode: verifyRes.error?.code,
+          });
+        }
+
+        masterRecord = verifyRes.data ?? null;
       }
 
       const valRes = validateCompanyMasterData({
@@ -38,13 +64,16 @@ Deno.serve(async (req) => {
         incorporationDate: body.incorporationDate,
         stateCode: body.stateCode,
         roc: body.roc,
+        masterRecord,
         existingCinsInDb,
+        currentCompanyId: body.currentCompanyId,
       });
 
       return jsonResponse({
         valid: valRes.valid,
         errors: valRes.errors,
         masterRecord: valRes.masterRecord ?? null,
+        verifiedBy: masterRecord ? 'BizVerify' : null,
       });
     }
 
@@ -59,23 +88,15 @@ Deno.serve(async (req) => {
         throw new UnprocessableError('That is not a valid CIN. It should be 21 characters, e.g. U72900TN2020PTC138472.');
       }
 
+      const verifyRes = await getCompanyVerificationProvider().verifyCompany(cin);
+
       return jsonResponse({
+        cin,
         decoded,
-        suggested: {
-          entityType: decoded.entityType,
-          stateCode: decoded.stateCode,
-          isListed: decoded.listed,
-          industry: decoded.industry,
-          incorporationYear: decoded.incorporationYear,
-        },
-        derivedFrom: DERIVED_FROM,
-        notAvailable: [
-          { field: 'legalName', why: 'Held by MCA, not encoded in the CIN.' },
-          { field: 'incorporationDate', why: 'The CIN carries the year only, not the day or month.' },
-          { field: 'pan', why: 'Not encoded in the CIN. It is encoded in a GSTIN.' },
-          { field: 'directors', why: 'Held by MCA against the DIN register.' },
-          { field: 'paidUpCapital', why: 'Held by MCA and changes with every allotment.' },
-        ],
+        verified: verifyRes.success,
+        verifiedBy: verifyRes.success ? 'BizVerify' : null,
+        masterRecord: verifyRes.data ?? null,
+        error: verifyRes.error ?? null,
       });
     }
 

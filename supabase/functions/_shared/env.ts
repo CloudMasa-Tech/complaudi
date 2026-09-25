@@ -53,4 +53,11 @@ export const env = {
   get MAIL_FROM(): string {
     return (typeof Deno !== 'undefined' ? Deno.env.get('MAIL_FROM') : '') || 'Compliance Toolkit <no-reply@example.com>';
   },
+  get BIZVERIFY_BASE_URL(): string {
+    return (typeof Deno !== 'undefined' ? Deno.env.get('BIZVERIFY_BASE_URL') : '') || 'http://localhost:8000';
+  },
+  get BIZVERIFY_SERVICE_TOKEN(): string {
+    return (typeof Deno !== 'undefined' ? Deno.env.get('BIZVERIFY_SERVICE_TOKEN') : '') || 'dev-bizverify-service-token';
+  },
 };
+

@@ -44,20 +44,128 @@ export function Register() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [verifyingCin, setVerifyingCin] = useState(false);
+  const [verifiedBadge, setVerifiedBadge] = useState<{
+    legalName?: string;
+    status?: string;
+    incorporationDate?: string;
+    roc?: string;
+    verifiedBy?: string | null;
+  } | null>(null);
+
+  async function performLiveValidation(cinToTest: string, currentForm = form) {
+    const rawCin = cinToTest.trim().toUpperCase();
+    if (rawCin.length !== 21) return;
+
+    setVerifyingCin(true);
+    try {
+      const res = await post<{
+        valid: boolean;
+        errors: Array<{ field: string; message: string }>;
+        masterRecord: any;
+        verifiedBy: string | null;
+        serviceUnavailable?: boolean;
+      }>('/lookup/validate-company', {
+        cin: rawCin,
+        companyName: currentForm.companyName || undefined,
+        entityType: currentForm.entityType || undefined,
+        incorporationDate: currentForm.incorporationDate || undefined,
+        stateCode: currentForm.stateCode || undefined,
+      });
+
+      if (res.masterRecord) {
+        setVerifiedBadge({
+          legalName: res.masterRecord.legalName,
+          status: res.masterRecord.status,
+          incorporationDate: res.masterRecord.incorporationDate,
+          roc: res.masterRecord.roc,
+          verifiedBy: res.verifiedBy || 'BizVerify',
+        });
+
+        const targetStateCode = res.masterRecord.stateCode || currentForm.stateCode;
+        const targetEntityType = (res.masterRecord.entityType as EntityType) || currentForm.entityType;
+        const targetCompanyName = currentForm.companyName || res.masterRecord.legalName || currentForm.companyName;
+        const targetIncDate = currentForm.incorporationDate || res.masterRecord.incorporationDate || currentForm.incorporationDate;
+
+        const nextForm = {
+          ...currentForm,
+          companyName: targetCompanyName,
+          entityType: targetEntityType,
+          stateCode: targetStateCode,
+          incorporationDate: targetIncDate,
+        };
+
+        setForm(nextForm);
+
+        // Re-evaluate validation using updated form and authoritative master record
+        const valRes = validateCompanyMasterData({
+          cin: rawCin,
+          companyName: nextForm.companyName,
+          entityType: nextForm.entityType,
+          incorporationDate: nextForm.incorporationDate,
+          stateCode: nextForm.stateCode,
+          masterRecord: res.masterRecord,
+        });
+
+        const errMap: Record<string, string> = {};
+        if (!valRes.valid) {
+          for (const issue of valRes.errors) errMap[issue.field] = issue.message;
+        }
+
+        setErrors((prev) => {
+          const next = { ...prev, ...errMap };
+          if (!errMap.stateCode) delete next.stateCode;
+          if (!errMap.companyName) delete next.companyName;
+          if (!errMap.entityType) delete next.entityType;
+          if (!errMap.incorporationDate) delete next.incorporationDate;
+          if (!errMap.cin) delete next.cin;
+          return next;
+        });
+      } else if (!res.valid && res.errors.length > 0) {
+        const errMap: Record<string, string> = {};
+        for (const issue of res.errors) errMap[issue.field] = issue.message;
+        setErrors((prev) => ({ ...prev, ...errMap }));
+      }
+    } catch {
+      // Ignore network errors on live preview
+    } finally {
+      setVerifyingCin(false);
+    }
+  }
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => {
     const updated = { ...form, [k]: v };
-    setForm(updated);
-    setErrors((e) => ({ ...e, [k]: '' }));
+
+    if (k === 'cin') {
+      setVerifiedBadge(null);
+      setErrors((e) => {
+        const copy = { ...e };
+        delete copy.cin;
+        delete copy.companyName;
+        delete copy.entityType;
+        delete copy.stateCode;
+        delete copy.incorporationDate;
+        return copy;
+      });
+    } else {
+      setErrors((e) => ({ ...e, [k]: '' }));
+    }
 
     // Run client-side validation when CIN or company fields change
     if (updated.cin.trim()) {
-      const val = validateCompanyMasterData({
+      let val = validateCompanyMasterData({
         cin: updated.cin.trim(),
         companyName: updated.companyName,
         entityType: updated.entityType,
         incorporationDate: updated.incorporationDate,
         stateCode: updated.stateCode,
+        masterRecord: verifiedBadge ? {
+          cin: updated.cin.trim(),
+          legalName: verifiedBadge.legalName,
+          status: verifiedBadge.status,
+          incorporationDate: verifiedBadge.incorporationDate,
+          roc: verifiedBadge.roc,
+        } : null,
       });
 
       // Auto-fill matching master fields when user enters a valid CIN and field is currently empty
@@ -74,8 +182,18 @@ export function Register() {
         if (val.masterRecord.incorporationDate && !updated.incorporationDate) {
           updated.incorporationDate = val.masterRecord.incorporationDate;
         }
-        setForm({ ...updated });
+
+        // Re-run validation on the auto-filled form values
+        val = validateCompanyMasterData({
+          cin: updated.cin.trim(),
+          companyName: updated.companyName,
+          entityType: updated.entityType,
+          incorporationDate: updated.incorporationDate,
+          stateCode: updated.stateCode,
+        });
       }
+
+      setForm(updated);
 
       const newErrors: Record<string, string> = {};
       if (!val.valid) {
@@ -83,7 +201,23 @@ export function Register() {
           newErrors[issue.field] = issue.message;
         }
       }
-      setErrors(newErrors);
+
+      setErrors((prev) => {
+        const next = { ...prev, ...newErrors };
+        if (!newErrors.stateCode) delete next.stateCode;
+        if (!newErrors.companyName) delete next.companyName;
+        if (!newErrors.entityType) delete next.entityType;
+        if (!newErrors.incorporationDate) delete next.incorporationDate;
+        if (!newErrors.cin) delete next.cin;
+        return next;
+      });
+
+      if (k === 'cin' && updated.cin.trim().length === 21) {
+        void performLiveValidation(updated.cin, updated);
+      }
+    } else {
+      setForm(updated);
+      setVerifiedBadge(null);
     }
   };
 
@@ -198,11 +332,25 @@ export function Register() {
               ) : (
                 <Field
                   label="CIN"
-                  hint="Optional — if provided, company details are validated against MCA master data"
+                  hint={verifyingCin ? 'Verifying CIN via BizVerify…' : 'Optional — if provided, company details are validated against MCA master data'}
                   error={errors.cin}
                 >
                   <input value={form.cin} placeholder="U72900TN2020PTC138472"
-                         onChange={(e) => set('cin', e.target.value.toUpperCase())} />
+                         onChange={(e) => set('cin', e.target.value.toUpperCase())}
+                         onBlur={(e) => void performLiveValidation(e.target.value)} />
+                  {verifyingCin && (
+                    <span style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Spinner /> Contacting BizVerify live MCA service…
+                    </span>
+                  )}
+                  {verifiedBadge && !verifyingCin && (
+                    <div className="alert alert-info" style={{ marginTop: 6, padding: '8px 10px', fontSize: 12, borderRadius: 6 }}>
+                      <strong>✓ Verified via {verifiedBadge.verifiedBy}:</strong>{' '}
+                      {verifiedBadge.legalName || 'Official Record'} ({verifiedBadge.status || 'ACTIVE'})
+                      {verifiedBadge.incorporationDate ? ` · Inc. ${verifiedBadge.incorporationDate}` : ''}
+                      {verifiedBadge.roc ? ` · ${verifiedBadge.roc}` : ''}
+                    </div>
+                  )}
                   {!form.cin.trim() && (
                     <span style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>
                       Don't have a CIN yet?{' '}

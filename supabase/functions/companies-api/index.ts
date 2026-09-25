@@ -225,6 +225,19 @@ Deno.serve(async (req: Request) => {
         });
         const body = await parseJsonBody(req, schema);
 
+        if (body.cin && typeof body.cin === 'string' && body.cin.trim()) {
+          const cleanCin = body.cin.trim().toUpperCase();
+          const { data: existingComp } = await supabase
+            .from('companies')
+            .select('id')
+            .eq('cin', cleanCin)
+            .neq('id', companyId)
+            .maybeSingle();
+          if (existingComp) {
+            throw new BadRequestError(`CIN ${cleanCin} is already registered to another company in Complaudi.`);
+          }
+        }
+
         const { data: updated, error } = await supabase
           .from('companies')
           .update(body)

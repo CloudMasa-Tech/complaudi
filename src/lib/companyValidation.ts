@@ -92,6 +92,7 @@ export interface CompanyValidationInput {
   status?: string | null;
   masterRecord?: CompanyMasterRecord | null;
   existingCinsInDb?: string[];
+  currentCompanyId?: string | null;
 }
 
 /**
@@ -124,9 +125,12 @@ export function validateCompanyMasterData(input: CompanyValidationInput): {
 
   // 8. Duplicate CIN Check against database
   if (input.existingCinsInDb && input.existingCinsInDb.map((c) => c.toUpperCase().trim()).includes(rawCin)) {
+    const isEditMode = Boolean(input.currentCompanyId);
     errors.push({
       field: 'cin',
-      message: `CIN ${rawCin} is already registered in Complaudi. Duplicate company onboarding is not permitted.`,
+      message: isEditMode
+        ? `CIN ${rawCin} is already registered to another company in Complaudi.`
+        : `CIN ${rawCin} is already registered in Complaudi. Duplicate company onboarding is not permitted.`,
     });
   }
 

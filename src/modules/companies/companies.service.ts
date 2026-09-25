@@ -355,6 +355,20 @@ export async function updateCompany(
   await getCompanyOrThrow(actor, companyId);
   await assertCan(actor, companyId, 'company.edit');
 
+  if (input.cin && typeof input.cin === 'string' && input.cin.trim()) {
+    const cleanCin = input.cin.trim().toUpperCase();
+    const existingComp = await prisma.company.findFirst({
+      where: {
+        cin: cleanCin,
+        id: { not: companyId },
+      },
+      select: { id: true, legalName: true },
+    });
+    if (existingComp) {
+      throw new BadRequestError(`CIN ${cleanCin} is already registered to another company in Complaudi.`);
+    }
+  }
+
   const data: Prisma.CompanyUpdateInput = {};
   for (const [key, value] of Object.entries(input)) {
     if (value === undefined) continue;

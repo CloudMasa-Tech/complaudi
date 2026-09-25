@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, get, post, upload } from '../api/client';
+import { ApiError, post, upload } from '../api/client';
 import { useCompanies } from '../auth/CompanyContext';
 import type { BusinessType, Company, EntityType, SyncResult } from '../api/types';
 import { BUSINESS_TYPE_LABEL, Card, ErrorNote, Field, Spinner, inc20aNote, officersFor } from '../components/ui';
@@ -260,43 +260,73 @@ export function CompanyNew() {
 
     setLooking(true);
     try {
-      const result = await get<{
-        suggested: {
-          entityType: EntityType | null; stateCode: string | null;
-          isListed: boolean; industry: string | null; incorporationYear: number;
-        };
-      }>(`/lookup/cin/${value}`);
+      const res = await post<{
+        valid: boolean;
+        errors: Array<{ field: string; message: string }>;
+        masterRecord: any;
+        verifiedBy: string | null;
+      }>('/lookup/validate-company', {
+        cin: value,
+        companyName: form.legalName || undefined,
+        entityType: form.entityType || undefined,
+        incorporationDate: form.incorporationDate || undefined,
+        stateCode: form.stateCode || undefined,
+      });
 
-      const s = result.suggested;
+      if (res.masterRecord) {
+        const m = res.masterRecord;
+        const filled: string[] = [];
+        const patch: Partial<typeof form> = {};
 
-      // Built outside the state updater: React runs updaters twice under
-      // StrictMode, so anything with a side effect in there fires twice.
-      const filled: string[] = [];
-      const patch: Partial<typeof form> = { isListed: s.isListed };
+        if (m.legalName && !form.legalName) {
+          patch.legalName = m.legalName;
+          filled.push(`legal name (${m.legalName})`);
+        }
+        if (m.entityType) {
+          patch.entityType = m.entityType as EntityType;
+          filled.push(`entity type (${m.entityType.replace(/_/g, ' ').toLowerCase()})`);
+        }
+        if (m.stateCode && STATES.includes(m.stateCode)) {
+          patch.stateCode = m.stateCode;
+          filled.push(`state (${m.stateCode})`);
+        }
+        if (m.incorporationDate && !form.incorporationDate) {
+          patch.incorporationDate = m.incorporationDate;
+          filled.push(`incorporated on ${m.incorporationDate}`);
+        }
+        if (m.status) {
+          filled.push(`status: ${m.status}`);
+        }
+        if (m.roc) {
+          filled.push(`ROC: ${m.roc}`);
+        }
 
-      if (s.entityType) {
-        patch.entityType = s.entityType;
-        filled.push(`entity type (${s.entityType.replace(/_/g, ' ').toLowerCase()})`);
+        setForm((f) => ({ ...f, ...patch }));
+        if (patch.entityType) fitOfficers(patch.entityType);
+        setDerived(filled);
+
+        const errMap: Record<string, string> = {};
+        if (!res.valid && res.errors.length > 0) {
+          for (const issue of res.errors) errMap[issue.field] = issue.message;
+        }
+
+        setErrors((prev) => {
+          const next = { ...prev, ...errMap };
+          if (!errMap.stateCode) delete next.stateCode;
+          if (!errMap.legalName) delete next.legalName;
+          if (!errMap.entityType) delete next.entityType;
+          if (!errMap.incorporationDate) delete next.incorporationDate;
+          if (!errMap.cin) delete next.cin;
+          return next;
+        });
+      } else if (!res.valid && res.errors.length > 0) {
+        const errMap: Record<string, string> = {};
+        for (const issue of res.errors) errMap[issue.field] = issue.message;
+        setErrors((prev) => ({ ...prev, ...errMap }));
+      } else {
+        setDerived(null);
       }
-      if (s.stateCode && STATES.includes(s.stateCode)) {
-        patch.stateCode = s.stateCode;
-        filled.push(`state (${s.stateCode})`);
-      }
-      filled.push(s.isListed ? 'listed company' : 'unlisted company');
-      // The industry is a broad division, so it only fills a blank.
-      if (s.industry && !form.industry) {
-        patch.industry = s.industry;
-        filled.push(`industry (${s.industry.toLowerCase()})`);
-      }
-      filled.push(`incorporated in ${s.incorporationYear}`);
-
-      setForm((f) => ({ ...f, ...patch }));
-      // The CIN can change the entity type too, so the rows follow it here as
-      // well — otherwise a looked-up LLP kept a company's director rows.
-      if (patch.entityType) fitOfficers(patch.entityType);
-      setDerived(filled);
     } catch {
-      // A malformed CIN is already reported by the field's own validation.
       setDerived(null);
     } finally {
       setLooking(false);

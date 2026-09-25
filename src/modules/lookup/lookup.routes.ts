@@ -18,41 +18,34 @@ import { decodeCin, decodePan, validateGstin } from '../../lib/india';
 import { requireAuth } from '../../middleware/auth';
 import { validateParams, validateQuery } from '../../middleware/validate';
 
-export const lookupRouter = Router();
-lookupRouter.use(requireAuth);
+import { getCompanyVerificationProvider } from '../../lib/verifications';
 
 const DERIVED_FROM = 'Derived from the identifier itself — no government service was contacted.';
+
+export const lookupRouter = Router();
+lookupRouter.use(requireAuth);
 
 lookupRouter.get(
   '/cin/:cin',
   validateParams(z.object({ cin: z.string().min(21).max(21) })),
   asyncHandler(async (req, res) => {
-    const decoded = decodeCin(req.params.cin!);
+    const cin = req.params.cin!;
+    const decoded = decodeCin(cin);
     if (!decoded) {
       throw new UnprocessableError(
         'That is not a valid CIN. It should be 21 characters, e.g. U72900TN2020PTC138472.',
       );
     }
 
+    const verifyRes = await getCompanyVerificationProvider().verifyCompany(cin);
+
     res.json({
+      cin,
       decoded,
-      // Only what the identifier actually settles. A government company's
-      // ownership class does not fix the entity type, so it comes back null.
-      suggested: {
-        entityType: decoded.entityType,
-        stateCode: decoded.stateCode,
-        isListed: decoded.listed,
-        industry: decoded.industry,
-        incorporationYear: decoded.incorporationYear,
-      },
-      derivedFrom: DERIVED_FROM,
-      notAvailable: [
-        { field: 'legalName', why: 'Held by MCA, not encoded in the CIN.' },
-        { field: 'incorporationDate', why: 'The CIN carries the year only, not the day or month.' },
-        { field: 'pan', why: 'Not encoded in the CIN. It is encoded in a GSTIN.' },
-        { field: 'directors', why: 'Held by MCA against the DIN register.' },
-        { field: 'paidUpCapital', why: 'Held by MCA and changes with every allotment.' },
-      ],
+      verified: verifyRes.success,
+      verifiedBy: verifyRes.success ? 'BizVerify' : null,
+      masterRecord: verifyRes.data ?? null,
+      error: verifyRes.error ?? null,
     });
   }),
 );
