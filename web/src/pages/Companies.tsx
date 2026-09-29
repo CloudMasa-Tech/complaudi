@@ -12,11 +12,47 @@ import {
   SeverityDot, Spinner, fmtDate, fmtINR,
 } from '../components/ui';
 
+/**
+ * The applicability endpoint answers in one of two shapes.
+ *
+ * The Express API flattens it — ruleCode, title, authority, severity, form
+ * alongside `applicable` and `reasons`. The Supabase edge function returned
+ * `evaluateAll()` raw, which nests all of that under `.rule`. Against the raw
+ * shape every field this drawer renders came through undefined, so each card
+ * showed a bare condition label and nothing else; the ten MCA rules whose only
+ * condition is the entity type then looked like the same rule repeated ten
+ * times, when they are ADT-1, DIR-12, PAS-3, CHG-1, MGT-14 and the rest.
+ *
+ * The edge function has been corrected, but it is deployed separately, so the
+ * client reads both rather than depending on that having happened.
+ */
+function normaliseApplicability(row: unknown): Applicability {
+  const r = row as Record<string, any>;
+  if (!r?.rule) return r as Applicability;
+
+  const rule = r.rule as Record<string, any>;
+  return {
+    ruleCode: rule.code,
+    applicable: r.applicable,
+    reasons: r.reasons ?? [],
+    evaluatedAt: r.evaluatedAt ?? '',
+    title: rule.title,
+    authority: rule.authority ?? null,
+    category: rule.category ?? null,
+    severity: rule.severity ?? null,
+    form: rule.form ?? null,
+  };
+}
+
 function ApplicabilityDrawer({ company, onClose }: { company: Company; onClose: () => void }) {
   const { data, initial, error } = useResource<Applicability[]>(`/compliance/companies/${company.id}/applicability`);
   const [showAll, setShowAll] = useState(false);
 
-  const rows = (data ?? []).filter((r) => showAll || r.applicable);
+  const rows = (data ?? [])
+    .map(normaliseApplicability)
+    .filter((r) => showAll || r.applicable)
+    // Applicable first, then by code, whichever end answered.
+    .sort((a, b) => Number(b.applicable) - Number(a.applicable) || (a.ruleCode ?? '').localeCompare(b.ruleCode ?? ''));
 
   return (
     <Drawer onClose={onClose}>
@@ -55,7 +91,7 @@ function ApplicabilityDrawer({ company, onClose }: { company: Company; onClose: 
                     </Badge>
                   </span>
                 </div>
-                <span style={{ fontWeight: 550 }}>{r.title}</span>
+                <span style={{ fontWeight: 550 }}>{r.title || r.ruleCode || 'Unnamed rule'}</span>
                 <div className="reasons">
                   {(r.applicable ? r.reasons : deciding).map((x, i) => {
                     const ok = x.negated ? !x.passed : x.passed;
