@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ApiError, post, tokens } from '../api/client';
 import type { BusinessType, EntityType } from '../api/types';
-import { BRAND_TAGLINE } from '../components/Layout';
-import { BUSINESS_TYPE_LABEL, Field, Spinner } from '../components/ui';
+import { AuthFormBrand, AuthShell } from '../components/AuthShell';
+import { BUSINESS_TYPE_LABEL, Field, SEGMENTS_PROSE, Spinner } from '../components/ui';
 import { validateCompanyMasterData } from '../lib/companyValidation';
 
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
@@ -34,7 +34,6 @@ function fieldErrors(details: unknown): Record<string, string> {
 }
 
 export function Register() {
-  const navigate = useNavigate();
   const [form, setForm] = useState({
     name: '', email: '', phone: '', password: '',
     companyName: '', incorporationDate: '', entityType: 'PRIVATE_LIMITED' as EntityType,
@@ -279,21 +278,20 @@ export function Register() {
   }
 
   return (
-    <div className="login-page">
-      <form className="login-card" style={{ maxWidth: 620 }} onSubmit={submit}>
-        <div className="login-head">
-          <img src="/logo.png" alt="Complaudi" style={{ height: 80, objectFit: 'contain' }} />
-          <span className="brand-tagline wide" style={{ marginTop: 6 }}>{BRAND_TAGLINE}</span>
-          <h1 style={{ marginTop: 4 }}>See what your company has to file</h1>
-          <p className="muted tiny">
-            Free for 14 days. Tell us about the entity and we will build its compliance calendar —
-            MCA, GST, Income Tax, MSME and labour — before you finish reading this page.
-          </p>
-        </div>
+    <AuthShell wide cta="signin">
+      <form className="auth-form wide" onSubmit={submit} noValidate>
+        <AuthFormBrand />
 
-        <div className="card">
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <span className="tiny dim">About you</span>
+        <header className="auth-form-head">
+          <h2>See what your company has to file</h2>
+          <p>
+            Free for 14 days. Tell us about the entity and we will build its compliance calendar —
+            {' '}{SEGMENTS_PROSE} — before you finish reading this page.
+          </p>
+        </header>
+
+        <div className="auth-form-body">
+            <h3 className="auth-section">About you</h3>
             <div className="grid grid-2">
               <Field label="Your name" error={errors.name}>
                 <input required value={form.name} onChange={(e) => set('name', e.target.value)} autoComplete="name" />
@@ -302,7 +300,8 @@ export function Register() {
                 <input required type="email" value={form.email} onChange={(e) => set('email', e.target.value)} autoComplete="email" />
               </Field>
               <Field label="Mobile number" hint="10 digits — we use it only to reach you about the account" error={errors.phone}>
-                <input required value={form.phone} placeholder="98765 43210"
+                <input required value={form.phone} placeholder="6364562818"
+                       inputMode="numeric" maxLength={14}
                        onChange={(e) => set('phone', e.target.value)} autoComplete="tel" />
               </Field>
               <Field label="Password" hint="At least 10 characters, with an uppercase letter and a digit" error={errors.password}>
@@ -311,12 +310,11 @@ export function Register() {
               </Field>
             </div>
 
-            <span className="tiny dim" style={{ marginTop: 4 }}>About the entity</span>
+            <h3 className="auth-section">About the entity</h3>
             <div className="grid grid-2">
               <Field label={isIndividual ? 'Business / shop name' : 'Company name'} error={errors.companyName}>
                 <input required value={form.companyName}
-                       placeholder={isIndividual ? 'E.G. SRI BALAJI TEA STALL' : 'NORTHWIND TECHNOLOGIES PRIVATE LIMITED'}
-                       style={{ textTransform: 'uppercase' }}
+                       placeholder={isIndividual ? 'Sri Balaji Tea Stall' : 'CloudMaSa Innovation Lab Pvt Ltd'}
                        onChange={(e) => set('companyName', e.target.value.toUpperCase())} />
               </Field>
               <Field label={isIndividual ? 'Started on' : 'Date of incorporation'}
@@ -325,13 +323,35 @@ export function Register() {
                 <input required type="date" value={form.incorporationDate}
                        onChange={(e) => set('incorporationDate', e.target.value)} />
               </Field>
-              {isIndividual ? (
-                <Field label="Registration" hint="Not required for this entity type">
-                  <input disabled placeholder="—" />
+              <Field
+                label="Entity type"
+                hint={isIndividual
+                  ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants — anything not registered under the Companies Act. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
+                  : undefined}
+                error={errors.entityType}
+              >
+                <select value={form.entityType} onChange={(e) => set('entityType', e.target.value as EntityType)}>
+                  {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </Field>
+              <Field label="State" hint="Drives professional tax and ESI thresholds" error={errors.stateCode}>
+                <select value={form.stateCode} onChange={(e) => set('stateCode', e.target.value)}>
+                  {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+              {isIndividual && (
+                <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
+                  <select value={form.businessType}
+                          onChange={(e) => set('businessType', e.target.value as BusinessType)}>
+                    <option value="">— Select —</option>
+                    {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
+                  </select>
                 </Field>
-              ) : (
-                <Field
-                  label="CIN"
+              )}
+              {!isIndividual && (
+                <div className="span-2">
+                  <Field
+                    label="CIN"
                   hint={verifyingCin ? 'Verifying CIN via BizVerify…' : 'Optional — if provided, company details are validated against MCA master data'}
                   error={errors.cin}
                 >
@@ -365,33 +385,8 @@ export function Register() {
                     </span>
                   )}
                 </Field>
+                </div>
               )}
-
-              <Field
-                label="Entity type"
-                hint={isIndividual
-                  ? 'For shops (tea stall, grocery, retail), freelancers, doctors, lawyers and consultants — anything not registered under the Companies Act. GST, MSME, PF/ESI and income-tax rules still apply to you, based on turnover and employees.'
-                  : undefined}
-                error={errors.entityType}
-              >
-                <select value={form.entityType} onChange={(e) => set('entityType', e.target.value as EntityType)}>
-                  {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </Field>
-              {isIndividual && (
-                <Field label="What best describes you?" hint="Used only to label your profile — no rules change">
-                  <select value={form.businessType}
-                          onChange={(e) => set('businessType', e.target.value as BusinessType)}>
-                    <option value="">— Select —</option>
-                    {BUSINESS_TYPES.map((bt) => <option key={bt} value={bt}>{BUSINESS_TYPE_LABEL[bt]}</option>)}
-                  </select>
-                </Field>
-              )}
-              <Field label="State" hint="Drives professional tax and ESI thresholds" error={errors.stateCode}>
-                <select value={form.stateCode} onChange={(e) => set('stateCode', e.target.value)}>
-                  {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
             </div>
 
             {error && <div className="alert alert-error">{error}</div>}
@@ -401,16 +396,15 @@ export function Register() {
               due and what it costs to miss — but filings are closed out only on a full account.
             </div>
 
-            <button className="btn-primary" type="submit" disabled={busy} style={{ justifyContent: 'center' }}>
-              {busy ? <><Spinner /> Building your calendar…</> : 'Start the 14-day trial'}
-            </button>
-          </div>
+          <button className="btn-primary auth-submit" type="submit" disabled={busy}>
+            {busy ? <><Spinner /> Building your calendar…</> : 'Start the 14-day trial'}
+          </button>
         </div>
 
-        <p className="tiny dim" style={{ textAlign: 'center' }}>
-          Already have an account? <Link to="/login" onClick={() => navigate('/login')}>Sign in</Link>
+        <p className="auth-switch">
+          Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </form>
-    </div>
+    </AuthShell>
   );
 }

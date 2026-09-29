@@ -157,6 +157,25 @@ export const AUTHORITY_LABEL: Record<string, string> = {
   MCA: 'MCA', GST: 'GST', INCOME_TAX: 'Income Tax', MSME: 'MSME', LABOUR: 'Labour', DPIIT: 'DPIIT'
 };
 
+/**
+ * What the toolkit covers, as a customer would name it — not as the engine
+ * enumerates it. PF and ESI both sit under the LABOUR authority internally, but
+ * nobody asks whether you "handle Labour"; they ask about PF and ESI by name,
+ * so those are listed in their own right and the broader Labour heading follows.
+ *
+ * Four pages showed this list and three of them had already drifted apart. It
+ * lives here now so the next change lands everywhere at once.
+ */
+export const COVERED_SEGMENTS = [
+  'MCA', 'GST', 'Income Tax', 'MSME', 'PF', 'ESI', 'Labour', 'DPIIT',
+] as const;
+
+/** Interpunct-separated, for the quiet strapline under a logo. */
+export const SEGMENTS_LINE = COVERED_SEGMENTS.join(' · ');
+
+/** "a, b, c and d", for running prose. */
+export const SEGMENTS_PROSE = `${COVERED_SEGMENTS.slice(0, -1).join(', ')} and ${COVERED_SEGMENTS.at(-1)}`;
+
 // ── primitives ──────────────────────────────────────────────────────────
 
 export const Badge = ({ value, children }: { value: string; children?: ReactNode }) => (

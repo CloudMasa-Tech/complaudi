@@ -2,8 +2,17 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, post, tokens } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { BRAND_TAGLINE } from '../components/Layout';
+import { AuthFormBrand, AuthShell, ShieldIcon } from '../components/AuthShell';
+import { PasswordField } from '../components/PasswordField';
 import { Field, Spinner } from '../components/ui';
+
+/** The rules the server also enforces; checked here to save a round trip. */
+const RULES: Array<{ label: string; met: (v: string) => boolean }> = [
+  { label: 'At least 10 characters', met: (v) => v.length >= 10 },
+  { label: 'A lowercase letter', met: (v) => /[a-z]/.test(v) },
+  { label: 'An uppercase letter', met: (v) => /[A-Z]/.test(v) },
+  { label: 'A digit', met: (v) => /[0-9]/.test(v) },
+];
 
 /**
  * Completes a password reset. Supabase Auth delivers the recovery link with the
@@ -45,13 +54,12 @@ export function ResetPassword() {
   }, []);
 
   const missingLink = !recovery.tokenHash && !recovery.accessToken;
+  const unmet = RULES.filter((r) => !r.met(password));
+  const mismatch = confirm.length > 0 && confirm !== password;
 
   function validate(): string | null {
     if (!password) return 'Enter a new password.';
-    if (password.length < 10) return 'The password needs at least 10 characters.';
-    if (!/[a-z]/.test(password)) return 'The password needs a lowercase letter.';
-    if (!/[A-Z]/.test(password)) return 'The password needs an uppercase letter.';
-    if (!/[0-9]/.test(password)) return 'The password needs a digit.';
+    if (unmet.length) return `The password still needs: ${unmet[0]!.label.toLowerCase()}.`;
     if (confirm !== password) return 'The two new passwords do not match.';
     return null;
   }
@@ -80,56 +88,88 @@ export function ResetPassword() {
   }
 
   return (
-    <div className="login-page">
-      <form className="login-card" onSubmit={submit}>
-        <div className="login-head">
-          <img src="/logo.png" alt="Complaudi" style={{ height: 80, objectFit: 'contain' }} />
-          <span className="brand-tagline wide" style={{ marginTop: 8 }}>{BRAND_TAGLINE}</span>
-          <p className="tiny dim" style={{ marginTop: 6 }}>MCA · GST · Income Tax · MSME · Labour</p>
-        </div>
+    <AuthShell>
+      <form className="auth-form" onSubmit={submit} noValidate>
+        <AuthFormBrand />
 
-        <div className="card">
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-            {done ? (
-              <>
-                <div className="alert alert-success" style={{ background: 'var(--good-soft)', borderColor: 'transparent', color: 'var(--good)' }}>
-                  <strong style={{ display: 'block', marginBottom: 2 }}>Password updated</strong>
-                  <span className="tiny">Sign back in with your new password.</span>
-                </div>
-                <Link className="btn btn-primary" to="/login" style={{ justifyContent: 'center' }}>
-                  Go to Login
-                </Link>
-              </>
-            ) : missingLink ? (
-              <>
-                <div className="alert alert-error">
-                  This reset link is invalid or has expired. Please request a new one.
-                </div>
-                <Link className="btn btn-primary" to="/forgot-password" style={{ justifyContent: 'center' }}>
-                  Request a new link
-                </Link>
-              </>
-            ) : (
-              <>
-                <Field label="New password" hint="At least 10 characters, with an uppercase letter and a digit">
-                  <input type="password" required autoFocus value={password}
-                         onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-                </Field>
-                <Field label="Confirm new password">
-                  <input type="password" required value={confirm}
-                         onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
-                </Field>
+        {done ? (
+          <>
+            <header className="auth-form-head">
+              <h2>Password updated</h2>
+              <p>Sign back in with your new password.</p>
+            </header>
+            <Link className="btn btn-primary auth-submit" to="/login">Go to sign in</Link>
+          </>
+        ) : missingLink ? (
+          <>
+            <header className="auth-form-head">
+              <h2>This link has expired</h2>
+              <p>Reset links are single-use and time-limited. Request a fresh one and it will arrive in a moment.</p>
+            </header>
+            <Link className="btn btn-primary auth-submit" to="/forgot-password">Request a new link</Link>
+            <p className="auth-switch">
+              <Link to="/login">← Back to sign in</Link>
+            </p>
+          </>
+        ) : (
+          <>
+            <header className="auth-form-head">
+              <h2>Set a new password</h2>
+              <p>Choose something you haven't used here before.</p>
+            </header>
 
-                {error && <div className="alert alert-error">{error}</div>}
+            <Field label="New password">
+              <PasswordField
+                id="new-password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="new-password"
+                autoFocus
+                required
+              />
+            </Field>
 
-                <button className="btn-primary" type="submit" disabled={busy} style={{ justifyContent: 'center' }}>
-                  {busy ? <><Spinner /> Updating…</> : 'Update password'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+            {/* The requirements tick off as they're met, so nobody discovers a
+                rule only by being rejected on submit. */}
+            <ul className="pw-rules">
+              {RULES.map((rule) => {
+                const met = rule.met(password);
+                return (
+                  <li key={rule.label} className={met ? 'met' : undefined}>
+                    <span aria-hidden="true">{met ? '✓' : '○'}</span>
+                    {rule.label}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <Field label="Confirm new password" error={mismatch ? 'The two passwords do not match.' : undefined}>
+              <PasswordField
+                id="confirm-password"
+                value={confirm}
+                onChange={setConfirm}
+                autoComplete="new-password"
+                required
+              />
+            </Field>
+
+            {error && <div className="alert alert-error" role="alert">{error}</div>}
+
+            <button
+              className="btn-primary auth-submit"
+              type="submit"
+              disabled={busy || unmet.length > 0 || confirm !== password}
+            >
+              {busy ? <><Spinner /> Updating…</> : 'Update password'}
+            </button>
+
+            <p className="auth-secure">
+              <ShieldIcon />
+              Updating your password signs out every other device
+            </p>
+          </>
+        )}
       </form>
-    </div>
+    </AuthShell>
   );
 }

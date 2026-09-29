@@ -10,7 +10,7 @@ import { initials } from './ui';
 
 /** One source for the wordmark, so the sidebar and the header cannot disagree. */
 export const BRAND = 'Complaudi';
-export const BRAND_TAGLINE = 'A platform for compliance Audit';
+export const BRAND_TAGLINE = 'An AI Platform for compliance Audit';
 
 const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capability?: Capability; adminOnly?: boolean }> = [
   { to: '/', label: 'Dashboard', icon: '◈', end: true },

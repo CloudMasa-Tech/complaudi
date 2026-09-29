@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider } from './auth/ThemeContext';
+// Self-hosted so the font survives a locked-down CSP and needs no third-party
+// request. The variable build is one file for every weight we use.
+import '@fontsource-variable/inter';
 import './styles.css';
 
 createRoot(document.getElementById('root')!).render(

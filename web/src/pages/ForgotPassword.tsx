@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, post } from '../api/client';
-import { BRAND_TAGLINE } from '../components/Layout';
+import { AuthFormBrand, AuthShell, ShieldIcon } from '../components/AuthShell';
 import { Field, Spinner } from '../components/ui';
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
@@ -36,48 +36,76 @@ export function ForgotPassword() {
   }
 
   return (
-    <div className="login-page">
-      <form className="login-card" onSubmit={submit}>
-        <div className="login-head">
-          <img src="/logo.png" alt="Complaudi" style={{ height: 80, objectFit: 'contain' }} />
-          <span className="brand-tagline wide" style={{ marginTop: 8 }}>{BRAND_TAGLINE}</span>
-          <p className="tiny dim" style={{ marginTop: 6 }}>MCA · GST · Income Tax · MSME · Labour</p>
-        </div>
+    <AuthShell>
+      <form className="auth-form" onSubmit={submit} noValidate>
+        <AuthFormBrand />
 
-        <div className="card">
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-            {sent ? (
-              <>
-                <div className="alert alert-success" style={{ background: 'var(--good-soft)', borderColor: 'transparent', color: 'var(--good)' }}>
-                  <strong style={{ display: 'block', marginBottom: 2 }}>Check your inbox</strong>
-                  <span className="tiny">If an account exists for {sent}, a password reset link is on its way. Give it a few minutes — and a glance at spam.</span>
-                </div>
-                <button className="btn-primary" type="button" style={{ justifyContent: 'center' }}
-                        onClick={() => { setSent(null); setEmail(''); }}>
-                  Send again
-                </button>
-              </>
-            ) : (
-              <>
-                <Field label="Email">
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                         autoComplete="username" placeholder="you@company.com" autoFocus required />
-                </Field>
+        {sent ? (
+          <>
+            <header className="auth-form-head">
+              <h2>Check your inbox</h2>
+              {/* Phrased as a conditional on purpose: confirming that this
+                  address has an account would turn the form into a way of
+                  testing which of a firm's clients are customers. */}
+              <p>
+                If an account exists for <strong>{sent}</strong>, a password reset link is on
+                its way. Give it a few minutes — and a glance at spam.
+              </p>
+            </header>
 
-                {error && <div className="alert alert-error">{error}</div>}
+            <button
+              className="btn-primary auth-submit"
+              type="button"
+              onClick={() => { setSent(null); setEmail(''); }}
+            >
+              Use a different address
+            </button>
 
-                <button className="btn-primary" type="submit" disabled={busy} style={{ justifyContent: 'center' }}>
-                  {busy ? <><Spinner /> Sending…</> : 'Send reset link'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+            <p className="auth-switch">
+              <Link to="/login">← Back to sign in</Link>
+            </p>
+          </>
+        ) : (
+          <>
+            <header className="auth-form-head">
+              <h2>Reset your password</h2>
+              <p>Enter your work email and we'll send you a link to set a new one.</p>
+            </header>
 
-        <p style={{ textAlign: 'center', fontWeight: 600 }}>
-          Remembered it? <Link to="/login">Sign in</Link>
-        </p>
+            <Field label="Work email">
+              <input
+                id="email"
+                type="email"
+                inputMode="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                placeholder="you@company.com"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                autoFocus
+                required
+              />
+            </Field>
+
+            {error && <div className="alert alert-error" role="alert">{error}</div>}
+
+            <button className="btn-primary auth-submit" type="submit" disabled={busy}>
+              {busy ? <><Spinner /> Sending…</> : 'Send reset link'}
+            </button>
+
+            <p className="auth-switch">
+              Remembered it? <Link to="/login">Sign in</Link>
+            </p>
+
+            <p className="auth-secure">
+              <ShieldIcon />
+              Reset links expire after one use
+            </p>
+          </>
+        )}
       </form>
-    </div>
+    </AuthShell>
   );
 }

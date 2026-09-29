@@ -27,7 +27,7 @@
   --radius: 12px;
   --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 16px -2px rgba(30, 58, 138, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 12px 32px -8px rgba(30, 58, 138, 0.22);
-  --mono: "Times New Roman", Times, serif;
+  --mono: "Inter Variable", "Inter", ui-monospace, SFMono-Regular, Menlo, monospace;
   --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(239, 246, 255, 0.85) 100%);
   --glass-border: rgba(30, 58, 138, 0.22);
   --glass-shadow: 0 8px 24px -4px rgba(30, 58, 138, 0.08);
@@ -37,6 +37,22 @@
   --glass-held-border-left: #1e3a8a;
   --glass-empty-bg: rgba(240, 244, 248, 0.6);
   --glass-empty-border: rgba(203, 213, 225, 0.6);
+
+  /* ── brand, sampled from logo.png ──────────────────────────────────────
+   * The wordmark is three colours: the navy of "compl", the blue of the "C"
+   * swoosh, and the orange of "audi". The interface uses navy and blue as its
+   * structure and keeps orange for the one thing that should interrupt the
+   * page — the trial. Spending the orange anywhere else costs it that job.
+   */
+  --brand-navy: #1b3a6b;
+  --brand-navy-deep: #0d2144;
+  --brand-blue: #2563eb;
+  --brand-blue-light: #3b9ae1;
+  --brand-orange: #f97316;
+  --brand-orange-deep: #ea580c;
+  --brand-amber: #fbbf24;
+  --brand-gradient: linear-gradient(135deg, #0d2144 0%, #1b3a6b 45%, #2563eb 100%);
+  --brand-orange-gradient: linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%);
 }
 
 :root[data-theme="dark"] {
@@ -77,15 +93,42 @@
   --glass-empty-border: rgba(71, 85, 105, 0.6);
 }
 
-/* ── Global Font Enforcer: Times New Roman ──────────────────────────────── */
-* {
-  box-sizing: border-box;
-  font-family: "Times New Roman", Times, serif !important;
+/* ── Typography ──────────────────────────────────────────────────────────
+ * Inter for the whole interface. `--font-num` adds tabular figures, which is
+ * what stops a column of rupee amounts or due dates from jittering as the
+ * digits change width — the single most useful typographic property in a
+ * compliance product, where nearly every screen is a table of numbers.
+ */
+:root {
+  --font-ui: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+             Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-num: "Inter Variable", "Inter", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-body, button, input, select, textarea, h1, h2, h3, h4, h5, h6, p, span, div, a, label, table, th, td, code, pre, option {
-  font-family: "Times New Roman", Times, serif !important;
+* { box-sizing: border-box; }
+
+html {
+  font-family: var(--font-ui);
+  /* Inter's defaults leave gaps at UI sizes; these are the recommended set. */
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+
+body, button, input, select, textarea, optgroup, option,
+h1, h2, h3, h4, h5, h6, p, span, div, a, label, table, th, td, li {
+  font-family: inherit;
+}
+
+/* Figures that sit in columns line up; everything else keeps proportional
+   spacing, which reads better in prose. */
+td, th, .num, .amount, .due-date, time, .metric, .stat-value, input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+code, pre, kbd, samp { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 
 body {
   margin: 0;
@@ -271,6 +314,14 @@ button:disabled:hover { background: var(--surface-2); filter: none; }
   box-shadow: 0 2px 8px rgba(30, 58, 138, 0.28);
 }
 .btn-primary:hover {
+  /* The background has to be restated here, not just brightened.
+     `button:hover` above is (0,1,1) and outranks `.btn-primary` at (0,1,0), so
+     without this line the generic grey wins and the label — which is
+     `#fff !important` — disappears into it. Every other variant
+     (.btn-ghost, .btn-danger) already re-declares its own hover background;
+     this one was the omission. */
+  background: var(--navy-gradient);
+  border-color: #1e3a8a;
   filter: brightness(1.12);
   box-shadow: 0 4px 12px rgba(30, 58, 138, 0.38);
 }
@@ -650,6 +701,10 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .alert-error { background: var(--critical-soft); border-color: transparent; color: var(--critical); }
 .alert-warn { background: var(--high-soft); border-color: transparent; color: var(--high); }
 .alert-info { background: var(--accent-soft); border-color: var(--navy-border); color: var(--accent); }
+/* An alert carrying a headline and a detail line stacks them rather than
+   running both together on one row. */
+.alert:has(strong + span) { display: flex; flex-direction: column; gap: 3px; line-height: 1.45; }
+.alert > span { font-weight: 400; opacity: 0.88; font-size: 13px; }
 
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 .filters .field { min-width: 130px; flex: none; }
@@ -694,6 +749,399 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .dropzone:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 /* ── login ─────────────────────────────────────────────────────────────── */
+/* ── auth: split screen ──────────────────────────────────────────────────
+ * Marketing panel on the left, the form on the right. Below 900px the panel
+ * stops being a column and becomes a short header above the form, so a phone
+ * still leads with the trial offer without pushing sign-in off the screen.
+ */
+.auth-split {
+  min-height: 100vh;
+  display: grid;
+  /* One ratio for sign-in, enrolment, forgotten password and reset. Moving
+     between them must not resize the panel — a brand that changes width as you
+     click "Enrol" reads as a different site. 0.9fr keeps the panel above the
+     586px it needs to show its content at full width, while still leaving the
+     enrolment form ~618px at 1280px and the full 660px from 1440px up. */
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.auth-aside {
+  position: relative;
+  overflow: hidden;
+  background: var(--brand-gradient);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 56px clamp(32px, 5vw, 72px);
+}
+/* Two soft light sources, so the flat gradient gains some depth without
+   costing an image request. */
+.auth-aside::before,
+.auth-aside::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.auth-aside::before {
+  width: 520px; height: 520px; top: -190px; right: -170px;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.34) 0%, transparent 68%);
+}
+.auth-aside::after {
+  width: 460px; height: 460px; bottom: -180px; left: -140px;
+  /* A trace of the wordmark's orange, well below the text so it tints the
+     panel rather than competing with it. */
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, transparent 70%);
+}
+.auth-aside-inner {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 460px; margin-inline: auto;
+  display: flex; flex-direction: column; align-items: flex-start;
+}
+
+.auth-aside-logo {
+  display: block;
+  height: var(--logo-h);
+  object-fit: contain;
+  /* Sits straight on the gradient: logo-dark.png already carries white
+     lettering, so there is nothing to knock out and no plate to hide. */
+  filter: none;
+}
+/* The lockup shrink-wraps its contents and centres them on each other, so the
+   strapline is centred under the mark rather than under the whole panel. It
+   owns the gap down to the headline; logo and tagline stay tight together so
+   the pair reads as one unit.
+
+   logo-dark.png is cropped to its artwork — the original carried 47px of
+   transparent padding below the mark, which at render size added ~9px of dead
+   space that no margin could see or remove. With the box matching the ink, the
+   margin below is exactly the gap you get. */
+.auth-aside-lockup {
+  /* The logo's height is the one dimension set in CSS; its width follows from
+     the artwork's own aspect (941x259 after cropping to the ink). Deriving the
+     width here lets the tagline's offset track the clamp instead of being
+     pinned to one screen size. */
+  --logo-h: clamp(56px, 5vw, 76px);
+  --logo-w: calc(var(--logo-h) * 3.633);
+  /* Where the "p" of "Complaudi" begins, measured off the artwork: the glyph
+     runs x=422..525 of 941, so its left edge is 44.8% across the wordmark. */
+  --wordmark-p: 0.448;
+
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+  margin-bottom: 36px;
+}
+.auth-aside-tagline {
+  /* Hard against the mark, and starting under the wordmark's "p" rather than
+     centred — the strapline hangs off a letter of the logo instead of floating
+     beneath it. The artwork is cropped to its ink, so a zero top margin is a
+     true zero; line-height is pulled in too, since half-leading above the first
+     line would otherwise reintroduce the gap it is meant to remove. */
+  margin: 0 0 0 calc(var(--logo-w) * var(--wordmark-p));
+  line-height: 1.25;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  color: #fff;
+  text-align: left;
+  /* The mark ends in a lowercase "i"; sentence case under it reads as a
+     strapline, where full caps would compete with the wordmark itself. */
+  text-wrap: balance;
+}
+
+/* h1-h4 carry `color: var(--text)` globally, which is near-black and beat the
+   panel's inherited white — the headline was rendering dark on dark navy.
+   These override it explicitly rather than relying on the cascade. */
+.auth-aside h1, .auth-aside h2, .auth-aside h3 { color: #fff; }
+
+.auth-headline {
+  margin: 0 0 14px;
+  font-size: clamp(27px, 3vw, 38px);
+  line-height: 1.16;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+}
+.auth-sub { margin: 0 0 32px; font-size: 15px; line-height: 1.62; color: rgba(255, 255, 255, 0.82); }
+
+.auth-points { list-style: none; margin: 0 0 36px; padding: 0; display: flex; flex-direction: column; gap: 17px; }
+.auth-points li { display: flex; gap: 13px; align-items: flex-start; }
+.auth-points div { display: flex; flex-direction: column; gap: 2px; }
+.auth-points strong { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
+.auth-points span { font-size: 13px; color: rgba(255, 255, 255, 0.68); line-height: 1.5; }
+.auth-tick {
+  flex: none; margin-top: 2px; padding: 3px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15); color: var(--brand-blue-light);
+}
+
+/* ── the trial offer ─────────────────────────────────────────────────── */
+.trial-card {
+  position: relative;
+  padding: 24px 24px 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(251, 146, 60, 0.32);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.trial-badge {
+  display: inline-block; margin-bottom: 11px;
+  padding: 5px 12px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  color: #fff; background: var(--brand-orange-gradient);
+  box-shadow: 0 3px 16px -2px rgba(249, 115, 22, 0.65);
+}
+.trial-card h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; letter-spacing: -0.015em; }
+.trial-card > p { margin: 0 0 17px; font-size: 13.5px; line-height: 1.55; color: rgba(255, 255, 255, 0.78); }
+
+.trial-cta {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 13px 20px; border-radius: 10px;
+  font-size: 14.5px; font-weight: 650; text-decoration: none;
+  /* The wordmark's orange, used here and nowhere else on the page. */
+  color: #fff; background: var(--brand-orange-gradient);
+  box-shadow: 0 7px 22px -6px rgba(249, 115, 22, 0.7);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.trial-cta:hover { transform: translateY(-1.5px); box-shadow: 0 12px 28px -6px rgba(249, 115, 22, 0.8); }
+.trial-cta:active { transform: translateY(0); }
+.trial-cta svg { transition: transform 0.16s ease; }
+.trial-cta:hover svg { transform: translateX(3px); }
+.trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.62); }
+
+/* ── the form side ───────────────────────────────────────────────────── */
+.auth-main { display: grid; place-items: center; padding: 48px 24px; background: var(--surface); }
+/* A form taller than the viewport should begin at the top and scroll, not sit
+   centred with its heading pushed off the top edge. */
+.auth-split.wide .auth-main { align-items: start; padding-block: 40px 48px; }
+/* The panel is identical on all four signed-out pages — same width, same
+ * sticky behaviour — so moving between sign-in and enrolment never resizes it.
+ * It pins so a long form scrolls past rather than dragging it away.
+ *
+ * Two guards, because a pinned 100vh box is exactly where content silently
+ * gets cut: on a 1280x800 laptop the panel's content runs ~790px against
+ * ~720px of usable height.
+ *
+ *   overflow-y: auto  — the panel scrolls instead of clipping. `overflow-x`
+ *                       stays hidden so the decorative radials are still
+ *                       cropped to the panel.
+ *   align-items: safe center — plain `center` pushes overflowing content above
+ *                       the scroll origin, where it can never be reached.
+ *                       `safe` falls back to start alignment the moment it
+ *                       would overflow.
+ */
+.auth-aside {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: safe center;
+  padding-block: 40px;
+  scrollbar-width: none;
+}
+.auth-aside::-webkit-scrollbar { width: 0; }
+
+/* Short viewports — a 1280x800 or 1440x810 laptop — tighten the panel so it
+   fits without needing that scroll in the first place. The ceiling is 1000px
+   rather than 900: with the fourth value point the untightened panel runs
+   ~848px, which still overflows a 900px-tall window. */
+@media (min-width: 901px) and (max-height: 1000px) {
+  .auth-aside { padding-block: 30px; }
+  .auth-aside-lockup { --logo-h: 64px; }
+  .auth-aside-lockup { margin-bottom: 22px; }
+  .auth-headline { font-size: clamp(24px, 2.2vw, 29px); margin-bottom: 10px; }
+  .auth-sub { font-size: 14px; line-height: 1.55; margin-bottom: 20px; }
+  .auth-points { gap: 13px; margin-bottom: 22px; }
+  .auth-points span { font-size: 12.5px; }
+  .trial-card { padding: 18px 20px 16px; }
+  .trial-card > p { margin-bottom: 13px; }
+}
+
+/* Laptop-height windows — 1280x800 with browser chrome lands here, as does
+   1280x720. With the mark at 64px the panel has only ~10px of slack at 800px
+   tall, which is inside the margin of error on text wrapping. The descriptive
+   paragraph is the one block whose job the four value points already do, so it
+   goes rather than leaving the panel to scroll past its own call to action. */
+@media (min-width: 901px) and (max-height: 860px) {
+  .auth-sub { display: none; }
+  .auth-points { margin-bottom: 18px; }
+  .auth-headline { font-size: clamp(22px, 2vw, 26px); }
+}
+.auth-form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 15px; }
+/* Enrolment asks for eight fields in two columns; 380px would stack them all
+   into one very tall column. The panel gives up a little width to pay for it. */
+.auth-form.wide { max-width: 660px; }
+.auth-form-body { display: flex; flex-direction: column; gap: 12px; }
+.auth-form.wide { gap: 13px; }
+.auth-form.wide .grid { gap: 12px 18px; }
+/* A field that needs the whole row — the CIN block, whose hints and
+   verification badge would otherwise leave a dead column beside it. */
+.span-2 { grid-column: 1 / -1; }
+/* Rows sized to the tallest cell stretched short fields to match tall ones,
+   which is where most of the empty space came from. Each field now takes only
+   the height it needs. */
+.auth-form.wide .grid-2 { align-items: start; }
+/* Field hints are the bulk of the page's height here; they stay readable but
+   stop claiming a full line and a half each. */
+.auth-form.wide .field-hint { font-size: 11.5px; line-height: 1.4; }
+.auth-form.wide .alert { padding: 10px 13px; font-size: 13px; line-height: 1.5; }
+
+/* Shown only when the panel is hidden, so the brand never disappears. */
+.auth-form-brand { display: none; }
+.auth-form-logo { height: 38px; object-fit: contain; }
+/* One mark per theme: the light artwork has navy letters for the white
+   surface, the dark one white letters for when the surface goes near-black. */
+.auth-form-logo.dark { display: none; height: 29px; }
+:root[data-theme="dark"] .auth-form-logo.light { display: none; }
+:root[data-theme="dark"] .auth-form-logo.dark { display: block; }
+.auth-form-head { margin-bottom: 4px; }
+.auth-form-head h2 {
+  margin: 0 0 6px;
+  font-size: clamp(26px, 2.3vw, 31px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  /* The ramp is painted across the element box, so a block-level h2 would
+     stretch it over the whole column and leave a short title like "Sign in"
+     showing only the navy end. Shrinking the box to the text means every
+     heading gets the full navy-to-orange run, whatever its length. */
+  width: fit-content;
+  max-width: 100%;
+  /* Solid first: if background-clip fails the heading still renders. The
+     gradient below only replaces it where the browser can paint text through
+     a background. */
+  color: var(--brand-navy-deep);
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .auth-form-head h2,
+  .auth-section {
+    /* The wordmark's own three colours, left to right — navy into the swoosh
+       blue into the "audi" orange, so the title is lit by the brand rather
+       than by an arbitrary accent. */
+    background-image: linear-gradient(96deg,
+      var(--brand-navy-deep) 0%,
+      var(--brand-blue) 48%,
+      /* The deeper orange, not --brand-orange: #f97316 on white is 2.8:1 and
+         fails even the 3:1 large-text floor, and the tail of the ramp is where
+         the last words of the heading land. #ea580c clears it at 3.56:1. */
+      var(--brand-orange-deep) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+/* Section captions inside the form — one rung below the page title, lit by the
+   same ramp so the page reads as one piece rather than a title plus grey
+   labels. 19px clears the 14pt-bold threshold at which WCAG treats text as
+   large, which is what lets the ramp reach its orange end at 3.56:1. */
+.auth-section {
+  margin: 6px 0 -2px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.017em;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--brand-navy-deep);
+  /* Fixed ramp length rather than one stretched to each caption's width.
+     Stretched, "About you" ran the whole navy-to-orange span across nine
+     characters and read as a rainbow; sampled at the title's rate it shows the
+     same opening navy-into-blue the title does, so the two are literally the
+     same gradient rather than merely a similar one. It also keeps these off the
+     orange tail, which at 19px would be below the contrast floor for text this
+     size. */
+  background-size: 300px 100%;
+  background-repeat: no-repeat;
+}
+.auth-form-body > .auth-section:first-child { margin-top: 0; }
+
+/* On the dark surface the navy end would disappear, so the ramp starts light. */
+:root[data-theme="dark"] .auth-form-head h2,
+:root[data-theme="dark"] .auth-section { color: #e8eefc; }
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  :root[data-theme="dark"] .auth-form-head h2,
+  :root[data-theme="dark"] .auth-section {
+    background-image: linear-gradient(96deg, #ffffff 0%, #7dd3fc 45%, var(--brand-orange) 100%);
+  }
+}
+.auth-form-head p { margin: 0; font-size: 14px; color: var(--text-3); line-height: 1.55; }
+
+.auth-forgot { align-self: flex-end; margin-top: -5px; font-size: 13px; font-weight: 600; }
+.auth-submit { justify-content: center; padding: 12px; font-size: 15px; font-weight: 650; }
+.auth-switch { margin: 3px 0 0; text-align: center; font-size: 14px; color: var(--text-2); }
+.auth-secure {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin: 10px 0 0; font-size: 11.5px; color: var(--text-3);
+}
+
+/* ── password field ──────────────────────────────────────────────────── */
+.password-input { position: relative; display: flex; }
+.password-input input { width: 100%; padding-right: 42px; }
+.password-reveal {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border: 0; border-radius: 7px; background: transparent; cursor: pointer;
+  color: var(--text-3); transition: color 0.14s ease, background 0.14s ease;
+}
+.password-reveal:hover { color: var(--text); background: var(--surface-2); }
+/* The verification code: wide tracking and tabular figures, so six digits read
+   as six discrete characters rather than a number. */
+.otp-input {
+  font-size: 23px !important;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  padding-block: 11px !important;
+}
+.otp-input::placeholder { letter-spacing: 0.34em; opacity: 0.32; }
+
+/* Password requirements, ticking off as they are met. Shown before submit so a
+   rule is never discovered by being rejected for breaking it. */
+.pw-rules {
+  list-style: none; margin: -4px 0 0; padding: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+}
+.pw-rules li {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-3); transition: color 0.15s ease;
+}
+.pw-rules li span { width: 12px; text-align: center; font-weight: 700; }
+.pw-rules li.met { color: var(--good); }
+
+@media (max-width: 420px) { .pw-rules { grid-template-columns: 1fr; } }
+
+.auth-link-btn {
+  align-self: center; padding: 4px 8px; border: 0; background: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+}
+.auth-link-btn:hover { text-decoration: underline; }
+
+.caps-warning {
+  display: flex; align-items: center; gap: 5px;
+  margin: 6px 0 0; font-size: 12px; font-weight: 600; color: var(--high);
+}
+
+@media (max-width: 900px) {
+  .auth-split, .auth-split.wide { grid-template-columns: 1fr; }
+  /* Form first on a phone: someone returning to sign in should not have to
+     scroll past the pitch. The panel follows as the reason to enrol, and
+     stacked below it there is nothing left for sticky to do. */
+  .auth-main { order: 1; padding: 36px 20px 28px; }
+  .auth-aside {
+    order: 2; padding: 34px 20px 44px;
+    position: static; height: auto; overflow: hidden;
+  }
+  .auth-form-brand { display: inline-flex; align-self: center; margin-bottom: 6px; }
+  .auth-aside-lockup { --logo-h: 52px; }
+  .auth-aside-lockup { margin-bottom: 24px; }
+  .auth-aside-tagline { font-size: 12px; }
+  .auth-points { margin-bottom: 26px; }
+}
+
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
 .login-card {
   width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 18px;
