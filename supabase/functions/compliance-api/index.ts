@@ -5,10 +5,11 @@ import { getSupabaseAdminClient, serialiseBigInt } from '../_shared/database.ts'
 import { AppError, BadRequestError, NotFoundError } from '../_shared/errors.ts';
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody, parseQueryParams } from '../_shared/validation.ts';
-import { allRules, evaluateAll, explainRule, generateCalendar, deriveStatus } from '../_shared/engine/index.ts';
+import { allRules, evaluateAll, explainRule } from '../_shared/engine/index.ts';
 import { applicableEntityTypes } from '../_shared/engine/entityApplicability.ts';
 import { addDays, parseDate, today } from '../_shared/dates.ts';
 import { applyItemStatusChange } from '../_shared/completion.ts';
+import { syncCompanyCalendar } from '../_shared/sync.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
 
@@ -105,90 +106,10 @@ Deno.serve(async (req: Request) => {
       const companyId = syncMatch[1];
       await assertCan(authCtx, companyId, 'company.edit');
 
-      const { data: company, error: companyErr } = await supabase
-        .from('companies')
-        .select(
-          '*, directors(*), gstRegistrations:gst_registrations(*), msme:msme_registrations(*), company_events:company_events(*)',
-        )
-        .eq('id', companyId)
-        .single();
-
-      if (companyErr || !company) throw new NotFoundError('Company not found');
-
-      const ctx = {
-        company: {
-          ...company,
-          annualTurnover: Number(company.annualTurnover || 0),
-          paidUpCapital: Number(company.paidUpCapital || 0),
-          incorporationDate: company.incorporationDate ? parseDate(company.incorporationDate) : null,
-          agmDate: company.agmDate ? parseDate(company.agmDate) : null,
-          // Logged compliance events drive the MCA event-based rules (DIR-11,
-          // DIR-12, CHG-1, CHG-4, INC-22, MGT-14, PAS-3, SH-7). Node loads the
-          // CompanyEvent table the same way in syncCompany().
-          events: (company.company_events || [])
-            .filter((e: any) => e && e.eventDate)
-            .map((e: any) => ({
-              eventType: e.eventType,
-              eventDate: parseDate(e.eventDate)!,
-              metadata: (e.metadata as Record<string, unknown>) || {},
-            })),
-        },
-        directors: (company.directors || []).map((d: any) => ({
-          ...d,
-          appointedOn: d.appointedOn ? parseDate(d.appointedOn) : null,
-          resignedOn: d.resignedOn ? parseDate(d.resignedOn) : null,
-        })),
-        gstRegistrations: company.gstRegistrations || [],
-        msme: company.msme ? { ...company.msme, registeredOn: company.msme.registeredOn ? parseDate(company.msme.registeredOn) : null } : null,
-      };
-
-      const now = today();
-      const windowStart = addDays(now, -365);
-      const windowEnd = addDays(now, 365);
-
-      const genResult = generateCalendar(ctx, { from: windowStart, to: windowEnd });
-
-      let created = 0;
-      let updated = 0;
-      for (const item of genResult.items) {
-        const derived = deriveStatus(item.dueDate, null);
-        const { data: existing } = await supabase
-          .from('compliance_items')
-          .select('id, status, completedAt')
-          .eq('companyId', companyId)
-          .eq('ruleCode', item.ruleCode)
-          .eq('periodKey', item.periodKey)
-          .single();
-
-        if (existing) {
-          const finalStatus = existing.status === 'COMPLETED' || existing.status === 'WAIVED' ? existing.status : derived;
-          await supabase.from('compliance_items').update({ status: finalStatus, dueDate: item.dueDate }).eq('id', existing.id);
-          updated++;
-        } else {
-          await supabase.from('compliance_items').insert({
-            companyId,
-            ruleCode: item.ruleCode,
-            title: item.title,
-            authority: item.authority,
-            category: item.category,
-            form: item.form,
-            legalReference: item.legalReference,
-            severity: item.severity,
-            periodKey: item.periodKey,
-            periodLabel: item.periodLabel,
-            periodStart: item.periodStart,
-            periodEnd: item.periodEnd,
-            dueDate: item.dueDate,
-            status: derived,
-            penaltyNote: item.penaltyNote,
-            evidenceRequired: item.evidenceRequired,
-            evidenceLevel: item.evidenceLevel,
-          });
-          created++;
-        }
-      }
-
-      return jsonResponse({ synced: true, generatedItems: genResult.items.length, created, updated });
+      // The body of this used to live here in full. It is shared now, because
+      // the endpoints that change a company's profile need to run exactly the
+      // same regeneration, and two copies of it would drift.
+      return jsonResponse(await syncCompanyCalendar(supabase, companyId));
     }
 
     // GET /companies/:id/applicability
