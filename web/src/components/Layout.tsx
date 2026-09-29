@@ -120,8 +120,17 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
   );
 }
 
+const SignOutIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"
+       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
 export function Layout() {
-  const { user, can } = useAuth();
+  const { user, can, logout } = useAuth();
   const { companies, selectedId, select, error: companiesError, reload: reloadCompanies } = useCompanies();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -197,7 +206,13 @@ export function Layout() {
             </div>
           </div>
 
-
+          {/* Directly under the person it signs out, which is where people look
+              for it — it previously lived only on the Profile page, two clicks
+              away and not obviously there at all. */}
+          <button type="button" className="sign-out" onClick={logout}>
+            <SignOutIcon />
+            Sign out
+          </button>
         </div>
       </aside>
 

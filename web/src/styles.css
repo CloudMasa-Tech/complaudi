@@ -222,6 +222,25 @@ a { color: inherit; }
 
 .sidebar-foot { margin-top: auto; border-top: 1px solid var(--navy-border); padding-top: 14px; }
 .who { display: flex; align-items: center; gap: 9px; padding: 4px 8px; }
+
+/* Sits under the profile block it acts on. Quiet by default — signing out is
+   not the thing anyone came to the sidebar to do — and only turns red on
+   approach, which is also the confirmation that it is the destructive one. */
+.sign-out {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; margin-top: 8px; padding: 8px 12px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--text-3);
+  font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.sign-out:hover {
+  background: var(--critical-soft);
+  border-color: transparent;
+  color: var(--critical);
+}
+.sign-out:focus-visible { outline: 2px solid var(--critical); outline-offset: 1px; }
+.sign-out svg { flex: none; }
 .avatar {
   width: 30px; height: 30px; border-radius: 50%; flex: none;
   background: var(--accent); color: #ffffff;
