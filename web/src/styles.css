@@ -517,20 +517,26 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   transition: all .25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.reg-tile.held {
+/* `is-held` / `is-empty`, not `held` / `empty`. `.empty` is the generic
+   empty-state utility further down this file — padding 40px, centred text,
+   muted colour — and it was landing on every unregistered card. Same
+   specificity, declared later, so it won: the card grew, its text greyed out,
+   and block children centred while flex children stayed left, which is what
+   made the GST card read as ragged. */
+.reg-tile.is-held {
   border-left: 4px solid var(--accent);
   background: var(--glass-held-bg);
   border-color: var(--glass-held-border);
 }
 
-.reg-tile.empty {
+.reg-tile.is-empty {
   background: var(--glass-empty-bg);
   border-style: dashed;
   border-color: var(--glass-empty-border);
   opacity: 0.85;
 }
 
-.reg-tile.empty .card-title {
+.reg-tile.is-empty .card-title {
   color: var(--text-3);
 }
 

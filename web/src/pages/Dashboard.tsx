@@ -141,6 +141,38 @@ function RegistrationBreakdownDrawer({ profile, registrations, docs, onClose }: 
   );
 }
 
+/**
+ * The colour a registration card wears.
+ *
+ * Driven by what the rules engine decided, not by whether the field is filled.
+ * "Missing" and "missing and required" are different facts, and on a compliance
+ * dashboard the difference is the whole point — red on an optional registration
+ * reads as a finding against the company when there is none. A ₹2 lakh-turnover
+ * company is nowhere near the ₹20 lakh GST threshold, so its blank GSTIN is a
+ * choice, not a breach.
+ *
+ *   REGISTERED            green   held
+ *   MANDATORY             red     required by the rules and missing
+ *   EXPIRED_RENEWAL_DUE   red     held but lapsed
+ *   PENDING_APPLICATION   amber   in flight
+ *   ELIGIBLE              grey    available, not required
+ */
+function regTone(
+  registrations: EvaluatedRegistration[],
+  ids: string[],
+  hasValue: boolean,
+): 'good' | 'bad' | 'warn' | 'idle' {
+  const found = registrations.find((r) => ids.includes(r.id));
+  if (!found) return hasValue ? 'good' : 'idle';
+  switch (found.status) {
+    case 'REGISTERED': return 'good';
+    case 'MANDATORY':
+    case 'EXPIRED_RENEWAL_DUE': return 'bad';
+    case 'PENDING_APPLICATION': return 'warn';
+    default: return hasValue ? 'good' : 'idle';
+  }
+}
+
 /** Clean card layout with left-aligned details and large right-aligned logo */
 function RegCard({
   title,
@@ -171,7 +203,7 @@ function RegCard({
     : 'var(--text-3)';
 
   return (
-    <div className={`reg-tile ${hasValue ? 'held' : 'empty'}`}>
+    <div className={`reg-tile ${hasValue ? 'is-held' : 'is-empty'}`}>
       {/* Left Content Area */}
       <div className="card-left-content">
         <div className="card-title-row">
@@ -224,7 +256,12 @@ const KYC_VIEW = {
 /**
  * The entity itself, before anything it owes.
  */
-function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logoStorageKey?: string | null }) {
+function EntityCard({ profile, logoStorageKey, registrations = [] }: {
+  profile: CompanyProfile;
+  logoStorageKey?: string | null;
+  /** The engine's verdict per registration, which decides each card's colour. */
+  registrations?: EvaluatedRegistration[];
+}) {
   const { dsc, mcaKyc, msme, gstins, dpiit } = profile;
   const live = gstins.filter((g) => g.isActive);
   const dscView = DSC_VIEW[dsc.status];
@@ -273,6 +310,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="Udyam Number"
           idValue={msme?.udyamNumber ?? null}
           statusLabel={msme ? `Registered${msme.category ? ` · ${titleise(msme.category)}` : ''}` : msmeDoc ? 'Document Uploaded' : 'Not registered'}
+          tone={regTone(registrations, ['msme'], Boolean(msme))}
           logoUrl="/msme.webp?v=3"
           doc={msmeDoc}
         />
@@ -292,6 +330,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
             live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more states`
               : live.length === 1 ? `${live[0]!.stateCode} · Registered` : gstDoc ? 'Document Uploaded' : 'Not registered'
           }
+          tone={regTone(registrations, ['gst'], live.length > 0)}
           logoUrl="/gst.webp?v=3"
           doc={gstDoc}
         />
@@ -308,6 +347,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="DPIIT Number"
           idValue={dpiit?.number ?? null}
           statusLabel={dpiit?.recognisedOn ? `Recognised · ${fmtDate(dpiit.recognisedOn)}` : dpiit ? 'Recognised' : dpiitDoc ? 'Document Uploaded' : 'Not recognised'}
+          tone={regTone(registrations, ['dpiit'], Boolean(dpiit?.number))}
           logoUrl="/dpiit.webp?v=3"
           doc={dpiitDoc}
         />
@@ -324,6 +364,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="Registration No"
           idValue={profile.registrationNumber || null}
           statusLabel={mcaDoc ? 'Document Uploaded' : profile.registrationNumber ? 'Master Data Recorded' : 'Not recorded'}
+          tone={regTone(registrations, ['mca_cin', 'mca_llpin'], Boolean(profile.registrationNumber))}
           logoUrl="/mca.svg?v=3"
           doc={mcaDoc}
         />
@@ -361,6 +402,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="PF Code"
           idValue={profile.epfoCode ?? null}
           statusLabel={profile.epfoCode ? 'Enrolled' : pfDoc ? 'Document Uploaded' : 'Not enrolled'}
+          tone={regTone(registrations, ['pf'], Boolean(profile.epfoCode))}
           logoUrl="/epfo.png?v=3"
           doc={pfDoc}
         />
@@ -377,6 +419,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="ESI Code"
           idValue={profile.esicCode ?? null}
           statusLabel={profile.esicCode ? 'Enrolled' : esiDoc ? 'Document Uploaded' : 'Not enrolled'}
+          tone={regTone(registrations, ['esi'], Boolean(profile.esicCode))}
           logoUrl="/esic.png?v=3"
           doc={esiDoc}
         />
@@ -643,7 +686,7 @@ export function Dashboard() {
           describe, and the stat row above answers a different question. Say so,
           rather than leaving the card's absence to be read as a missing feature. */}
       {data.profile ? (
-        <EntityCard profile={data.profile} logoStorageKey={selected?.logoStorageKey} />
+        <EntityCard profile={data.profile} logoStorageKey={selected?.logoStorageKey} registrations={registrations} />
       ) : companies.length > 1 && (
         <PortfolioOverview companies={companies} />
       )}
