@@ -178,6 +178,11 @@ function regTone(
 }
 
 /** Clean card layout with left-aligned details and large right-aligned logo */
+const ABSENT_VALUES = new Set([
+  'Not held', 'Not registered', 'Not enrolled', 'Not recorded',
+  'Not recognised', 'Not yet due', 'Not applicable', '—',
+]);
+
 function RegCard({
   title,
   subTitle,
@@ -197,7 +202,16 @@ function RegCard({
   logoUrl?: string;
   doc?: DocumentItem;
 }) {
-  const hasValue = idValue !== null && idValue !== 'Not held' && idValue !== 'Not registered' && idValue !== 'Not enrolled';
+  /**
+   * The words a card uses to say it holds nothing.
+   *
+   * They drive the tile treatment — dashed and muted rather than solid — which
+   * is separate from the colour of the status line. "Not recorded" and "Not yet
+   * due" were absent from this list, so those two cards rendered as solid held
+   * tiles while saying they held nothing. Listed rather than chained on `!==`,
+   * so the next wording added is one entry, not another comparison to forget.
+   */
+  const hasValue = idValue !== null && !ABSENT_VALUES.has(idValue);
   const displayValue = idValue ?? 'Not held';
   /* A registration that is not held reads red, whether it is legally required
      or merely available. That is a deliberate choice about this product rather
@@ -253,13 +267,16 @@ function RegCard({
 const DSC_VIEW = {
   ACTIVE: { word: 'Active', tone: 'good' },
   EXPIRED: { word: 'Expired', tone: 'bad' },
-  NOT_RECORDED: { word: 'Not recorded', tone: 'idle' },
+  // No certificate on file means no filing can be signed, so it reads as a gap.
+  NOT_RECORDED: { word: 'Not recorded', tone: 'bad' },
 } as const;
 
 const KYC_VIEW = {
   MET: { word: 'Met', tone: 'good' },
   NOT_MET: { word: 'Not met', tone: 'bad' },
-  NOT_DUE: { word: 'Not yet due', tone: 'warn' },
+  NOT_DUE: { word: 'Not yet due', tone: 'bad' },
+  // The one absence that stays grey: no DIN on record means the obligation does
+  // not exist for this entity, so there is nothing to be missing.
   NOT_APPLICABLE: { word: 'Not applicable', tone: 'idle' },
 } as const;
 
