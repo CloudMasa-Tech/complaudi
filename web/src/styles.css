@@ -237,6 +237,26 @@ a { color: inherit; }
 }
 .topbar-title { display: flex; flex-direction: column; gap: 1px; }
 .topbar-sub { font-size: 13px; color: var(--text-2); }
+/* The header on a company route: the entity's own mark and name, in place of
+   the product's. Truncates rather than wrapping, because the topbar is a fixed
+   band and a long legal name would otherwise push the actions out of it. */
+.topbar-company { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.topbar-company h1 {
+  font-size: 19px; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-company .topbar-sub {
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-company-mark {
+  flex: none; display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 9px;
+  background: var(--accent-soft); border: 1px solid var(--navy-border);
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  overflow: hidden;
+}
+.topbar-company-mark img { width: 100%; height: 100%; object-fit: contain; }
+
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .content { padding: 22px 24px 60px; display: flex; flex-direction: column; gap: 18px; }
 
