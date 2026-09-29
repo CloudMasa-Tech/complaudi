@@ -6,6 +6,7 @@ import { BadRequestError, NotFoundError } from '../_shared/errors.ts';
 import { today, formatDate, addDays } from '../_shared/dates.ts';
 import { computeComplianceScore } from '../_shared/engine/score.ts';
 import { evaluateRegistrations } from '../_shared/engine/catalog/registrations.ts';
+import { deriveDinStatus } from '../_shared/engine/dinStatus.ts';
 
 Deno.serve(async (req) => {
   const corsRes = handleCors(req);
@@ -155,6 +156,23 @@ Deno.serve(async (req) => {
         if (comp) {
           const msmeReg = Array.isArray(comp.msmeRegistration) ? comp.msmeRegistration[0] || null : comp.msmeRegistration;
           const serving = (comp.directors || []).filter((d: any) => !d.resignedOn);
+
+          // A DIN is deactivated for essentially one reason — DIR-3 KYC not
+          // filed by 30 September — so the company's own record of that
+          // obligation is what the director chips read.
+          const { data: kycRows } = await client
+            .from('compliance_items')
+            .select('periodKey, dueDate, status, completedAt')
+            .eq('companyId', companyId)
+            .eq('ruleCode', 'MCA_DIR3KYC')
+            .order('dueDate', { ascending: false });
+
+          const kycFilings = (kycRows || []).map((k: any) => ({
+            periodKey: k.periodKey,
+            dueDate: new Date(k.dueDate),
+            status: String(k.status),
+            completedAt: k.completedAt ? new Date(k.completedAt) : null,
+          }));
           const activeDsc = serving.filter((d: any) => d.dscExpiresOn && new Date(d.dscExpiresOn) >= now);
 
           profile = {
@@ -178,6 +196,12 @@ Deno.serve(async (req) => {
               designation: d.designation,
               dscExpiresOn: d.dscExpiresOn ? formatDate(new Date(d.dscExpiresOn)) : null,
               dscStatus: !d.dscExpiresOn ? 'NOT_RECORDED' : new Date(d.dscExpiresOn) >= now ? 'ACTIVE' : 'EXPIRED',
+              // Inferred from the DIR-3 KYC record, never checked with MCA.
+              dinStatus: deriveDinStatus(
+                { din: d.din ?? null, resignedOn: d.resignedOn ? new Date(d.resignedOn) : null },
+                kycFilings,
+                now,
+              ),
             })),
             msme: msmeReg && msmeReg.udyamNumber?.trim() ? { udyamNumber: msmeReg.udyamNumber.trim(), category: msmeReg.category, registeredOn: msmeReg.registeredOn } : null,
             gstins: (comp.gstRegistrations || []).map((g: any) => ({ gstin: g.gstin, stateCode: g.stateCode, isActive: g.isActive })),

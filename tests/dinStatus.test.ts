@@ -127,3 +127,31 @@ describe('the verdict is always marked as inference', () => {
     }
   });
 });
+
+describe('the Node and edge copies agree', () => {
+  it('produces identical verdicts for every case', async () => {
+    // Two implementations ship separately, and a browser can be talking to
+    // either. The whole class of bug this file has been chasing is the two
+    // drifting apart, so they are compared rather than assumed equal.
+    const edge = await import('../supabase/functions/_shared/engine/dinStatus');
+
+    type Dir = { din: string | null; resignedOn: Date | null };
+    const cases: Array<[Dir, KycFiling[]]> = [
+      [serving, [kyc('FY2026-27', '2026-09-30', 'COMPLETED', '2026-08-12')]],
+      [serving, [kyc('FY2026-27', '2026-09-30', 'OVERDUE')]],
+      [serving, [kyc('FY2026-27', '2026-09-30', 'WAIVED')]],
+      [serving, [kyc('FY2027-28', '2027-09-30', 'UPCOMING')]],
+      [serving, []],
+      [{ din: null, resignedOn: null }, []],
+      [{ din: '10842644', resignedOn: parseDate('2026-06-30') }, [kyc('FY2026-27', '2026-09-30', 'OVERDUE')]],
+      [serving, [
+        kyc('FY2025-26', '2025-09-30', 'OVERDUE'),
+        kyc('FY2026-27', '2026-09-30', 'COMPLETED', '2026-09-01'),
+      ]],
+    ];
+
+    for (const [director, filings] of cases) {
+      expect(edge.deriveDinStatus(director, filings, ASOF)).toEqual(deriveDinStatus(director, filings, ASOF));
+    }
+  });
+});

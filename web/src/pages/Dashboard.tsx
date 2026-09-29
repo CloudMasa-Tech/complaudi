@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { view, forceDownload, qs, resolveApiUrl } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Company, CompanyProfile, Overview, EvaluatedRegistration } from '../api/types';
+import type { Company, CompanyProfile, DinStatus, Overview, EvaluatedRegistration } from '../api/types';
 
 import {
   AUTHORITY_LABEL, Badge, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
@@ -457,14 +457,21 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
 
       <div className="row" style={{ padding: '0 18px 8px' }}>
         <span className="reg-label">Directors on record</span>
-        <span className="tiny dim" style={{ marginLeft: 'auto' }}>{profile.directors.length} serving</span>
+        <span className="tiny dim" style={{ marginLeft: 'auto' }}>
+          {profile.directors.length} serving
+          {profile.directors.some((d) => dinOf(d).state !== 'UNKNOWN') && (
+            <span title="MCA publishes no API for DIN status, so this is read from your DIR-3 KYC filing record rather than checked with the Registrar.">
+              {' · DIN status derived from DIR-3 KYC'}
+            </span>
+          )}
+        </span>
       </div>
       {profile.directors.length === 0 ? (
         <div style={{ padding: '0 18px 16px' }}><Empty>No directors recorded yet.</Empty></div>
       ) : (
         <div className="dir-strip">
           {profile.directors.map((dir) => (
-            <span key={dir.id} className={`dir-chip din-${dir.dinStatus.state.toLowerCase()}`}>
+            <span key={dir.id} className={`dir-chip din-${dinOf(dir).state.toLowerCase()}`}>
               <span className="avatar">{initials(dir.name)}</span>
               <span className="stack" style={{ minWidth: 0, gap: 1 }}>
                 <span style={{ fontWeight: 550, fontSize: 13 }}>{dir.name}</span>
@@ -478,16 +485,16 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
                 </span>
                 {/* Nothing is shown when there is nothing to say — an unknown
                     DIN must not be coloured as though it were a problem. */}
-                {dir.dinStatus.state !== 'UNKNOWN' && (
-                  <span className="din-line" title={dir.dinStatus.action ?? undefined}>
+                {dinOf(dir).state !== 'UNKNOWN' && (
+                  <span className="din-line" title={dinOf(dir).action ?? undefined}>
                     <span className="din-dot" aria-hidden="true" />
-                    {dir.dinStatus.state === 'ACTIVE' ? 'DIN active' :
-                     dir.dinStatus.state === 'DEACTIVATED' ? 'DIN deactivated' : 'KYC due'}
-                    <span className="din-detail">· {dir.dinStatus.label}</span>
+                    {dinOf(dir).state === 'ACTIVE' ? 'DIN active' :
+                     dinOf(dir).state === 'DEACTIVATED' ? 'DIN deactivated' : 'KYC due'}
+                    <span className="din-detail">· {dinOf(dir).label}</span>
                   </span>
                 )}
-                {dir.dinStatus.action && dir.dinStatus.state === 'DEACTIVATED' && (
-                  <span className="din-action">{dir.dinStatus.action}</span>
+                {dinOf(dir).action && dinOf(dir).state === 'DEACTIVATED' && (
+                  <span className="din-action">{dinOf(dir).action}</span>
                 )}
               </span>
             </span>
@@ -589,6 +596,20 @@ function RegistrationDonut({ registered, mandatory, eligible }: { registered: nu
     </div>
   );
 }
+
+/**
+ * A director's DIN standing, or a safe blank.
+ *
+ * The two API implementations do not ship together, so a browser talking to an
+ * edge function that predates this field gets directors without it — and
+ * reading `.state` off undefined took the entire dashboard down. A missing
+ * verdict is exactly the UNKNOWN case, which renders as nothing, so the page
+ * degrades to how it looked before the feature instead of to a blank screen.
+ */
+const NO_DIN_STATUS: DinStatus = {
+  state: 'UNKNOWN', label: '', action: null, derived: true, asOfPeriod: null,
+};
+const dinOf = (dir: { dinStatus?: DinStatus }): DinStatus => dir.dinStatus ?? NO_DIN_STATUS;
 
 export function Dashboard() {
   const { companies, selectedId, selected } = useCompanies();
