@@ -1,6 +1,12 @@
 # ── secrets ──────────────────────────────────────────────────────────────────
 # .env carries the Supabase service_role key and the JWT signing secrets.
 # .env.example is the committed template.
+#
+# `.env.*` alone does NOT match `.env` — the pattern requires a dot after "env",
+# so it caught .env.local and .env.production while the real file went straight
+# past it. Both forms are listed now. Neither has a leading slash, so they apply
+# at any depth (web/.env included).
+.env
 .env.*
 !.env.example
 
