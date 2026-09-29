@@ -222,7 +222,29 @@ Deno.serve(async (req: Request) => {
         msme: company.msme ? { ...company.msme, registeredOn: company.msme.registeredOn ? parseDate(company.msme.registeredOn) : null } : null,
       };
 
-      const evaluation = evaluateAll(ctx);
+      // evaluateAll returns RuleEvaluation[] — `{ rule, applicable, reasons }`,
+      // with everything about the rule nested under `.rule`. The client expects
+      // it flattened (ruleCode, title, authority, category, severity, form),
+      // which is what the Express API returns from listApplicability. Sending
+      // the raw shape left every one of those undefined, so the drawer rendered
+      // bare condition labels with no rule title, authority tag or severity —
+      // which reads as "the wrong rules apply" when the evaluation was right.
+      const evaluation = evaluateAll(ctx)
+        .map((e: any) => ({
+          ruleCode: e.rule.code,
+          applicable: e.applicable,
+          reasons: e.reasons,
+          evaluatedAt: new Date().toISOString(),
+          title: e.rule.title,
+          authority: e.rule.authority,
+          category: e.rule.category,
+          severity: e.rule.severity,
+          form: e.rule.form ?? null,
+        }))
+        // Applicable first, then by code — the same order listApplicability uses.
+        .sort((a: any, b: any) =>
+          Number(b.applicable) - Number(a.applicable) || a.ruleCode.localeCompare(b.ruleCode));
+
       return jsonResponse(evaluation);
     }
 
