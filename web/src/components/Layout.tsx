@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useResource } from '../api/useResource';
-import { qs } from '../api/client';
+import { qs, resolveApiUrl } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useCompanies } from '../auth/CompanyContext';
 
 import { ROLE_LABEL, type Capability, type Paged, type Task } from '../api/types';
-import { initials } from './ui';
+import { ENTITY_LABEL, initials } from './ui';
 
 /** One source for the wordmark, so the sidebar and the header cannot disagree. */
 export const BRAND = 'Complaudi';
@@ -132,6 +132,18 @@ export function Layout() {
     [selectedId],
   );
 
+  /**
+   * On a route that is about one company, the header names that company rather
+   * than the product. Someone editing Trial Technologies already knows which
+   * product they are in; what they need confirmed is which company they are
+   * about to change — particularly when several are open in tabs.
+   *
+   * Only for routes carrying a company id. /companies and /companies/new are
+   * not about one company, so they keep the brand.
+   */
+  const companyRouteId = pathname.match(/^\/companies\/([0-9a-f-]{36})(?:\/|$)/)?.[1] ?? null;
+  const headerCompany = companyRouteId ? companies.find((c) => c.id === companyRouteId) ?? null : null;
+
   const page = TITLES[pathname] ?? { title: BRAND, sub: BRAND_TAGLINE };
 
   /**
@@ -192,8 +204,33 @@ export function Layout() {
       <div className="main">
         <header className="topbar">
           <div className="topbar-title">
-            <h1>{page.title}</h1>
-            {page.sub && <span className="topbar-sub">{page.sub}</span>}
+            {headerCompany ? (
+              <div className="topbar-company">
+                <span className="topbar-company-mark">
+                  {headerCompany.logoStorageKey ? (
+                    <img src={resolveApiUrl(`/companies/${headerCompany.id}/logo`)} alt="" />
+                  ) : (
+                    initials(headerCompany.legalName)
+                  )}
+                </span>
+                <span className="stack" style={{ minWidth: 0, gap: 2 }}>
+                  <h1 title={headerCompany.legalName}>{headerCompany.legalName}</h1>
+                  <span className="topbar-sub">
+                    {ENTITY_LABEL[headerCompany.entityType] ?? headerCompany.entityType}
+                    {/* An LLP has an LLPIN rather than a CIN, so the label
+                        follows whichever the entity actually holds. */}
+                    {headerCompany.cin || headerCompany.llpin
+                      ? ` · ${headerCompany.cin ?? headerCompany.llpin}`
+                      : ''}
+                  </span>
+                </span>
+              </div>
+            ) : (
+              <>
+                <h1>{page.title}</h1>
+                {page.sub && <span className="topbar-sub">{page.sub}</span>}
+              </>
+            )}
           </div>
           <div className="topbar-actions">
             {/* "All companies (0)" is a claim about what you hold. When the list

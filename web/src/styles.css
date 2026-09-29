@@ -237,6 +237,26 @@ a { color: inherit; }
 }
 .topbar-title { display: flex; flex-direction: column; gap: 1px; }
 .topbar-sub { font-size: 13px; color: var(--text-2); }
+/* The header on a company route: the entity's own mark and name, in place of
+   the product's. Truncates rather than wrapping, because the topbar is a fixed
+   band and a long legal name would otherwise push the actions out of it. */
+.topbar-company { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.topbar-company h1 {
+  font-size: 19px; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-company .topbar-sub {
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-company-mark {
+  flex: none; display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 9px;
+  background: var(--accent-soft); border: 1px solid var(--navy-border);
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  overflow: hidden;
+}
+.topbar-company-mark img { width: 100%; height: 100%; object-fit: contain; }
+
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .content { padding: 22px 24px 60px; display: flex; flex-direction: column; gap: 18px; }
 
@@ -517,20 +537,26 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   transition: all .25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.reg-tile.held {
+/* `is-held` / `is-empty`, not `held` / `empty`. `.empty` is the generic
+   empty-state utility further down this file — padding 40px, centred text,
+   muted colour — and it was landing on every unregistered card. Same
+   specificity, declared later, so it won: the card grew, its text greyed out,
+   and block children centred while flex children stayed left, which is what
+   made the GST card read as ragged. */
+.reg-tile.is-held {
   border-left: 4px solid var(--accent);
   background: var(--glass-held-bg);
   border-color: var(--glass-held-border);
 }
 
-.reg-tile.empty {
+.reg-tile.is-empty {
   background: var(--glass-empty-bg);
   border-style: dashed;
   border-color: var(--glass-empty-border);
   opacity: 0.85;
 }
 
-.reg-tile.empty .card-title {
+.reg-tile.is-empty .card-title {
   color: var(--text-3);
 }
 
@@ -657,6 +683,32 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 
 .dir-strip { display: flex; flex-wrap: wrap; gap: 9px; padding: 0 20px 18px; }
 .dir-chip {
+
+/* ── DIN standing on a director chip ─────────────────────────────────────
+ * Green / red / amber on the dot and a left edge, so the state is legible at a
+ * glance without the chip turning into a traffic light. UNKNOWN is rendered as
+ * nothing at all rather than a neutral badge — an unverified DIN is not a
+ * finding, and colouring it would imply one.
+ */
+.din-line {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; margin-top: 2px;
+}
+.din-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: currentColor; }
+.din-detail { font-weight: 400; opacity: 0.75; }
+.din-action {
+  font-size: 11px; font-weight: 600; color: var(--critical);
+  margin-top: 1px; line-height: 1.35;
+}
+
+.dir-chip.din-active .din-line { color: var(--good); }
+.dir-chip.din-deactivated .din-line { color: var(--critical); }
+.dir-chip.din-due .din-line { color: var(--high); }
+
+/* A deactivated DIN blocks every signed filing the company owes, so the chip
+   itself carries the warning rather than leaving it to one small line. */
+.dir-chip.din-deactivated { border-color: var(--critical); background: var(--critical-soft); }
+.dir-chip.din-due { border-color: var(--high); }
   display: flex; align-items: center; gap: 9px; min-width: 0;
   border: 1px solid var(--navy-border); border-radius: 999px; padding: 6px 14px 6px 6px;
   background: var(--surface);

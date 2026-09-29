@@ -5,6 +5,7 @@ import { getSupabaseAdminClient, serialiseBigInt } from '../_shared/database.ts'
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../_shared/errors.ts';
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
+import { resyncAfterProfileChange } from '../_shared/sync.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
 import {
@@ -141,12 +142,39 @@ Deno.serve(async (req: Request) => {
       if (!seesEveryCompany(authCtx.role)) {
         throw new ForbiddenError('Only super admin can access onboarded overview');
       }
+      // The client reads status, onboardedAt, onboardedBy and the organisation's
+      // trial end. Selecting only name/createdAt left every one of those
+      // undefined, so `status === 'ACTIVE'` was false for every row and the
+      // table reported four live companies as Archived, with "—" under
+      // "Onboarded by" and "When". Shape matches listSuperAdminCompanies.
       const { data: rows } = await supabase
         .from('companies')
-        .select('id, legalName, entityType, createdAt, organization:organizations(name)')
+        .select(
+          'id, legalName, entityType, isActive, createdAt, ' +
+          'organization:organizations(id, name, slug, trialEndsAt), ' +
+          // The earliest grant identifies who onboarded the company.
+          'memberships:company_memberships(createdAt, grantedBy:grantedById(id, name, email), user:userId(id, name, email))',
+        )
         .order('createdAt', { ascending: false });
 
-      return jsonResponse(rows || []);
+      const overview = (rows || []).map((c: any) => {
+        const first = (c.memberships || [])
+          .slice()
+          .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
+        const by = first?.grantedBy ?? first?.user ?? null;
+
+        return {
+          id: c.id,
+          legalName: c.legalName,
+          entityType: c.entityType,
+          status: c.isActive === false ? 'ARCHIVED' : 'ACTIVE',
+          onboardedAt: c.createdAt,
+          organization: Array.isArray(c.organization) ? c.organization[0] ?? null : c.organization,
+          onboardedBy: by ? { id: by.id, name: by.name, email: by.email } : null,
+        };
+      });
+
+      return jsonResponse(serialiseBigInt(overview));
     }
 
     // Single Company operations
@@ -251,9 +279,21 @@ Deno.serve(async (req: Request) => {
           ? (updated.msmeRegistration[0] || null)
           : updated.msmeRegistration;
 
+        // Turnover, headcount, entity type and TAN all decide which rules
+        // apply, so the calendar is rebuilt before the response returns. The
+        // counts were previously hardcoded to zero, which is why saving a
+        // company always reported "0 rules apply, 0 do not".
+        const synced = await resyncAfterProfileChange(supabase, companyId);
+
         return jsonResponse(serialiseBigInt({
           company: { ...updated, msmeRegistration },
-          sync: { applicableRules: 0, inapplicableRules: 0, created: 0, updated: 0, removed: 0 }
+          sync: {
+            applicableRules: synced?.applicableRules ?? 0,
+            inapplicableRules: synced?.inapplicableRules ?? 0,
+            created: synced?.created ?? 0,
+            updated: synced?.updated ?? 0,
+            removed: 0,
+          },
         }));
       }
 
@@ -651,7 +691,10 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      return jsonResponse({ extracted: info, sync: { applicableRules: 0 } });
+      // `applicableRules: 0` was a hardcoded zero — no sync had ever run here,
+      // so the import reported that nothing applied no matter what it imported.
+      const synced = await resyncAfterProfileChange(supabase, companyId);
+      return jsonResponse({ extracted: info, sync: { applicableRules: synced?.generatedItems ?? 0 } });
     }
 
     // POST /companies/:id/import-udyam
@@ -699,7 +742,10 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      return jsonResponse({ extracted: info, sync: { applicableRules: 0 } });
+      // `applicableRules: 0` was a hardcoded zero — no sync had ever run here,
+      // so the import reported that nothing applied no matter what it imported.
+      const synced = await resyncAfterProfileChange(supabase, companyId);
+      return jsonResponse({ extracted: info, sync: { applicableRules: synced?.generatedItems ?? 0 } });
     }
 
     // POST & DELETE /companies/:id/logo
@@ -755,6 +801,7 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (error) throw new AppError(error.message, 400);
+      await resyncAfterProfileChange(supabase, companyId);
       return jsonResponse(director, 201);
     }
 
@@ -775,11 +822,13 @@ Deno.serve(async (req: Request) => {
         }));
         const { data: updated, error } = await supabase.from('directors').update(body).eq('id', directorId).select().single();
         if (error) throw new AppError(error.message, 400);
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse(serialiseBigInt(updated));
       }
 
       if (req.method === 'DELETE') {
         await supabase.from('directors').delete().eq('id', directorId);
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse({ deleted: true });
       }
     }
@@ -815,11 +864,16 @@ Deno.serve(async (req: Request) => {
           msmeRow = data;
         }
 
+        // Udyam unlocks the MSME rules, so the calendar has to be rebuilt
+        // before the response returns — otherwise the registration saves and
+        // nothing downstream changes.
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse(serialiseBigInt({ registration: msmeRow }));
       }
 
       if (req.method === 'DELETE') {
         await supabase.from('msme_registrations').delete().eq('companyId', companyId);
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse({ deleted: true });
       }
     }
@@ -857,6 +911,7 @@ Deno.serve(async (req: Request) => {
         .select().single();
 
       if (error) throw new AppError(error.message, 400);
+      await resyncAfterProfileChange(supabase, companyId);
       return jsonResponse(serialiseBigInt({ registration: reg }), 201);
     }
 
@@ -874,11 +929,13 @@ Deno.serve(async (req: Request) => {
         }));
         const { data: updated, error } = await supabase.from('gst_registrations').update(body).eq('id', gstId).select().single();
         if (error) throw new AppError(error.message, 400);
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse(serialiseBigInt({ registration: updated }));
       }
 
       if (req.method === 'DELETE') {
         await supabase.from('gst_registrations').delete().eq('id', gstId);
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse({ deleted: true });
       }
     }
@@ -906,6 +963,7 @@ Deno.serve(async (req: Request) => {
           .insert({ id: crypto.randomUUID(), companyId, eventType: body.eventType, eventDate: body.eventDate, metadata: body.metadata || {} })
           .select().single();
         if (error) throw new AppError(error.message, 400);
+        await resyncAfterProfileChange(supabase, companyId);
         return jsonResponse({ event }, 201);
       }
     }

@@ -3,6 +3,7 @@ import { addDays, today } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { computeComplianceScore, type ScorableItem, type ScoreResult } from '../../engine/score';
 import { evaluateRegistrations, type EvaluatedRegistration } from '../../engine/catalog/registrations';
+import { deriveDinStatus, type DinStatus } from '../../engine/dinStatus';
 import { getCompanyOrThrow } from '../companies/companies.service';
 import { assertCan, companyScope, type Actor } from '../../lib/access';
 
@@ -84,6 +85,11 @@ export interface CompanyProfile {
   directors: Array<{
     id: string; name: string; din: string | null; designation: string;
     dscExpiresOn: string | null; dscStatus: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED';
+    /**
+     * Inferred from the DIR-3 KYC record, never checked against MCA — see
+     * engine/dinStatus.ts. `derived` is always true and the UI says so.
+     */
+    dinStatus: DinStatus;
   }>;
   msme: { udyamNumber: string; category: string; registeredOn: string | null } | null;
   gstins: Array<{ gstin: string; stateCode: string; isActive: boolean }>;
@@ -115,8 +121,17 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
   const kycItems = await prisma.complianceItem.findMany({
     where: { companyId, ruleCode: 'MCA_DIR3KYC' },
     orderBy: { dueDate: 'desc' },
-    select: { dueDate: true, status: true, periodLabel: true },
+    select: { dueDate: true, status: true, periodLabel: true, periodKey: true, completedAt: true },
   });
+
+  // The shape engine/dinStatus.ts reads. Every serving DIN shares one verdict,
+  // because the engine tracks DIR-3 KYC per company rather than per director.
+  const kycFilings = kycItems.map((k) => ({
+    periodKey: k.periodKey,
+    dueDate: k.dueDate,
+    status: k.status as string,
+    completedAt: k.completedAt,
+  }));
 
   // Someone who has resigned is not a signatory and does not sit for KYC.
   const serving = company.directors.filter((dir) => !dir.resignedOn);
@@ -174,6 +189,7 @@ async function companyProfile(actor: Actor, companyId: string): Promise<CompanyP
       designation: dir.designation,
       dscExpiresOn: iso(dir.dscExpiresOn),
       dscStatus: dscOf(dir.dscExpiresOn),
+      dinStatus: deriveDinStatus(dir, kycFilings, now),
     })),
     msme: company.msmeRegistration
       ? {

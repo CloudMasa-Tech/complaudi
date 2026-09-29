@@ -12,11 +12,47 @@ import {
   SeverityDot, Spinner, fmtDate, fmtINR,
 } from '../components/ui';
 
+/**
+ * The applicability endpoint answers in one of two shapes.
+ *
+ * The Express API flattens it — ruleCode, title, authority, severity, form
+ * alongside `applicable` and `reasons`. The Supabase edge function returned
+ * `evaluateAll()` raw, which nests all of that under `.rule`. Against the raw
+ * shape every field this drawer renders came through undefined, so each card
+ * showed a bare condition label and nothing else; the ten MCA rules whose only
+ * condition is the entity type then looked like the same rule repeated ten
+ * times, when they are ADT-1, DIR-12, PAS-3, CHG-1, MGT-14 and the rest.
+ *
+ * The edge function has been corrected, but it is deployed separately, so the
+ * client reads both rather than depending on that having happened.
+ */
+function normaliseApplicability(row: unknown): Applicability {
+  const r = row as Record<string, any>;
+  if (!r?.rule) return r as Applicability;
+
+  const rule = r.rule as Record<string, any>;
+  return {
+    ruleCode: rule.code,
+    applicable: r.applicable,
+    reasons: r.reasons ?? [],
+    evaluatedAt: r.evaluatedAt ?? '',
+    title: rule.title,
+    authority: rule.authority ?? null,
+    category: rule.category ?? null,
+    severity: rule.severity ?? null,
+    form: rule.form ?? null,
+  };
+}
+
 function ApplicabilityDrawer({ company, onClose }: { company: Company; onClose: () => void }) {
   const { data, initial, error } = useResource<Applicability[]>(`/compliance/companies/${company.id}/applicability`);
   const [showAll, setShowAll] = useState(false);
 
-  const rows = (data ?? []).filter((r) => showAll || r.applicable);
+  const rows = (data ?? [])
+    .map(normaliseApplicability)
+    .filter((r) => showAll || r.applicable)
+    // Applicable first, then by code, whichever end answered.
+    .sort((a, b) => Number(b.applicable) - Number(a.applicable) || (a.ruleCode ?? '').localeCompare(b.ruleCode ?? ''));
 
   return (
     <Drawer onClose={onClose}>
@@ -55,7 +91,7 @@ function ApplicabilityDrawer({ company, onClose }: { company: Company; onClose: 
                     </Badge>
                   </span>
                 </div>
-                <span style={{ fontWeight: 550 }}>{r.title}</span>
+                <span style={{ fontWeight: 550 }}>{r.title || r.ruleCode || 'Unnamed rule'}</span>
                 <div className="reasons">
                   {(r.applicable ? r.reasons : deciding).map((x, i) => {
                     const ok = x.negated ? !x.passed : x.passed;
@@ -167,8 +203,52 @@ function DeleteDialog({ company, onClose, onDeleted }: {
  * private profile — just who onboarded it, when, and which organisation it
  * landed in.
  */
+/**
+ * One row of the overview, whichever shape the server sent.
+ *
+ * An older edge function returns only id/legalName/entityType/createdAt, which
+ * left `status` undefined — and `status === 'ACTIVE'` being false then reported
+ * every live company as Archived. Absence of the field is not evidence of
+ * archival, so it is read from `isActive` where that is present and treated as
+ * active otherwise; a company genuinely archived always says so explicitly.
+ */
+function normaliseOnboarded(row: unknown): OnboardedCompany {
+  const r = row as Record<string, any>;
+  const org = Array.isArray(r.organization) ? r.organization[0] : r.organization;
+  return {
+    ...r,
+    status: r.status ?? (r.isActive === false ? 'ARCHIVED' : 'ACTIVE'),
+    onboardedAt: r.onboardedAt ?? r.createdAt ?? null,
+    onboardedBy: r.onboardedBy ?? null,
+    organization: org ?? { id: '', name: '—', slug: '' },
+  } as OnboardedCompany;
+}
+
+/** A trial that has run out — the point at which archiving becomes offerable. */
+function trialEnded(c: OnboardedCompany): boolean {
+  const ends = c.organization?.trialEndsAt;
+  return Boolean(ends && new Date(ends).getTime() < Date.now());
+}
+
 function OnboardingOverview() {
-  const { data, initial, error, reload } = useResource<OnboardedCompany[]>('/companies/onboarded-overview');
+  const { data: raw, initial, error, loading, reload } = useResource<OnboardedCompany[]>('/companies/onboarded-overview');
+  const { can } = useAuth();
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const data = raw?.map(normaliseOnboarded);
+
+  async function archive(c: OnboardedCompany) {
+    setArchiving(c.id);
+    setActionError(null);
+    try {
+      await del(`/companies/${c.id}`);
+      reload();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Could not archive that company.');
+    } finally {
+      setArchiving(null);
+    }
+  }
 
   return (
     <Card title="Onboarded (all organisations)" note={`${data?.length ?? 0} companies`}>
@@ -209,15 +289,45 @@ function OnboardingOverview() {
                     )}
                   </td>
                   <td>{fmtDate(c.onboardedAt)}</td>
-                  <td><Badge value={c.status}>{c.status === 'ACTIVE' ? 'Active' : 'Archived'}</Badge></td>
+                  <td>
+                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <Badge value={c.status === 'ACTIVE' ? 'COMPLETED' : 'WAIVED'}>
+                        {c.status === 'ACTIVE' ? 'Active' : 'Archived'}
+                      </Badge>
+                      {c.status === 'ACTIVE' && trialEnded(c) && (
+                        <span className="tiny" style={{ color: 'var(--high)', fontWeight: 600 }}>
+                          Trial ended {fmtDate(c.organization.trialEndsAt!)}
+                        </span>
+                      )}
+                      {/* Archiving is offered only where it is actually
+                          available: a live company whose trial has run out, and
+                          only to a role that may archive. */}
+                      {c.status === 'ACTIVE' && trialEnded(c) && can('company.archive') && (
+                        <button
+                          className="btn-sm"
+                          disabled={archiving === c.id}
+                          onClick={() => void archive(c)}
+                        >
+                          {archiving === c.id ? <><Spinner /> Archiving…</> : 'Archive'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="btn-sm" onClick={reload}>Refresh</button>
+      {actionError && <ErrorNote error={actionError} />}
+      <div className="row" style={{ marginTop: 10, gap: 10, alignItems: 'center' }}>
+        {/* This always refetched — `reload` bumps the hook's nonce — but said
+            nothing while it did, and the rows came back identical, so it read
+            as a dead button. */}
+        <button className="btn-sm" onClick={reload} disabled={loading}>
+          {loading ? <><Spinner /> Refreshing…</> : 'Refresh'}
+        </button>
+        {loading && <span className="tiny dim">Fetching the latest…</span>}
       </div>
     </Card>
   );

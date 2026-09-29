@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { view, forceDownload, qs, resolveApiUrl } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
-import type { Company, CompanyProfile, Overview, EvaluatedRegistration } from '../api/types';
+import type { Company, CompanyProfile, DinStatus, Overview, EvaluatedRegistration } from '../api/types';
 
 import {
   AUTHORITY_LABEL, Badge, Card, Drawer, Empty, ENTITY_LABEL, ErrorNote, Loading,
@@ -141,6 +141,38 @@ function RegistrationBreakdownDrawer({ profile, registrations, docs, onClose }: 
   );
 }
 
+/**
+ * The colour a registration card wears.
+ *
+ * Driven by what the rules engine decided, not by whether the field is filled.
+ * "Missing" and "missing and required" are different facts, and on a compliance
+ * dashboard the difference is the whole point — red on an optional registration
+ * reads as a finding against the company when there is none. A ₹2 lakh-turnover
+ * company is nowhere near the ₹20 lakh GST threshold, so its blank GSTIN is a
+ * choice, not a breach.
+ *
+ *   REGISTERED            green   held
+ *   MANDATORY             red     required by the rules and missing
+ *   EXPIRED_RENEWAL_DUE   red     held but lapsed
+ *   PENDING_APPLICATION   amber   in flight
+ *   ELIGIBLE              grey    available, not required
+ */
+function regTone(
+  registrations: EvaluatedRegistration[],
+  ids: string[],
+  hasValue: boolean,
+): 'good' | 'bad' | 'warn' | 'idle' {
+  const found = registrations.find((r) => ids.includes(r.id));
+  if (!found) return hasValue ? 'good' : 'idle';
+  switch (found.status) {
+    case 'REGISTERED': return 'good';
+    case 'MANDATORY':
+    case 'EXPIRED_RENEWAL_DUE': return 'bad';
+    case 'PENDING_APPLICATION': return 'warn';
+    default: return hasValue ? 'good' : 'idle';
+  }
+}
+
 /** Clean card layout with left-aligned details and large right-aligned logo */
 function RegCard({
   title,
@@ -171,7 +203,7 @@ function RegCard({
     : 'var(--text-3)';
 
   return (
-    <div className={`reg-tile ${hasValue ? 'held' : 'empty'}`}>
+    <div className={`reg-tile ${hasValue ? 'is-held' : 'is-empty'}`}>
       {/* Left Content Area */}
       <div className="card-left-content">
         <div className="card-title-row">
@@ -224,7 +256,12 @@ const KYC_VIEW = {
 /**
  * The entity itself, before anything it owes.
  */
-function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logoStorageKey?: string | null }) {
+function EntityCard({ profile, logoStorageKey, registrations = [] }: {
+  profile: CompanyProfile;
+  logoStorageKey?: string | null;
+  /** The engine's verdict per registration, which decides each card's colour. */
+  registrations?: EvaluatedRegistration[];
+}) {
   const { dsc, mcaKyc, msme, gstins, dpiit } = profile;
   const live = gstins.filter((g) => g.isActive);
   const dscView = DSC_VIEW[dsc.status];
@@ -273,6 +310,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="Udyam Number"
           idValue={msme?.udyamNumber ?? null}
           statusLabel={msme ? `Registered${msme.category ? ` · ${titleise(msme.category)}` : ''}` : msmeDoc ? 'Document Uploaded' : 'Not registered'}
+          tone={regTone(registrations, ['msme'], Boolean(msme))}
           logoUrl="/msme.webp?v=3"
           doc={msmeDoc}
         />
@@ -292,6 +330,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
             live.length > 1 ? `${live[0]!.stateCode} · ${live.length - 1} more states`
               : live.length === 1 ? `${live[0]!.stateCode} · Registered` : gstDoc ? 'Document Uploaded' : 'Not registered'
           }
+          tone={regTone(registrations, ['gst'], live.length > 0)}
           logoUrl="/gst.webp?v=3"
           doc={gstDoc}
         />
@@ -308,6 +347,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="DPIIT Number"
           idValue={dpiit?.number ?? null}
           statusLabel={dpiit?.recognisedOn ? `Recognised · ${fmtDate(dpiit.recognisedOn)}` : dpiit ? 'Recognised' : dpiitDoc ? 'Document Uploaded' : 'Not recognised'}
+          tone={regTone(registrations, ['dpiit'], Boolean(dpiit?.number))}
           logoUrl="/dpiit.webp?v=3"
           doc={dpiitDoc}
         />
@@ -324,6 +364,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="Registration No"
           idValue={profile.registrationNumber || null}
           statusLabel={mcaDoc ? 'Document Uploaded' : profile.registrationNumber ? 'Master Data Recorded' : 'Not recorded'}
+          tone={regTone(registrations, ['mca_cin', 'mca_llpin'], Boolean(profile.registrationNumber))}
           logoUrl="/mca.svg?v=3"
           doc={mcaDoc}
         />
@@ -361,6 +402,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="PF Code"
           idValue={profile.epfoCode ?? null}
           statusLabel={profile.epfoCode ? 'Enrolled' : pfDoc ? 'Document Uploaded' : 'Not enrolled'}
+          tone={regTone(registrations, ['pf'], Boolean(profile.epfoCode))}
           logoUrl="/epfo.png?v=3"
           doc={pfDoc}
         />
@@ -377,6 +419,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
           idLabel="ESI Code"
           idValue={profile.esicCode ?? null}
           statusLabel={profile.esicCode ? 'Enrolled' : esiDoc ? 'Document Uploaded' : 'Not enrolled'}
+          tone={regTone(registrations, ['esi'], Boolean(profile.esicCode))}
           logoUrl="/esic.png?v=3"
           doc={esiDoc}
         />
@@ -457,14 +500,21 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
 
       <div className="row" style={{ padding: '0 18px 8px' }}>
         <span className="reg-label">Directors on record</span>
-        <span className="tiny dim" style={{ marginLeft: 'auto' }}>{profile.directors.length} serving</span>
+        <span className="tiny dim" style={{ marginLeft: 'auto' }}>
+          {profile.directors.length} serving
+          {profile.directors.some((d) => dinOf(d).state !== 'UNKNOWN') && (
+            <span title="MCA publishes no API for DIN status, so this is read from your DIR-3 KYC filing record rather than checked with the Registrar.">
+              {' · DIN status derived from DIR-3 KYC'}
+            </span>
+          )}
+        </span>
       </div>
       {profile.directors.length === 0 ? (
         <div style={{ padding: '0 18px 16px' }}><Empty>No directors recorded yet.</Empty></div>
       ) : (
         <div className="dir-strip">
           {profile.directors.map((dir) => (
-            <span key={dir.id} className="dir-chip">
+            <span key={dir.id} className={`dir-chip din-${dinOf(dir).state.toLowerCase()}`}>
               <span className="avatar">{initials(dir.name)}</span>
               <span className="stack" style={{ minWidth: 0, gap: 1 }}>
                 <span style={{ fontWeight: 550, fontSize: 13 }}>{dir.name}</span>
@@ -476,6 +526,19 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
                     </span>
                   )}
                 </span>
+                {/* Nothing is shown when there is nothing to say — an unknown
+                    DIN must not be coloured as though it were a problem. */}
+                {dinOf(dir).state !== 'UNKNOWN' && (
+                  <span className="din-line" title={dinOf(dir).action ?? undefined}>
+                    <span className="din-dot" aria-hidden="true" />
+                    {dinOf(dir).state === 'ACTIVE' ? 'DIN active' :
+                     dinOf(dir).state === 'DEACTIVATED' ? 'DIN deactivated' : 'KYC due'}
+                    <span className="din-detail">· {dinOf(dir).label}</span>
+                  </span>
+                )}
+                {dinOf(dir).action && dinOf(dir).state === 'DEACTIVATED' && (
+                  <span className="din-action">{dinOf(dir).action}</span>
+                )}
               </span>
             </span>
           ))}
@@ -577,6 +640,20 @@ function RegistrationDonut({ registered, mandatory, eligible }: { registered: nu
   );
 }
 
+/**
+ * A director's DIN standing, or a safe blank.
+ *
+ * The two API implementations do not ship together, so a browser talking to an
+ * edge function that predates this field gets directors without it — and
+ * reading `.state` off undefined took the entire dashboard down. A missing
+ * verdict is exactly the UNKNOWN case, which renders as nothing, so the page
+ * degrades to how it looked before the feature instead of to a blank screen.
+ */
+const NO_DIN_STATUS: DinStatus = {
+  state: 'UNKNOWN', label: '', action: null, derived: true, asOfPeriod: null,
+};
+const dinOf = (dir: { dinStatus?: DinStatus }): DinStatus => dir.dinStatus ?? NO_DIN_STATUS;
+
 export function Dashboard() {
   const { companies, selectedId, selected } = useCompanies();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -609,7 +686,7 @@ export function Dashboard() {
           describe, and the stat row above answers a different question. Say so,
           rather than leaving the card's absence to be read as a missing feature. */}
       {data.profile ? (
-        <EntityCard profile={data.profile} logoStorageKey={selected?.logoStorageKey} />
+        <EntityCard profile={data.profile} logoStorageKey={selected?.logoStorageKey} registrations={registrations} />
       ) : companies.length > 1 && (
         <PortfolioOverview companies={companies} />
       )}
