@@ -268,7 +268,16 @@ a { color: inherit; }
   /* The swoosh blue, so the active rail is lit by the mark above it. */
   border-left: 3px solid var(--brand-blue-light);
 }
-.nav-icon { width: 16px; text-align: center; opacity: 0.85; font-size: 14px; }
+/* The icon is an SVG now, not a glyph, so text-align and font-size no longer
+   apply to it. A fixed box keeps every label starting at the same x whatever
+   the icon's own bounds are. */
+.nav-icon {
+  width: 17px; height: 17px; flex: none;
+  display: grid; place-items: center;
+  opacity: 0.82;
+  transition: opacity 0.15s ease;
+}
+.nav a:hover .nav-icon, .nav a.active .nav-icon { opacity: 1; }
 .nav-count {
   margin-left: auto; font-size: 11.5px; font-weight: 700;
   background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.88);

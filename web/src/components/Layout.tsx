@@ -27,17 +27,49 @@ export const BRAND_TAGLINE_PARTS: Array<{ text: string; strong: boolean }> = [
 
 export const BRAND_TAGLINE = BRAND_TAGLINE_PARTS.map((p) => p.text).join('');
 
-const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capability?: Capability; adminOnly?: boolean }> = [
-  { to: '/', label: 'Dashboard', icon: '◈', end: true },
-  { to: '/calendar', label: 'Calendar', icon: '▤' },
-  { to: '/tasks', label: 'Tasks', icon: '✓' },
-  { to: '/documents', label: 'Documents', icon: '❐' },
-  { to: '/companies', label: 'Companies', icon: '⬢' },
-  { to: '/copilot', label: 'Copilot', icon: '✦' },
-  { to: '/rules', label: 'Rule engine', icon: '§', capability: 'rules.read' as const },
-  { to: '/team', label: 'People & access', icon: '◍', capability: 'users.manage' as const },
-  { to: '/billing', label: 'Billing', icon: '₹' },
-  { to: '/analytics', label: 'Platform analytics', icon: '∑', adminOnly: true },
+/**
+ * Navigation icons.
+ *
+ * Previously single unicode glyphs — ◈ ▤ ❐ ⬢ ✦ ∑ — which is a font lookup, not
+ * an icon set: each one comes from whichever family happens to carry it, so
+ * their weights, sizes and baselines never matched, and a machine missing the
+ * glyph drew a replacement box. These are drawn at one viewBox, one stroke
+ * width and one join style, so the column reads as a set.
+ */
+const NAV_ICONS = {
+  dashboard: <><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>,
+  calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>,
+  tasks: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="m3.5 6 1.2 1.2L7 5" /><path d="m3.5 12 1.2 1.2L7 11" /><path d="m3.5 18 1.2 1.2L7 17" /></>,
+  documents: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
+  companies: <><path d="M3 21h18M5 21V6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15M13 21V10h5a1 1 0 0 1 1 1v10" /><path d="M8 9h2M8 13h2M8 17h2M16 14h0M16 17h0" /></>,
+  copilot: <><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9Z" /><path d="M18 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z" /></>,
+  rules: <><path d="M12 3v18M7 7h10" /><path d="M7 7 4 14h6ZM17 7l-3 7h6Z" /><path d="M4 14a3 3 0 0 0 6 0M14 14a3 3 0 0 0 6 0" /><path d="M8 21h8" /></>,
+  people: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16.5 6.4a3.2 3.2 0 0 1 0 6.2M18 20a6 6 0 0 0-2.4-4.8" /></>,
+  billing: <><rect x="2.5" y="5" width="19" height="14" rx="2" /><path d="M2.5 10h19" /><path d="M6 15h4" /></>,
+  analytics: <><path d="M3 21h18" /><rect x="5" y="12" width="3.6" height="6" rx="1" /><rect x="10.2" y="8" width="3.6" height="10" rx="1" /><rect x="15.4" y="4" width="3.6" height="14" rx="1" /></>,
+} as const;
+
+type NavIconName = keyof typeof NAV_ICONS;
+
+const NavIcon = ({ name }: { name: NavIconName }) => (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+       strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {NAV_ICONS[name]}
+  </svg>
+);
+
+const NAV: Array<{ to: string; label: string; icon: NavIconName; end?: boolean; capability?: Capability; adminOnly?: boolean }> = [
+  { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/calendar', label: 'Calendar', icon: 'calendar' },
+  { to: '/tasks', label: 'Tasks', icon: 'tasks' },
+  { to: '/documents', label: 'Documents', icon: 'documents' },
+  { to: '/companies', label: 'Companies', icon: 'companies' },
+  // The page header has always called this "AI Copilot"; only the nav disagreed.
+  { to: '/copilot', label: 'AI Copilot', icon: 'copilot' },
+  { to: '/rules', label: 'Rule engine', icon: 'rules', capability: 'rules.read' as const },
+  { to: '/team', label: 'People & access', icon: 'people', capability: 'users.manage' as const },
+  { to: '/billing', label: 'Billing', icon: 'billing' },
+  { to: '/analytics', label: 'Platform analytics', icon: 'analytics', adminOnly: true },
 ];
 
 const TITLES: Record<string, { title: string; sub: string }> = {
@@ -202,7 +234,7 @@ export function Layout() {
         <nav className="nav">
           {NAV.filter((n) => (!n.capability || can(n.capability)) && (!n.adminOnly || user?.role === 'SUPER_ADMIN')).map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end}>
-              <span className="nav-icon">{n.icon}</span>
+              <span className="nav-icon"><NavIcon name={n.icon} /></span>
               {n.label}
               {n.to === '/tasks' && openTasks && openTasks.total > 0 && (
                 <span className="nav-count">{openTasks.total}</span>
