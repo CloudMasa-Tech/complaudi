@@ -154,9 +154,17 @@ a { color: inherit; }
 /* ── app shell ─────────────────────────────────────────────────────────── */
 .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
 
+/* The sidebar is dark in both themes, matching the panel on the signed-out
+   pages, so the brand does not change ground at the moment somebody logs in.
+   It is a navigation rail rather than content: the pages beside it still follow
+   the light/dark setting, and only this column is fixed. */
 .sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--navy-border);
+  /* Its own vertical ramp rather than --brand-gradient: that one runs to
+     #2563eb, and white at 76% over the blue end measures 3.68:1 — under the
+     4.5:1 floor for 14.5px nav labels. This stays in the navy range and every
+     element on it clears 6:1. */
+  background: linear-gradient(180deg, #0d2144 0%, #16325f 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   padding: 20px 14px;
   display: flex;
   flex-direction: column;
@@ -165,7 +173,7 @@ a { color: inherit; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  box-shadow: 2px 0 12px rgba(30, 58, 138, 0.04);
+  box-shadow: 2px 0 14px rgba(13, 33, 68, 0.18);
 }
 
 .brand { display: flex; flex-direction: column; gap: 9px; padding: 0 4px; }
@@ -188,12 +196,13 @@ a { color: inherit; }
      tracking here buys it back without changing the size. */
   font-size: 10.5px;
   letter-spacing: 0.02em;
-  color: var(--text-3);
+  color: rgba(255, 255, 255, 0.66);
 }
-.brand-logo-dark { display: none; }
-:root[data-theme="dark"] .brand-logo-light { display: none; }
-:root[data-theme="dark"] .brand-logo-dark { display: block; }
-:root[data-theme="dark"] .sidebar-tagline { color: rgba(255, 255, 255, 0.62); }
+/* No theme swap and no pair of images: the sidebar ground is fixed, so the
+   white-lettered artwork is always correct. The pair that was here rendered
+   both at once — `.brand-logo-dark { display: none }` and
+   `.brand-lockup-logo { display: block }` are both (0,1,0), and the latter sits
+   700 lines further down, so it won on order alone. */
 .brand-row { display: flex; align-items: center; gap: 10px; }
 .brand-mark {
   width: 32px; height: 32px; border-radius: 8px; flex: none;
@@ -227,26 +236,32 @@ a { color: inherit; }
 .nav a {
   display: flex; align-items: center; gap: 9px;
   padding: 9px 12px; border-radius: 8px;
-  color: var(--text-2); text-decoration: none; font-weight: 500; font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.76); text-decoration: none; font-weight: 500; font-size: 14.5px;
   transition: all 0.15s ease;
 }
-.nav a:hover { background: var(--surface-2); color: var(--accent); }
+.nav a:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
 .nav a.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
   font-weight: 700;
-  border-left: 3px solid var(--accent);
+  /* The swoosh blue, so the active rail is lit by the mark above it. */
+  border-left: 3px solid var(--brand-blue-light);
 }
 .nav-icon { width: 16px; text-align: center; opacity: 0.85; font-size: 14px; }
 .nav-count {
   margin-left: auto; font-size: 11.5px; font-weight: 700;
-  background: var(--surface-2); color: var(--text-2);
+  background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.88);
   padding: 1px 7px; border-radius: 20px;
 }
-.nav a.active .nav-count { background: var(--accent); color: #fff; }
+.nav a.active .nav-count { background: var(--brand-blue-light); color: #06233f; }
 
-.sidebar-foot { margin-top: auto; border-top: 1px solid var(--navy-border); padding-top: 14px; }
-.who { display: flex; align-items: center; gap: 9px; padding: 4px 8px; }
+.sidebar-foot { margin-top: auto; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 14px; }
+.who { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; }
+.who:hover { background: rgba(255, 255, 255, 0.08); }
+.who.active { background: rgba(255, 255, 255, 0.14); }
+.who .tiny { color: rgba(255, 255, 255, 0.92); }
+.who .tiny.dim { color: rgba(255, 255, 255, 0.6); }
+.who .avatar { background: var(--brand-blue-light); color: #06233f; }
 
 /* Sits under the profile block it acts on. Quiet by default — signing out is
    not the thing anyone came to the sidebar to do — and only turns red on
@@ -255,14 +270,16 @@ a { color: inherit; }
   display: flex; align-items: center; gap: 9px;
   width: 100%; margin-top: 8px; padding: 8px 12px;
   border: 1px solid transparent; border-radius: 8px;
-  background: transparent; color: var(--text-3);
+  background: transparent; color: rgba(255, 255, 255, 0.62);
   font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .sign-out:hover {
-  background: var(--critical-soft);
+  /* On a dark ground the soft red wash reads as a smudge, so the warning is
+     carried by the text and a faint tint instead. */
+  background: rgba(239, 68, 68, 0.16);
   border-color: transparent;
-  color: var(--critical);
+  color: #fca5a5;
 }
 .sign-out:focus-visible { outline: 2px solid var(--critical); outline-offset: 1px; }
 .sign-out svg { flex: none; }

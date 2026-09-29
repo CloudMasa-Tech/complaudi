@@ -169,12 +169,11 @@ export function Layout() {
       <aside className="sidebar">
         <div className="brand">
           {/* The same lockup the signed-out pages use, so the mark does not
-              change shape the moment somebody logs in. Two images because the
-              sidebar is white in light mode and near-black in dark, and the
-              wordmark's navy letters would vanish into the latter. */}
+              change shape the moment somebody logs in. One image, not a themed
+              pair: the sidebar is dark under both settings, so the artwork with
+              white lettering is always the right one. */}
           <div className="brand-lockup sidebar-lockup">
-            <img src="/logo.png" alt="Complaudi" className="brand-lockup-logo brand-logo-light" />
-            <img src="/logo-dark.png" alt="" aria-hidden="true" className="brand-lockup-logo brand-logo-dark" />
+            <img src="/logo-dark.png" alt="Complaudi" className="brand-lockup-logo" />
             <p className="brand-lockup-tagline sidebar-tagline">{BRAND_TAGLINE}</p>
           </div>
         </div>
