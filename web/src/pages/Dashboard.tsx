@@ -167,9 +167,13 @@ function regTone(
   switch (found.status) {
     case 'REGISTERED': return 'good';
     case 'MANDATORY':
-    case 'EXPIRED_RENEWAL_DUE': return 'bad';
+    case 'EXPIRED_RENEWAL_DUE':
+    // ELIGIBLE means available but not required — Udyam and DPIIT are both
+    // voluntary. Shown red anyway, by choice: on this dashboard a missing
+    // registration is a gap to review, not a verdict on compliance.
+    case 'ELIGIBLE': return 'bad';
     case 'PENDING_APPLICATION': return 'warn';
-    default: return hasValue ? 'good' : 'idle';
+    default: return hasValue ? 'good' : 'bad';
   }
 }
 
@@ -195,7 +199,13 @@ function RegCard({
 }) {
   const hasValue = idValue !== null && idValue !== 'Not held' && idValue !== 'Not registered' && idValue !== 'Not enrolled';
   const displayValue = idValue ?? 'Not held';
-  const statusTone = tone ?? (hasValue ? 'good' : 'idle');
+  /* A registration that is not held reads red, whether it is legally required
+     or merely available. That is a deliberate choice about this product rather
+     than about the law: the engine still knows the difference (see regTone),
+     but the dashboard treats every gap as something to look at. `--critical`
+     resolves per theme — #b42318 on light, #fda29b on dark — so the colour
+     carries in both without a second rule. */
+  const statusTone = tone ?? (hasValue ? 'good' : 'bad');
 
   const statusColour = statusTone === 'good' ? 'var(--good)'
     : statusTone === 'bad' ? 'var(--critical)'
