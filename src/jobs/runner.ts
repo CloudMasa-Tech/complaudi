@@ -20,11 +20,12 @@ import { prisma } from '../lib/prisma';
 import { refreshStatuses } from '../modules/compliance/compliance.service';
 import { snapshotAllScores } from '../modules/dashboard/dashboard.service';
 import { runReminderSweep } from '../modules/notifications/notifications.service';
+import { refreshOverlays, runRegulatorySweep } from '../modules/regulatory/regulatory.service';
 
 /** A run still RUNNING after this long is presumed dead and may be taken over. */
 const STALE_AFTER_MS = 30 * 60 * 1000;
 
-export type JobName = 'daily-compliance';
+export type JobName = 'daily-compliance' | 'regulatory-watch';
 
 export type JobOutcome =
   | { ran: true; jobRun: JobRun; result: Record<string, unknown> }
@@ -79,16 +80,32 @@ async function claim(jobName: JobName, scheduledFor: Date): Promise<JobRun | { t
 /**
  * Refresh item statuses, send reminders, snapshot scores — in that order, so
  * reminders and scores both see an up-to-date view of what is overdue.
+ *
+ * Overlays are reloaded first: an approved amendment whose effective window
+ * opened overnight has to be in force before anything downstream computes a due
+ * date from it.
  */
 async function dailyCompliance(): Promise<Record<string, unknown>> {
+  const overlays = await refreshOverlays();
   const statuses = await refreshStatuses();
   const reminders = await runReminderSweep();
   const snapshots = await snapshotAllScores();
-  return { statuses, reminders, snapshots };
+  return { overlays, statuses, reminders, snapshots };
+}
+
+/**
+ * Read what the authorities published and fill the review queue.
+ *
+ * Deliberately separate from the daily job: it costs money, it is slow, and it
+ * must never be able to take the nightly compliance sweep down with it.
+ */
+async function regulatoryWatch(): Promise<Record<string, unknown>> {
+  return { ...(await runRegulatorySweep()) };
 }
 
 const JOBS: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'daily-compliance': dailyCompliance,
+  'regulatory-watch': regulatoryWatch,
 };
 
 export async function runJob(

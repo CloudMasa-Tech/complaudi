@@ -1,4 +1,4 @@
-import { allRules, getRule } from './catalog';
+import { effectiveRules, getEffectiveRule } from './catalog';
 import type { ComplianceContext, ComplianceRule, ConditionResult, RuleEvaluation } from './types';
 
 /**
@@ -31,7 +31,7 @@ export function evaluateRule(rule: ComplianceRule, ctx: ComplianceContext): Rule
 }
 
 export function evaluateAll(ctx: ComplianceContext): RuleEvaluation[] {
-  return allRules.map((rule) => evaluateRule(rule, ctx));
+  return effectiveRules().map((rule) => evaluateRule(rule, ctx));
 }
 
 export function applicableRules(ctx: ComplianceContext): ComplianceRule[] {
@@ -42,6 +42,6 @@ export function applicableRules(ctx: ComplianceContext): ComplianceRule[] {
 
 /** Explain one rule for a company — powers the "why does this apply to me?" endpoint. */
 export function explainRule(code: string, ctx: ComplianceContext): RuleEvaluation | null {
-  const rule = getRule(code);
+  const rule = getEffectiveRule(code);
   return rule ? evaluateRule(rule, ctx) : null;
 }

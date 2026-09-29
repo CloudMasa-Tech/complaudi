@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { asyncHandler } from '../../lib/async';
-import { allRules, getRule, rulesByAuthority } from '../../engine/catalog';
+import { effectiveRules, effectiveRulesByAuthority, getEffectiveRule } from '../../engine/catalog';
 import { applicableEntityTypes } from '../../engine/entityApplicability';
 import { NotFoundError } from '../../lib/errors';
 import { auth, requireAuth, requireCapability } from '../../middleware/auth';
@@ -47,10 +47,10 @@ rulesRouter.use(requireCapability('rules.read'));
 /** The full catalog — useful for building filters and reference pages. */
 rulesRouter.get(
   '/',
-  validateQuery(z.object({ authority: z.enum(['MCA', 'GST', 'INCOME_TAX', 'MSME', 'LABOUR']).optional() })),
+  validateQuery(z.object({ authority: z.enum(['MCA', 'GST', 'INCOME_TAX', 'MSME', 'LABOUR', 'DPIIT']).optional() })),
   asyncHandler(async (req, res) => {
     const { authority } = req.query as { authority?: 'MCA' };
-    const rules = authority ? rulesByAuthority(authority) : allRules;
+    const rules = authority ? effectiveRulesByAuthority(authority) : effectiveRules();
     res.json(
       rules.map((r) => ({
         code: r.code,
@@ -69,6 +69,10 @@ rulesRouter.get(
         entityTypes: applicableEntityTypes(r),
         conditions: r.applicableWhen.map((c) => c.label),
         exemptions: (r.excludeWhen ?? []).map((c) => c.label),
+        // Present and non-empty only where a regulatory overlay has amended the
+        // committed rule. Without it nothing downstream can tell an amended
+        // obligation from one straight out of the catalog.
+        amendments: r.amendments ?? [],
       })),
     );
   }),
@@ -78,7 +82,7 @@ rulesRouter.get(
   '/:code',
   validateParams(z.object({ code: z.string().max(60) })),
   asyncHandler(async (req, res) => {
-    const rule = getRule(req.params.code!.toUpperCase());
+    const rule = getEffectiveRule(req.params.code!.toUpperCase());
     if (!rule) throw new NotFoundError(`Rule ${req.params.code}`);
     res.json({
       code: rule.code,
@@ -97,6 +101,7 @@ rulesRouter.get(
       entityTypes: applicableEntityTypes(rule),
       conditions: rule.applicableWhen.map((c) => c.label),
       exemptions: (rule.excludeWhen ?? []).map((c) => c.label),
+      amendments: rule.amendments ?? [],
     });
   }),
 );

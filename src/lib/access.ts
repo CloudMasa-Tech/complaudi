@@ -68,7 +68,15 @@ export type Capability =
   | 'users.manage'
   | 'audit.read'
   /** The rule engine itself — the platform team's, not the firm's. */
-  | 'rules.read';
+  | 'rules.read'
+  /**
+   * Approve, reject or revoke a regulatory amendment to the rule engine.
+   *
+   * Deliberately narrower than `rules.read`, and held only by the super admin:
+   * an approved overlay changes what every company in the installation owes,
+   * which is a platform decision and never a per-firm one.
+   */
+  | 'rules.amend';
 
 /**
  * What each role may do, on a company it holds.
@@ -82,7 +90,7 @@ const CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   SUPER_ADMIN: [
     'company.create', 'company.edit', 'company.archive', 'company.delete',
     'company.sync', 'work.write', 'evidence.write', 'users.manage', 'audit.read',
-    'rules.read',
+    'rules.read', 'rules.amend',
   ],
   // Everything on the companies they hold. The audit log stays with the super
   // admin: it spans the whole organisation, so a scoped role reading it would
@@ -128,6 +136,7 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   'evidence.write': 'upload or remove evidence here',
   'users.manage': 'manage people and access',
   'audit.read': 'read the audit log',
+  'rules.amend': 'amend the rule engine',
   'rules.read': 'read the rule engine',
 };
 

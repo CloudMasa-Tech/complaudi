@@ -30,12 +30,14 @@ The project is organized into two main parts: an Express API backend and a Vite+
 ### Backend (`/src`)
 - `engine/`: The core business logic. **Pure and unit-testable.** Never import Prisma or Express here.
   - `types.ts`, `conditions.ts`, `schedule.ts`, `evaluator.ts`, `generator.ts`, `score.ts`, `gate.ts`, `cli.ts`, `index.ts`.
+  - `predicates.ts`: the closed vocabulary of conditions a regulatory overlay may name.
+  - `overlay.ts`: pure, data-only amendments applied on top of the static catalog.
   - `catalog/`: The 53 declarative rules organized by authority (`mca.ts`, `gst.ts`, `incomeTax.ts`, `msme.ts`, `labour.ts`).
 - `modules/`: API route handlers and controllers.
-  - Features: `auth`, `companies`, `compliance`, `tasks`, `documents`, `notifications`, `dashboard`, `audit`, `copilot`, `lookup`, `internal`.
-- `lib/`: Utilities for dates (Indian FY), identifiers (GSTIN/PAN/CIN validation), storage, mailer, jwt, prisma, errors, pagination, access control, boolish, async, company document import, file inspection, MCA master data.
+  - Features: `auth`, `companies`, `compliance`, `tasks`, `documents`, `notifications`, `dashboard`, `audit`, `copilot`, `lookup`, `internal`, `regulatory`.
+- `lib/`: Utilities for dates (Indian FY), identifiers (GSTIN/PAN/CIN validation), storage, mailer, jwt, prisma, errors, pagination, access control, boolish, async, company document import, file inspection, MCA master data, Claude API access (`claude.ts`).
 - `middleware/`: Express middlewares for auth, validation, and error handling.
-- `jobs/`: Scheduled background jobs (e.g., nightly sweeps) — `daily.ts`, `runner.ts`, `scheduler.ts`.
+- `jobs/`: Scheduled background jobs — `daily.ts`, `runner.ts`, `scheduler.ts`. Two jobs: `daily-compliance` and `regulatory-watch`.
 - `config/`: `env.ts` — environment variable validation (Zod), process refuses to start on invalid values.
 
 ### Frontend (`/web/src`)
@@ -57,6 +59,39 @@ Obligations cannot be marked complete blindly. The gateway ensures:
 2. The checklist is fully complete.
 3. Appropriate evidence (files) is uploaded (based on `REQUIRED`, `ATTEST`, or `NONE` levels).
 4. Signatories are provided if the rule dictates it.
+
+### The Regulatory Watch (Claude-driven rule updates)
+A scheduled job reads what MCA, CBIC, CBDT, EPFO, ESIC, the MSME ministry and DPIIT
+have published and files what it finds into a review queue. The pipeline is
+strictly one-directional and human-gated:
+
+`RegulatoryUpdate` (what was published) → `RuleChangeProposal` (a drafted change,
+PENDING) → an admin with `rules.amend` approves → `RuleOverlay` (ACTIVE) →
+`refreshOverlays()` pushes it into the engine → `effectiveRules()` applies it.
+
+Rules governing this layer:
+- **Claude never writes executable code.** Rules in `catalog/` are TypeScript with
+  closures; an overlay is *data only*. A change that cannot be expressed as data
+  is stored as `CODE_CHANGE_REQUIRED` for an engineer, never approximated.
+- **Applicability is a closed vocabulary.** `engine/predicates.ts` is the only
+  set of conditions an overlay may name, validated on write and again on
+  approval. Adding one means writing the condition in `conditions.ts`, testing
+  it, then exposing it — never the reverse.
+- **`allRules` is the static catalog; `effectiveRules()` is what companies owe.**
+  Anything deciding a real obligation goes through the effective view
+  (`getEffectiveRule`, `effectiveRules`, `evaluateAll`). Tests assert against the
+  static catalog. Do not reintroduce `allRules` into a runtime path.
+- **The engine still imports no Prisma.** `engine/overlay.ts` holds one mutable
+  registry filled by `regulatory.service.ts`; the engine never reads the database.
+- Two Claude passes, in `lib/claude.ts`: `research()` (web_search/web_fetch,
+  restricted to statutory domains in `ALLOWED_DOMAINS`) and `extract()` (no
+  tools, JSON-schema output, cached prefix). Model defaults to `claude-opus-5`.
+- Gated on `ANTHROPIC_API_KEY` + `REGULATORY_WATCH_ENABLED`. Unset, the feature
+  is inert and everything else is unaffected.
+- Job: `regulatory-watch`, separate from `daily-compliance` so a failed or
+  expensive sweep can never take the nightly compliance run down.
+- API: `/api/v1/regulatory` — reading needs `rules.read`, deciding needs
+  `rules.amend` (SUPER_ADMIN only).
 
 ### Database Operations (Prisma & Supabase)
 - **DATABASE_URL**: Must use the pooled connection (port `6543`) with `?pgbouncer=true` for normal application queries.
@@ -97,6 +132,7 @@ Key variables (see `.env.example` for full annotated list):
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, `LOCAL_STORAGE_DIR`.
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (+ TTLs), `BCRYPT_ROUNDS`.
 - `SMTP_*`, `MAIL_FROM` (SMTP unset → console mailer in dev).
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_EFFORT`, `REGULATORY_WATCH_ENABLED`, `REGULATORY_WATCH_CRON`, `REGULATORY_WATCH_LOOKBACK_DAYS`, `REGULATORY_WATCH_MAX_UPDATES`.
 - `SERVE_WEB`, `WEB_DIST_DIR`, `ENABLE_CRON`, `REMINDER_CRON`, `TIMEZONE`, `REMINDER_OFFSET_DAYS`.
 
 ## 7. AI Instructions

@@ -6,6 +6,7 @@ import { logger } from './lib/logger';
 import { verifyMailer } from './lib/mailer';
 import { disconnectPrisma, prisma } from './lib/prisma';
 import { startScheduler, stopScheduler } from './jobs/scheduler';
+import { refreshOverlays } from './modules/regulatory/regulatory.service';
 
 async function main(): Promise<void> {
   await prisma.$queryRaw`SELECT 1`;
@@ -18,10 +19,25 @@ async function main(): Promise<void> {
     logger.warn('SMTP_HOST is not set — reminder emails will be logged, not delivered');
   }
 
+  // Approved regulatory amendments live in the database; the engine holds none
+  // until they are pushed in. Load them before the first request, or a replica
+  // that just restarted would briefly serve the un-amended catalog.
+  const overlays = await refreshOverlays();
+  if (overlays.skipped > 0) {
+    logger.warn({ ...overlays }, 'some rule overlays could not be applied — see the errors above');
+  }
+
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {
     logger.info(
-      { port: env.PORT, env: env.NODE_ENV, rules: allRules.length, storage: env.storageDriver },
+      {
+        port: env.PORT,
+        env: env.NODE_ENV,
+        rules: allRules.length,
+        overlays: overlays.active,
+        storage: env.storageDriver,
+        regulatoryWatch: env.regulatoryWatchEnabled ? env.ANTHROPIC_MODEL : 'off',
+      },
       `compliance API listening on http://localhost:${env.PORT}`,
     );
   });

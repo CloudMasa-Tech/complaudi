@@ -29,6 +29,8 @@ export function makeCompany(overrides: Partial<CompanyProfile> = {}): CompanyPro
     esicCode: null,
     professionalTax: null,
     shopAndEstablishment: null,
+    dpiitRecognitionNumber: null,
+    dpiitRecognisedOn: null,
     ...overrides,
   };
 }

@@ -8,9 +8,9 @@ import { prisma } from '../../lib/prisma';
 import { evaluateAll, evaluateRule } from '../../engine/evaluator';
 import { evaluateGate } from '../../engine/gate';
 import { generateCalendar, type GeneratedItem } from '../../engine/generator';
-import { getRule } from '../../engine/catalog';
+import { getEffectiveRule } from '../../engine/catalog';
 import type { ComplianceContext } from '../../engine/types';
-import { getCompanyOrThrow, type CompanyWithProfile } from '../companies/companies.service';
+import { companyInclude, getCompanyOrThrow, type CompanyWithProfile } from '../companies/companies.service';
 
 /** How far back and forward the calendar is materialised on each sync. */
 export const LOOKBACK_DAYS = 400;
@@ -51,6 +51,8 @@ export function buildContext(company: CompanyWithProfile): ComplianceContext {
       esicCode: company.esicCode,
       professionalTax: company.professionalTax,
       shopAndEstablishment: company.shopAndEstablishment,
+      dpiitRecognitionNumber: company.dpiitRecognitionNumber,
+      dpiitRecognisedOn: company.dpiitRecognisedOn,
     },
     directors: company.directors.map((dir) => ({
       id: dir.id,
@@ -162,6 +164,28 @@ function deriveStatusValue(dueDate: Date, completedAt: Date | null, asOf: Date =
 export async function syncCompany(actor: Actor, companyId: string): Promise<SyncResult> {
   const company = await getCompanyOrThrow(actor, companyId);
   await assertCan(actor, companyId, 'company.sync');
+  return regenerate(company);
+}
+
+/**
+ * The same regeneration, without an actor.
+ *
+ * For platform-level work that is nobody's company in particular — the
+ * regulatory overlay layer approving an amendment that moves a due date for
+ * every company at once. There is no user to check a capability against, and
+ * inventing one would be worse than being explicit that this is a system path.
+ *
+ * Callers are responsible for deciding *which* companies to regenerate; this
+ * only does one, and does exactly what syncCompany does to it.
+ */
+export async function regenerateCompanySystem(companyId: string): Promise<SyncResult> {
+  const company = await prisma.company.findUnique({ where: { id: companyId }, include: companyInclude });
+  if (!company) throw new NotFoundError('Company');
+  return regenerate(company);
+}
+
+async function regenerate(company: CompanyWithProfile): Promise<SyncResult> {
+  const companyId = company.id;
 
   // Fetch logged events from CompanyEvent table and attach to company for buildContext
   const dbEvents = await prisma.companyEvent.findMany({
@@ -214,6 +238,11 @@ export async function syncCompany(actor: Actor, companyId: string): Promise<Sync
 
   const toCreate: Prisma.ComplianceItemCreateManyInput[] = [];
   const toUpdate: Array<{ id: string; data: Prisma.ComplianceItemUpdateInput }> = [];
+  // An item and its task are 1:1 and each carry their own copy of the due date
+  // and title. When the engine moves a date — an AGM entered late, or a
+  // regulatory overlay extending a deadline — both copies have to move, or the
+  // Tasks board goes on showing a deadline that no longer exists.
+  const taskUpdates: Array<{ itemId: string; data: Prisma.TaskUpdateManyMutationInput }> = [];
 
   for (const item of items) {
     const found = existingByKey.get(itemKey(item.ruleCode, item.periodKey));
@@ -239,6 +268,12 @@ export async function syncCompany(actor: Actor, companyId: string): Promise<Sync
       found.evidenceLevel !== item.evidenceLevel;
 
     if (changed) {
+      if (dueDateChanged || found.title !== item.title) {
+        // Status is deliberately untouched: moving a deadline is not a reason to
+        // reopen work somebody already finished.
+        taskUpdates.push({ itemId: found.id, data: { dueDate: item.dueDate, title: item.title } });
+      }
+
       toUpdate.push({
         id: found.id,
         data: {
@@ -283,6 +318,9 @@ export async function syncCompany(actor: Actor, companyId: string): Promise<Sync
   const [created] = await prisma.$transaction([
     prisma.complianceItem.createMany({ data: toCreate, skipDuplicates: true }),
     ...toUpdate.map((u) => prisma.complianceItem.update({ where: { id: u.id }, data: u.data })),
+    ...taskUpdates.map((u) =>
+      prisma.task.updateMany({ where: { complianceItemId: u.itemId }, data: u.data }),
+    ),
     prisma.complianceItem.deleteMany({ where: { id: { in: withdrawable.map((r) => r.id) } } }),
   ]);
 
@@ -432,7 +470,7 @@ export async function calendarByMonth(actor: Actor, companyId: string, from: Dat
 /** The applicability trace for one rule against one company. */
 export async function explainForCompany(actor: Actor, companyId: string, ruleCode: string) {
   const company = await getCompanyOrThrow(actor, companyId);
-  const rule = getRule(ruleCode);
+  const rule = getEffectiveRule(ruleCode);
   if (!rule) throw new NotFoundError(`Rule ${ruleCode}`);
 
   const evaluation = evaluateRule(rule, buildContext(company));
@@ -465,7 +503,7 @@ export async function listApplicability(actor: Actor, companyId: string) {
   });
 
   return rows.map((row) => {
-    const rule = getRule(row.ruleCode);
+    const rule = getEffectiveRule(row.ruleCode);
     return {
       ruleCode: row.ruleCode,
       applicable: row.applicable,
@@ -516,7 +554,7 @@ export async function assertCompletionAllowed(
   if (!item) throw new NotFoundError('Compliance item');
 
   const checklist = (item.task?.checklist as Array<{ done?: boolean }> | null) ?? [];
-  const rule = getRule(item.ruleCode);
+  const rule = getEffectiveRule(item.ruleCode);
 
   const result = evaluateGate({
     evidenceLevel: item.evidenceLevel,

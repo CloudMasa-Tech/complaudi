@@ -4,4 +4,13 @@ export * from './schedule';
 export * from './evaluator';
 export * from './generator';
 export * from './score';
-export { allRules, getRule, rulesByAuthority } from './catalog';
+export * from './overlay';
+export * from './predicates';
+export {
+  allRules,
+  getRule,
+  rulesByAuthority,
+  effectiveRules,
+  getEffectiveRule,
+  effectiveRulesByAuthority,
+} from './catalog';

@@ -25,6 +25,14 @@ export async function runDailyJob(): Promise<void> {
   }
 }
 
+export async function runRegulatoryWatchJob(): Promise<void> {
+  try {
+    await runJob('regulatory-watch');
+  } catch (err) {
+    logger.error({ err }, 'regulatory watch job failed');
+  }
+}
+
 export function startScheduler(): void {
   if (!env.ENABLE_CRON) {
     logger.info(
@@ -49,6 +57,29 @@ export function startScheduler(): void {
   const task = cron.schedule(env.REMINDER_CRON, () => void runDailyJob(), { timezone: env.TIMEZONE });
   tasks.push(task);
   logger.info({ expression: env.REMINDER_CRON, timezone: env.TIMEZONE }, 'in-process scheduler started');
+
+  // The watch is on its own schedule and its own switch. Without Claude
+  // configured it would only log a skip every week, so it is not registered.
+  if (!env.regulatoryWatchEnabled) {
+    logger.info(
+      { claudeConfigured: env.claudeEnabled },
+      'regulatory watch not scheduled — set ANTHROPIC_API_KEY and REGULATORY_WATCH_ENABLED to enable it',
+    );
+    return;
+  }
+
+  if (!cron.validate(env.REGULATORY_WATCH_CRON)) {
+    logger.error({ expression: env.REGULATORY_WATCH_CRON }, 'invalid REGULATORY_WATCH_CRON — watch not scheduled');
+    return;
+  }
+
+  tasks.push(
+    cron.schedule(env.REGULATORY_WATCH_CRON, () => void runRegulatoryWatchJob(), { timezone: env.TIMEZONE }),
+  );
+  logger.info(
+    { expression: env.REGULATORY_WATCH_CRON, timezone: env.TIMEZONE, model: env.ANTHROPIC_MODEL },
+    'regulatory watch scheduled',
+  );
 }
 
 export function stopScheduler(): void {

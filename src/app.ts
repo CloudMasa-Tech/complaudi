@@ -21,6 +21,7 @@ import { documentsRouter } from './modules/documents/documents.routes';
 import { internalRouter } from './modules/internal/internal.routes';
 import { lookupRouter } from './modules/lookup/lookup.routes';
 import { notificationsRouter } from './modules/notifications/notifications.routes';
+import { regulatoryRouter } from './modules/regulatory/regulatory.routes';
 import { tasksRouter } from './modules/tasks/tasks.routes';
 
 export function createApp(): Express {
@@ -118,6 +119,7 @@ export function createApp(): Express {
         copilot: '/api/v1/copilot',
         rules: '/api/v1/rules',
         lookup: '/api/v1/lookup',
+        regulatory: '/api/v1/regulatory',
       },
     });
   });
@@ -150,6 +152,7 @@ export function createApp(): Express {
   api.use('/copilot', copilotRouter);
   api.use('/rules', rulesRouter);
   api.use('/lookup', lookupRouter);
+  api.use('/regulatory', regulatoryRouter);
 
   app.use('/api/v1', api);
 

@@ -1,4 +1,4 @@
-import type { Condition, EntityType, GstFilingFrequency } from './types';
+import type { Condition, EntityType, GstFilingFrequency, MsmeCategory } from './types';
 
 export const CRORE = 10_000_000;
 export const LAKH = 100_000;
@@ -84,6 +84,16 @@ export const employeesAtLeast = (n: number): Condition => ({
   test: (ctx) => ctx.company.employeeCount >= n,
 });
 
+export const employeesBelow = (n: number): Condition => ({
+  label: `Has fewer than ${n} employees`,
+  test: (ctx) => ctx.company.employeeCount < n,
+});
+
+export const turnoverBetween = (min: number, max: number): Condition => ({
+  label: `Annual turnover is between ${inr(min)} and ${inr(max)}`,
+  test: (ctx) => ctx.company.annualTurnover >= min && ctx.company.annualTurnover < max,
+});
+
 export const hasGstRegistration = (): Condition => ({
   label: 'Has at least one active GST registration',
   test: (ctx) => ctx.gstRegistrations.some((g) => g.isActive),
@@ -123,6 +133,40 @@ export const crossesGstRegistrationThreshold = (): Condition => ({
 /** The other side of the gate — a company the engine is warning, not tracking. */
 export const hasNoGstRegistration = (): Condition =>
   not(hasGstRegistration(), 'Has no active GST registration');
+
+export const msmeCategoryIs = (...categories: MsmeCategory[]): Condition => ({
+  label: `Registered as a ${categories.map((c) => c.toLowerCase()).join(' or ')} enterprise under Udyam`,
+  test: (ctx) => ctx.msme !== null && categories.includes(ctx.msme.category),
+});
+
+// ------------------------------------------------------- DPIIT / Startup India
+
+export const hasDpiitRecognition = (): Condition => ({
+  label: 'Holds a DPIIT (Startup India) recognition',
+  test: (ctx) => Boolean(ctx.company.dpiitRecognitionNumber),
+});
+
+export const hasNoDpiitRecognition = (): Condition =>
+  custom('No DPIIT (Startup India) recognition on record', (ctx) => !ctx.company.dpiitRecognitionNumber);
+
+/**
+ * Inside the benefit window that runs from the date of DPIIT recognition — the
+ * s.80-IAC deduction, angel-tax relief and labour self-certification are all
+ * time-boxed this way. A recognition with no recorded date cannot be shown to
+ * be inside any window, so it fails closed.
+ */
+export const dpiitRecognisedWithinYears = (years: number): Condition => ({
+  label: `Within ${years} years of DPIIT recognition`,
+  test: (ctx) => {
+    const { dpiitRecognitionNumber, dpiitRecognisedOn } = ctx.company;
+    if (!dpiitRecognitionNumber || !dpiitRecognisedOn) return false;
+    const expiry = new Date(dpiitRecognisedOn.getTime());
+    expiry.setUTCFullYear(expiry.getUTCFullYear() + years);
+    return Date.now() < expiry.getTime();
+  },
+});
+
+// -------------------------------------------------------------- labour / other
 
 export const hasEpfoEnrollment = (): Condition => ({
   label: 'Holds an EPFO establishment code',
@@ -196,6 +240,26 @@ export const crossesTaxAuditThreshold = (): Condition => ({
 export const llpCrossesAuditThreshold = (): Condition => ({
   label: 'LLP turnover exceeds ₹40 lakh or contribution exceeds ₹25 lakh',
   test: (ctx) => ctx.company.annualTurnover > 40 * LAKH || ctx.company.paidUpCapital > 25 * LAKH,
+});
+
+export const stateCodeIn = (...codes: string[]): Condition => ({
+  label: `Registered in ${codes.join(', ')}`,
+  test: (ctx) => codes.includes(ctx.company.stateCode),
+});
+
+/**
+ * Incorporation-date cutoffs. Circulars and amendment rules routinely apply
+ * only to entities incorporated on or after a commencement date, so the overlay
+ * layer needs to express that without new code. `iso` is a plain YYYY-MM-DD.
+ */
+export const incorporatedOnOrAfter = (iso: string): Condition => ({
+  label: `Incorporated on or after ${iso}`,
+  test: (ctx) => Boolean(ctx.company.incorporationDate && ctx.company.incorporationDate >= new Date(`${iso}T00:00:00.000Z`)),
+});
+
+export const incorporatedBefore = (iso: string): Condition => ({
+  label: `Incorporated before ${iso}`,
+  test: (ctx) => Boolean(ctx.company.incorporationDate && ctx.company.incorporationDate < new Date(`${iso}T00:00:00.000Z`)),
 });
 
 /** A custom escape hatch, so the catalog never has to reach for `any`. */

@@ -67,6 +67,29 @@ const schema = z.object({
   TIMEZONE: z.string().default('Asia/Kolkata'),
   REMINDER_OFFSET_DAYS: z.string().default('30,15,7,3,1,0'),
 
+  // Claude / Anthropic. The key is optional: without it the regulatory watch
+  // job is inert and every other feature behaves exactly as before. Approved
+  // overlays already in the database keep applying — the engine never needs the
+  // API to read what a human has already signed off.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-opus-5'),
+  /// Effort spent on the research pass. `high` is the sensible floor for work
+  /// whose output a human has to trust; drop to `medium` only to cut cost.
+  ANTHROPIC_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
+
+  // Regulatory watch
+  REGULATORY_WATCH_ENABLED: boolish(false),
+  /// Weekly by default — MCA circulars do not land hourly, and every run costs
+  /// money. Only consulted when in-process cron is on; production drives the
+  /// job from an external scheduler like every other job here.
+  REGULATORY_WATCH_CRON: z.string().default('0 7 * * 1'),
+  /// How far back each sweep looks. Generous enough that a couple of missed
+  /// runs do not open a gap, and dedupe on `fingerprint` absorbs the overlap.
+  REGULATORY_WATCH_LOOKBACK_DAYS: z.coerce.number().int().min(1).max(365).default(21),
+  /// Ceiling on updates persisted per sweep — a runaway search cannot flood the
+  /// review queue.
+  REGULATORY_WATCH_MAX_UPDATES: z.coerce.number().int().min(1).max(100).default(25),
+
   // Government / MCA verification provider configuration (BizVerify)
   BIZVERIFY_BASE_URL: z.string().url().default('http://localhost:8000'),
   BIZVERIFY_SERVICE_TOKEN: z.string().default('dev-bizverify-service-token'),
@@ -107,6 +130,11 @@ export const env = {
   razorpayEnabled: Boolean(raw.RAZORPAY_KEY_ID && raw.RAZORPAY_KEY_SECRET),
   /// Which key environment the configured id belongs to, when billing is on.
   razorpayKeyEnv: (keyEnv ?? 'none') as 'live' | 'test' | 'none',
+  /// Claude access is a config gate, like billing: no key, no watcher.
+  claudeEnabled: Boolean(raw.ANTHROPIC_API_KEY),
+  /// The watcher needs both the switch and the key. Checked at boot so an
+  /// operator who set one without the other finds out immediately.
+  regulatoryWatchEnabled: Boolean(raw.REGULATORY_WATCH_ENABLED && raw.ANTHROPIC_API_KEY),
 };
 
 export type Env = typeof env;

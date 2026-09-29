@@ -20,7 +20,7 @@ import { logger } from '../../lib/logger';
 import { validateBody, validateParams } from '../../middleware/validate';
 import { recentJobRuns, runJob, type JobName } from '../../jobs/runner';
 
-const JOB_NAMES = ['daily-compliance'] as const;
+const JOB_NAMES = ['daily-compliance', 'regulatory-watch'] as const;
 
 /** Constant-time compare, so a wrong secret cannot be discovered by timing. */
 function requireJobSecret(req: Request, _res: Response, next: NextFunction): void {

@@ -6,7 +6,7 @@
  * it can always be traced back to a section number. This is the retrieval half
  * of the RAG box in the architecture — the generation half is pluggable.
  */
-import { allRules } from '../../engine/catalog';
+import { effectiveRules } from '../../engine/catalog';
 import type { ComplianceRule } from '../../engine/types';
 
 /** Terms users actually type, mapped to the vocabulary the catalog uses. */
@@ -80,7 +80,7 @@ export function retrieveRules(question: string, limit = 6): Retrieved[] {
   const terms = expand(tokenize(question));
   if (terms.length === 0) return [];
 
-  const scored = allRules.map((rule) => {
+  const scored = effectiveRules().map((rule) => {
     const fields = ruleText(rule);
     let score = 0;
     const matched = new Set<string>();

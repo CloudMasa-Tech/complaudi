@@ -89,6 +89,14 @@ export interface CompanyProfile {
   esicCode: string | null;
   professionalTax: string | null;
   shopAndEstablishment: string | null;
+  /**
+   * DPIIT (Startup India) recognition. Most DPIIT benefits — the s.80-IAC tax
+   * holiday, the angel-tax exemption under s.56(2)(viib), self-certification
+   * under the labour codes — are time-boxed from the date of recognition, so
+   * the date matters as much as the number.
+   */
+  dpiitRecognitionNumber: string | null;
+  dpiitRecognisedOn: Date | null;
 }
 
 /** Everything a rule is allowed to look at. Nothing else. */
@@ -187,6 +195,24 @@ export interface ComplianceRule {
    * GSTINs.
    */
   occurrences: (fy: FinancialYear, ctx: ComplianceContext) => Occurrence[];
+  /**
+   * Set only on rules returned by `effectiveRules()` — the amendments the
+   * overlay layer applied on top of the static catalog entry. Absent on the
+   * catalog entry itself.
+   */
+  amendments?: RuleAmendment[];
+}
+
+/**
+ * A data-only amendment applied to a rule by the regulatory overlay layer.
+ * Carried on the rule purely so the UI can say "this obligation was amended by
+ * MCA circular 09/2026" without re-querying. The evaluator ignores it.
+ */
+export interface RuleAmendment {
+  overlayId: string;
+  note: string | null;
+  effectiveFrom: Date | null;
+  effectiveTo: Date | null;
 }
 
 export interface RuleEvaluation {
