@@ -657,6 +657,32 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 
 .dir-strip { display: flex; flex-wrap: wrap; gap: 9px; padding: 0 20px 18px; }
 .dir-chip {
+
+/* ── DIN standing on a director chip ─────────────────────────────────────
+ * Green / red / amber on the dot and a left edge, so the state is legible at a
+ * glance without the chip turning into a traffic light. UNKNOWN is rendered as
+ * nothing at all rather than a neutral badge — an unverified DIN is not a
+ * finding, and colouring it would imply one.
+ */
+.din-line {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; margin-top: 2px;
+}
+.din-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: currentColor; }
+.din-detail { font-weight: 400; opacity: 0.75; }
+.din-action {
+  font-size: 11px; font-weight: 600; color: var(--critical);
+  margin-top: 1px; line-height: 1.35;
+}
+
+.dir-chip.din-active .din-line { color: var(--good); }
+.dir-chip.din-deactivated .din-line { color: var(--critical); }
+.dir-chip.din-due .din-line { color: var(--high); }
+
+/* A deactivated DIN blocks every signed filing the company owes, so the chip
+   itself carries the warning rather than leaving it to one small line. */
+.dir-chip.din-deactivated { border-color: var(--critical); background: var(--critical-soft); }
+.dir-chip.din-due { border-color: var(--high); }
   display: flex; align-items: center; gap: 9px; min-width: 0;
   border: 1px solid var(--navy-border); border-radius: 999px; padding: 6px 14px 6px 6px;
   background: var(--surface);

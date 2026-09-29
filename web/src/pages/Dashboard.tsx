@@ -464,7 +464,7 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
       ) : (
         <div className="dir-strip">
           {profile.directors.map((dir) => (
-            <span key={dir.id} className="dir-chip">
+            <span key={dir.id} className={`dir-chip din-${dir.dinStatus.state.toLowerCase()}`}>
               <span className="avatar">{initials(dir.name)}</span>
               <span className="stack" style={{ minWidth: 0, gap: 1 }}>
                 <span style={{ fontWeight: 550, fontSize: 13 }}>{dir.name}</span>
@@ -476,6 +476,19 @@ function EntityCard({ profile, logoStorageKey }: { profile: CompanyProfile; logo
                     </span>
                   )}
                 </span>
+                {/* Nothing is shown when there is nothing to say — an unknown
+                    DIN must not be coloured as though it were a problem. */}
+                {dir.dinStatus.state !== 'UNKNOWN' && (
+                  <span className="din-line" title={dir.dinStatus.action ?? undefined}>
+                    <span className="din-dot" aria-hidden="true" />
+                    {dir.dinStatus.state === 'ACTIVE' ? 'DIN active' :
+                     dir.dinStatus.state === 'DEACTIVATED' ? 'DIN deactivated' : 'KYC due'}
+                    <span className="din-detail">· {dir.dinStatus.label}</span>
+                  </span>
+                )}
+                {dir.dinStatus.action && dir.dinStatus.state === 'DEACTIVATED' && (
+                  <span className="din-action">{dir.dinStatus.action}</span>
+                )}
               </span>
             </span>
           ))}

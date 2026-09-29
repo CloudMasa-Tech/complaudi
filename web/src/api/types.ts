@@ -183,6 +183,20 @@ export interface UdyamVerificationResult {
   rawResponse?: unknown;
 }
 
+/**
+ * A DIN's standing, inferred from the DIR-3 KYC record rather than checked with
+ * MCA — which publishes no API for it. `derived` is always true, and the UI has
+ * to say so: reporting a DIN active when the Registrar disagrees is worse than
+ * reporting nothing.
+ */
+export interface DinStatus {
+  state: 'ACTIVE' | 'DEACTIVATED' | 'DUE' | 'UNKNOWN';
+  label: string;
+  action: string | null;
+  derived: boolean;
+  asOfPeriod: string | null;
+}
+
 export interface Director {
   id: string; name: string; din: string | null; email: string | null;
   designation: string; appointedOn: string | null; resignedOn: string | null;
@@ -389,7 +403,8 @@ export interface CompanyProfile {
   employeeCount: number | null;
   stateCode: string | null;
   directors: { id: string; name: string; din: string | null; designation: string;
-               dscExpiresOn: string | null; dscStatus: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED' }[];
+               dscExpiresOn: string | null; dscStatus: 'ACTIVE' | 'EXPIRED' | 'NOT_RECORDED';
+               dinStatus: DinStatus }[];
   msme: { udyamNumber: string; category: string; registeredOn: string | null } | null;
   gstins: { gstin: string; stateCode: string; isActive: boolean }[];
   dpiit: { number: string; recognisedOn: string | null } | null;
