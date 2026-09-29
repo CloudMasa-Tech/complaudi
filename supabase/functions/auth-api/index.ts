@@ -467,6 +467,115 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: true });
     }
 
+// POST /forgot-password — send a recovery email only to real accounts.
+    //
+    // The user lookup happens server-side through the Supabase Admin API before
+    // any mail is dispatched. When the address has no Auth user, nothing is
+    // sent. The HTTP response is identical either way so the endpoint never
+    // reveals whether an account exists (no user enumeration).
+    if (req.method === 'POST' && (path === '/forgot-password' || path === '/forgot-password/')) {
+      const schema = z.object({
+        email: z.string().email().toLowerCase(),
+      });
+      const body = await parseJsonBody(req, schema);
+
+      const baseUrl = (env.APP_BASE_URL || 'http://localhost:5173').replace(/\/+$/, '');
+      const redirectTo = `${baseUrl}/reset-password`;
+
+      try {
+        // 1. Existence check via the users table (never disclosed to the client).
+        const { data: existingUser, error: lookupError } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', body.email)
+          .single();
+
+        const userExists = !!existingUser;
+
+        if (lookupError && lookupError.code !== 'PGRST116') {
+          console.warn(`[auth-api /forgot-password] lookup error for ${body.email}:`, lookupError.message);
+        }
+
+        if (!userExists) {
+          console.warn(`[auth-api /forgot-password] no account for ${body.email} — reset email suppressed`);
+        } else {
+          // 2. Account exists — dispatch the recovery email.
+          const { error } = await supabase.auth.resetPasswordForEmail(body.email, { redirectTo });
+          if (error) {
+            console.warn('[auth-api /forgot-password] recovery email not dispatched:', error.message);
+          }
+        }
+      } catch (err) {
+        // Server-side bookkeeping only; the response never reveals account existence.
+        console.warn('[auth-api /forgot-password] lookup/dispatch failed:', err instanceof Error ? err.message : 'unknown');
+      }
+
+      return jsonResponse({ success: true });
+    }
+
+    // POST /reset-password — a user finishing the recovery link sets a new password.
+    //
+    // The recovery session comes from the reset-link redirect (either an OTP
+    // token_hash or a recovery access_token). It is handed to Supabase Auth,
+    // which is the only place a password is ever set or stored. The matching
+    // app-side sessions are revoked so old tokens cannot outlive the change.
+    if (req.method === 'POST' && (path === '/reset-password' || path === '/reset-password/')) {
+      const schema = z.object({
+        password: z.string().min(10).max(128),
+        tokenHash: z.string().optional(),
+        accessToken: z.string().optional(),
+      });
+      const body = await parseJsonBody(req, schema);
+
+      const failures: string[] = [];
+      if (body.password.length < 10) failures.push('at least 10 characters');
+      if (!/[a-z]/.test(body.password)) failures.push('a lowercase letter');
+      if (!/[A-Z]/.test(body.password)) failures.push('an uppercase letter');
+      if (!/[0-9]/.test(body.password)) failures.push('a digit');
+      if (failures.length) {
+        throw new BadRequestError(`The password needs ${failures.join(', ')}.`);
+      }
+
+      // Resolve the user owning the recovery token through Supabase Auth only.
+      let userId: string | null = null;
+      if (body.tokenHash) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token_hash: body.tokenHash,
+        });
+        if (error || !data?.user) {
+          throw new AppError('This reset link is invalid or has expired. Please request a new one.', 400, 'INVALID_RESET_LINK');
+        }
+        userId = data.user.id;
+      } else if (body.accessToken) {
+        const { data, error } = await supabase.auth.getUser(body.accessToken);
+        if (error || !data?.user) {
+          throw new AppError('This reset link is invalid or has expired. Please request a new one.', 400, 'INVALID_RESET_LINK');
+        }
+        userId = data.user.id;
+      } else {
+        throw new BadRequestError('This reset link is missing its recovery token. Please use the link from the email.');
+      }
+
+      const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { password: body.password });
+      if (updateErr) {
+        throw new AppError('We could not update your password. Please try again.', 400, 'PASSWORD_UPDATE_FAILED');
+      }
+
+      // Keep the app's own session table in step: a changed password ends every
+      // live custom-JWT session, mirroring the Node resetPassword behaviour.
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('users')
+        .update({ passwordChangedAt: nowIso, updatedAt: nowIso })
+        .eq('id', userId)
+        .catch(() => undefined);
+      await supabase.from('refresh_tokens').delete().eq('userId', userId).catch(() => undefined);
+      await supabase.auth.admin.signOut(userId, 'global').catch(() => undefined);
+
+      return jsonResponse({ success: true });
+    }
+
     // ── Protected Routes ─────────────────────────────────────────────────────
     const authCtx = await getAuthContext(req);
 

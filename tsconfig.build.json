@@ -7,7 +7,13 @@
     "rootDir": "src",
     "outDir": "dist",
     "sourceMap": false,
-    "removeComments": false
+    "removeComments": false,
+    // Fail loudly instead of writing JavaScript next to sources outside rootDir.
+    "noEmitOnError": true,
+    // The base config sets this so `npm run typecheck` can read the Deno
+    // sources the tests import. This one emits, so it opts back out.
+    "allowImportingTsExtensions": false,
+    "noEmit": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "tests", "prisma/seed.ts"]

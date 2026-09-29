@@ -54,8 +54,133 @@ export interface CompanyMember {
 
 export interface GstRegistration {
   id: string; gstin: string; stateCode: string;
+  legalName?: string | null;
+  tradeName?: string | null;
+  constitution?: string | null;
+  registeredOn?: string | null;
   filingFrequency: 'MONTHLY' | 'QRMP' | 'COMPOSITION';
   isTdsDeductor: boolean; isEcommerceOperator: boolean; isActive: boolean;
+}
+
+export interface GstSessionResult {
+  success: boolean;
+  sessionId?: string;
+  gstin?: string;
+  captchaImage?: string;
+  expiresAt?: string;
+  error?: { code: string; message: string };
+}
+
+export interface GstMasterRecord {
+  gstin: string;
+  legalName: string;
+  tradeName: string | null;
+  registrationDate: string | null;
+  status: string;
+  taxpayerType: string | null;
+  constitution: string | null;
+  state: string | null;
+  stateCode: string | null;
+  panEmbedded: string | null;
+  principalPlaceOfBusiness: {
+    address: string;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  } | null;
+  natureOfBusiness: string[];
+  jurisdiction: {
+    stateJurisdiction: string | null;
+    centralJurisdiction: string | null;
+  } | null;
+  einvoiceStatus: string | null;
+}
+
+export interface GstVerificationResult {
+  success: boolean;
+  gstin?: string;
+  gst?: GstMasterRecord;
+  error?: { code: string; message: string };
+  rawResponse?: unknown;
+}
+
+export interface PanGstCrossReference {
+  legalName: string;
+  tradeName: string | null;
+  status: string;
+  constitution: string | null;
+  registrationDate: string | null;
+}
+
+export interface PanMasterRecord {
+  pan: string;
+  verified: boolean;
+  panStatus: string;
+  formatValid: boolean;
+  entityTypeCode: string;
+  entityType: string;
+  verificationLevel: string;
+  verificationSource: string;
+  verificationMethod: string;
+  linkedGstins: string[];
+  gst: PanGstCrossReference | null;
+  note?: string | null;
+  source?: string | null;
+  fetchedAt?: string | null;
+}
+
+export interface PanVerificationResult {
+  success: boolean;
+  pan?: string;
+  data?: PanMasterRecord;
+  error?: { code: string; message: string };
+  rawResponse?: unknown;
+}
+
+export interface UdyamSessionResult {
+  success: boolean;
+  sessionId?: string;
+  udyamNumber?: string;
+  captchaImage?: string;
+  expiresAt?: string;
+  error?: { code: string; message: string };
+  rawResponse?: unknown;
+}
+
+export interface UdyamMasterRecord {
+  udyamNumber: string;
+  enterpriseName: string;
+  ownerName: string;
+  category: "Micro" | "Small" | "Medium";
+  activityType: "Manufacturing" | "Service";
+  nicCode: string;
+  nicDescription: string;
+  dateOfRegistration: string;
+  dateOfCommencement: string;
+  pan: string | null;
+  gstin: string | null;
+  socialCategory: string;
+  district: string;
+  state: string;
+  status: string;
+  employees: {
+    male: number;
+    female: number;
+    total: number;
+  };
+  investmentInPlantMachineryInr: number | null;
+  turnoverInr: number | null;
+  source?: string;
+  fetchedAt?: string;
+}
+
+export interface UdyamVerificationResult {
+  success: boolean;
+  udyamNumber?: string;
+  registration?: UdyamMasterRecord;
+  data?: UdyamMasterRecord;
+  error?: { code: string; message: string };
+  rawResponse?: unknown;
 }
 
 export interface Director {

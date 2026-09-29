@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { CompanyProvider } from './auth/CompanyContext';
 import { Layout } from './components/Layout';
@@ -10,9 +10,11 @@ import { CompanyNew } from './pages/CompanyNew';
 import { Copilot } from './pages/Copilot';
 import { Dashboard } from './pages/Dashboard';
 import { Documents } from './pages/Documents';
+import { ForgotPassword } from './pages/ForgotPassword';
 import { Login } from './pages/Login';
 import { Profile } from './pages/Profile';
 import { Register } from './pages/Register';
+import { ResetPassword } from './pages/ResetPassword';
 import { Rules } from './pages/Rules';
 import { Billing } from './pages/Billing';
 import { Analytics } from './pages/Analytics';
@@ -52,6 +54,12 @@ function TrialEnded({ endedAt, organization, onSignOut }: {
 
 export default function App() {
   const { user, ready, logout } = useAuth();
+  const { pathname } = useLocation();
+
+  // Password reset lives outside the session gate: a signed-in user who clicked
+  // the emailed link must still land here, and a refresh must not flash login.
+  if (pathname === '/forgot-password') return <ForgotPassword />;
+  if (pathname === '/reset-password') return <ResetPassword />;
 
   // Wait for the session-restore probe so a refresh does not flash the login screen.
   if (!ready) return <Loading label="Starting" />;

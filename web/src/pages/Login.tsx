@@ -43,6 +43,9 @@ export function Login() {
             <Field label="Password">
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
             </Field>
+            <Link to="/forgot-password" style={{ fontWeight: 600, fontSize: 13, alignSelf: 'flex-end' }}>
+              Forgot password?
+            </Link>
 
             {error && <div className="alert alert-error">{error}</div>}
 

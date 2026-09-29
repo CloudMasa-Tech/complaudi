@@ -206,10 +206,10 @@ export const mcaRules: ComplianceRule[] = [
     form: 'DIR-12',
     legalReference: 'Sections 7(1)(c), 168 and 170(2), Companies Act 2013 read with Rule 17 of the Companies (Appointment and Qualification of Directors) Rules, 2014',
     description:
-      'File DIR-12 within 30 days of any director or KMP appointment, cessation, or change in designation.',
+      'File DIR-12 within 30 days of any director or KMP appointment, cessation, or change in designation. Governed by Sections 7(1)(c), 168 and 170(2) of the Companies Act 2013. Penalty: ₹3 lakh for the company and ₹1 lakh for officer in default.',
     severity: 'CRITICAL',
-    penalty: '₹3,00,000 for the company and ₹1,00,000 for the officer in default.',
-    evidenceRequired: ['Board resolution approving appointment/change', 'DIR-2 (written consent of appointee)', 'DIR-8 (declaration of non-disqualification)'],
+    penalty: '₹3,00,000 for the company and ₹1,00,000 for the officer in default; plus additional fees of 2x-12x normal filing fee for delays beyond 30 days.',
+    evidenceRequired: ['Board resolution approving appointment/change', 'DIR-2 (written consent of appointee)', 'DIR-8 (declaration of non-disqualification)', 'Appointment letter or resignation intimation'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'EVENT_BASED',
     applicableWhen: [isCompaniesActEntity()],
@@ -231,11 +231,12 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'MSME reporting',
     form: 'PAS-3',
-    legalReference: 'Sections 39(4) and 42(9), Companies Act 2013',
-    description: 'File PAS-3 within 30 days of the date of allotment of shares or other securities.',
+    legalReference: 'Sections 39(4) and 42(9), Companies Act 2013 read with Rules 12 and 14 of the Companies (Prospectus and Allotment of Securities) Rules, 2014',
+    description:
+      'File PAS-3 within 30 days of the date of allotment of shares or other securities. Due 15 days for private placement under Section 42(9), otherwise 30 days. Governed by Sections 39(4) and 42(9) of the Companies Act 2013 read with Rules 12 and 14 of the Companies (Prospectus and Allotment of Securities) Rules 2014.',
     severity: 'HIGH',
-    penalty: '₹1,000 per day or ₹1 lakh, whichever is less.',
-    evidenceRequired: ['Board resolution approving allotment', 'List of allottees'],
+    penalty: '₹1,000 per day or ₹1 lakh, whichever is less (per Section 39(5)), plus additional fee escalating from 2x to 12x normal fee under Rule 12',
+    evidenceRequired: ['Board resolution approving allotment', 'List of allottees (name, address, PAN)', 'Details of securities allotted (class, number, nominal value, issue price/premium)', 'Evidence of consideration received'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'EVENT_BASED',
     applicableWhen: [isCompaniesActEntity()],
@@ -257,11 +258,13 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'Governance',
     form: 'CHG-1',
-    legalReference: 'Sections 77, 78 and 79, Companies Act 2013',
-    description: 'File CHG-1 within 30 days of the creation or modification of a charge on company assets.',
+    legalReference: 'Sections 77, 78 and 79, Companies Act 2013 read with Rule 3(1) of the Companies (Registration of Charges) Rules, 2014',
+    description:
+      'File CHG-1 within 30 days of the creation or modification of a charge on company assets (other than debentures). Governed by Sections 77, 78 and 79 of the Companies Act 2013. Unregistered charge is void against liquidator and creditors (Section 77(3)).',
     severity: 'CRITICAL',
-    penalty: 'Additional fees escalating with delay.',
-    evidenceRequired: ['Instrument creating/modifying the charge', 'Board resolution'],
+    penalty:
+      'Additional fees escalating with delay: 2x up to 30 days, 4x up to 60 days, 6x up to 90 days, 10x up to 180 days, 12x beyond; plus charge void against liquidator and creditors if unregistered.',
+    evidenceRequired: ['Instrument creating/modifying the charge (loan agreement, hypothecation deed, mortgage deed)', 'Board resolution authorising charge creation', 'Particulars of charge (amount secured, interest rate, repayment terms, property charged)', 'Details of every charge holder (name, address, category, PAN)', 'Company PAN and CIN'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'EVENT_BASED',
     applicableWhen: [isCompaniesActEntity()],
@@ -283,11 +286,12 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'Governance',
     form: 'MGT-14',
-    legalReference: 'Section 117(1), Companies Act 2013',
-    description: 'File MGT-14 within 30 days of passing a special resolution or specified board resolution.',
+    legalReference: 'Section 117(1), Companies Act 2013 read with Rule 24 of the Companies (Management and Administration) Rules, 2014',
+    description:
+      'File MGT-14 within 30 days of the date of passing a resolution or executing an agreement. Covers special resolutions and specified board resolutions under Section 117(3). Private companies exempt from certain board resolutions under Section 179(3).',
     severity: 'HIGH',
-    penalty: 'Company: ₹1,00,000 + ₹500/day.',
-    evidenceRequired: ['Certified true copy of the resolution'],
+    penalty: 'Company: ₹1,00,000 + ₹500/day (max ₹25,00,000); Officers: ₹50,000 + ₹500/day (max ₹5,00,000) (per Section 117(2))',
+    evidenceRequired: ['Certified true copy of the resolution/agreement', "Details of the resolution passed at Board/Shareholders' meeting", 'Explanatory statement (if under Section 102)'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'EVENT_BASED',
     applicableWhen: [isCompaniesActEntity()],
@@ -303,15 +307,131 @@ export const mcaRules: ComplianceRule[] = [
       }));
     },
   },
+  // NEW: DIR-11 — Director's own resignation filing
+  {
+    code: 'MCA_DIR11',
+    title: 'File return of director resignation (DIR-11)',
+    authority: 'MCA',
+    category: 'Governance',
+    form: 'DIR-11',
+    legalReference: 'Section 168(1), Companies Act 2013 read with Rule 16 of the Companies (Appointment and Qualification of Directors) Rules, 2014',
+    description:
+      'File DIR-11 within 30 days of the effective date of a director\'s resignation. Filed by the resigning director personally with the ROC. Note: Company must also file DIR-12 within 30 days of receiving the resignation notice under Rule 15.',
+    severity: 'HIGH',
+    penalty:
+      'No direct statutory penalty for DIR-11 itself (optional filing post-2018 amendment), but indirect consequences: if company defaults on AOC-4/MGT-7 for 3 consecutive years, director faces Section 164(2) disqualification (5-year ban on directorships in any Indian company). Company penalty for not filing DIR-12: Rs 100/day + up to Rs 1,00,000-5,00,000 under Section 172.',
+    evidenceRequired: ['Resignation letter from director', 'Proof of dispatch (speed post/courier/email)', 'DIN of resigning director', 'Board resolution acknowledging resignation'],
+    evidenceLevel: 'REQUIRED',
+    periodKind: 'EVENT_BASED',
+    applicableWhen: [isCompaniesActEntity()],
+    occurrences: (_fy, ctx) => {
+      const events = (ctx.company.events || []).filter((e: any) => e.eventType === 'DIR-11');
+      return events.map((e: any) => ({
+        periodKey: `${ctx.company.id}-DIR11-${e.eventDate}-${new Date(e.eventDate.getTime() + 30 * 86400000).getTime()}`,
+        periodLabel: `DIR-11: ${formatDate(new Date(e.eventDate.getTime() + 30 * 86400000))}`,
+        periodStart: new Date(e.eventDate.getTime()),
+        periodEnd: new Date(e.eventDate.getTime() + 30 * 86400000),
+        dueDate: new Date(e.eventDate.getTime() + 30 * 86400000),
+        metadata: { event: e, ruleCode: 'MCA_DIR11' },
+      }));
+    },
+  },
+  // NEW: CHG-4 — Charge fully repaid (satisfaction)
+  {
+    code: 'MCA_CHG4',
+    title: 'File satisfaction of charge (CHG-4)',
+    authority: 'MCA',
+    category: 'Governance',
+    form: 'CHG-4',
+    legalReference: 'Section 82(1), Companies Act 2013 read with Rule 8(1) of the Companies (Registration of Charges) Rules, 2014',
+    description:
+      'File CHG-4 within 30 days of the date on which a charge (loan/secured obligation) has been fully repaid and satisfied. Updates MCA records to reflect charge removal. Failure to file attracts penalty of Rs 5,00,000 on company + Rs 50,000 on officer in default under Section 86(1), plus additional fees escalating 2x-12x for delays beyond 30 days (2x up to 30 days, 4x up to 60 days, 6x up to 90 days, 10x up to 180 days, 12x beyond). Beyond 300 days requires NCLT approval via Form CHG-8.',
+    severity: 'CRITICAL',
+    penalty:
+      'Company: Rs 5,00,000 + officer in default: Rs 50,000 (per Section 86(1)); plus additional fees: 2x up to 30 days, 4x up to 60 days, 6x up to 90 days, 10x up to 180 days, 12x beyond normal filing fee. Beyond 300 days: requires NCLT condonation via Form CHG-8.',
+    evidenceRequired: ['Board resolution authorising charge satisfaction', 'Proof of full repayment (bank/NBFC letter, NOC)', 'Original charge document (CHG-1 copy or loan agreement)', 'Details of charge (amount, date created, property charged)', 'Company PAN and CIN'],
+    evidenceLevel: 'REQUIRED',
+    periodKind: 'EVENT_BASED',
+    applicableWhen: [isCompaniesActEntity()],
+    occurrences: (_fy, ctx) => {
+      const events = (ctx.company.events || []).filter((e: any) => e.eventType === 'CHG-4');
+      return events.map((e: any) => ({
+        periodKey: `${ctx.company.id}-CHG4-${e.eventDate}-${new Date(e.eventDate.getTime() + 30 * 86400000).getTime()}`,
+        periodLabel: `CHG-4: ${formatDate(new Date(e.eventDate.getTime() + 30 * 86400000))}`,
+        periodStart: new Date(e.eventDate.getTime()),
+        periodEnd: new Date(e.eventDate.getTime() + 30 * 86400000),
+        dueDate: new Date(e.eventDate.getTime() + 30 * 86400000),
+        metadata: { event: e, ruleCode: 'MCA_CHG4' },
+      }));
+    },
+  },
+  // NEW: SH-7 — Authorized share capital changed
+  {
+    code: 'MCA_SH7',
+    title: 'File alteration of share capital (SH-7)',
+    authority: 'MCA',
+    category: 'Governance',
+    form: 'SH-7',
+    legalReference: 'Section 64, Companies Act 2013 read with Rule 15 of the Companies (Share Capital and Debentures) Rules, 2014',
+    description:
+      'File SH-7 within 30 days of passing the ordinary resolution altering authorized share capital. Required whenever company increases, consolidates, or otherwise alters its authorized share capital. Late filing attracts penalty of ₹500/day (or ₹1,000/day per Section 450) up to ₹50,000 per officer, and fees multiplying 2x-10x (2x up to 30 days, 4x up to 60 days, 6x up to 90 days, 10x beyond 90 days). Real adjudication case: 669-day delay = ₹3,34,500 on company + ₹1,00,000 on Managing Director.',
+    severity: 'HIGH',
+    penalty: '₹500/day (or ₹1,000/day per Section 450) up to ₹50,000 per officer; plus additional fees multiplying 2x-10x depending on delay period (2x up to 30 days, 4x up to 60 days, 6x up to 90 days, 10x beyond 90 days). Real adjudication case: 669-day delay = ₹3,34,500 on company + ₹1,00,000 on Managing Director.',
+    evidenceRequired: ['Certified true copy of ordinary resolution', 'Amended Memorandum of Association (Clause V)', 'EGM notice with explanatory statement (Section 102)', 'Board meeting convening notice (21 clear days)', 'DSC of authorized signatory (Director/CS/CEO/CFO)'],
+    evidenceLevel: 'REQUIRED',
+    periodKind: 'EVENT_BASED',
+    applicableWhen: [isCompaniesActEntity()],
+    occurrences: (_fy, ctx) => {
+      const events = (ctx.company.events || []).filter((e: any) => e.eventType === 'SH-7');
+      return events.map((e: any) => ({
+        periodKey: `${ctx.company.id}-SH7-${e.eventDate}-${new Date(e.eventDate.getTime() + 30 * 86400000).getTime()}`,
+        periodLabel: `SH-7: ${formatDate(new Date(e.eventDate.getTime() + 30 * 86400000))}`,
+        periodStart: new Date(e.eventDate.getTime()),
+        periodEnd: new Date(e.eventDate.getTime() + 30 * 86400000),
+        dueDate: new Date(e.eventDate.getTime() + 30 * 86400000),
+        metadata: { event: e, ruleCode: 'MCA_SH7' },
+      }));
+    },
+  },
+  // NEW: INC-22 — Registered office address changed
+  {
+    code: 'MCA_INC22',
+    title: 'File registered office address change (INC-22)',
+    authority: 'MCA',
+    category: 'Governance',
+    form: 'INC-22',
+    legalReference: 'Section 12, Companies Act 2013 read with Rule 27 of the Companies (Incorporation) Rules, 2014',
+    description:
+      'File INC-22 within 30 days of passing the board/special resolution for a registered office address change. Required when company shifts its registered office — within same city (board resolution), within same state (special resolution), or to different ROC (special resolution + RD approval + INC-23). Late filing attracts penalty of Rs 1,000 per day under Section 12(8), capped at Rs 1,00,000.',
+    severity: 'HIGH',
+    penalty:
+      'Rs 1,000 per day under Section 12(8), capped at Rs 1,00,000. Additionally, Section 403: ₹100 per day of default. Real penalty exposure: multi-month delays can accumulate to ₹1,00,000+ in late fees. Companies Compliance Facilitation Scheme 2026 (CCFS-2026) provides one-time window to regularise pending filings by paying normal fee + 10% of accumulated late fees.',
+    evidenceRequired: ['Board resolution or Special Resolution (as applicable)', 'Address proof of new registered office (utility bill not older than 2 months)', 'NOC from property owner / landlord', 'Rent agreement or sale deed of new office', 'GPS coordinates of new registered office', 'Latest audited balance sheet'],
+    evidenceLevel: 'REQUIRED',
+    periodKind: 'EVENT_BASED',
+    applicableWhen: [isCompaniesActEntity()],
+    occurrences: (_fy, ctx) => {
+      const events = (ctx.company.events || []).filter((e: any) => e.eventType === 'INC-22');
+      return events.map((e: any) => ({
+        periodKey: `${ctx.company.id}-INC22-${e.eventDate}-${new Date(e.eventDate.getTime() + 30 * 86400000).getTime()}`,
+        periodLabel: `INC-22: ${formatDate(new Date(e.eventDate.getTime() + 30 * 86400000))}`,
+        periodStart: new Date(e.eventDate.getTime()),
+        periodEnd: new Date(e.eventDate.getTime() + 30 * 86400000),
+        dueDate: new Date(e.eventDate.getTime() + 30 * 86400000),
+        metadata: { event: e, ruleCode: 'MCA_INC22' },
+      }));
+    },
+  },
   {
     code: 'MCA_AGM',
     title: 'Hold the Annual General Meeting',
     authority: 'MCA',
     category: 'Governance',
     legalReference: 'Section 96, Companies Act 2013',
-    description: 'Hold the AGM within six months of the financial year end.',
+    description:
+      'Hold the AGM within six months of the financial year end, and no more than 15 months after the previous AGM. The first AGM of a new company is due within nine months of its first financial year end.',
     severity: 'CRITICAL',
-    penalty: 'Up to ₹1,00,000 on the company and every officer in default.',
+    penalty: 'Up to ₹1,00,000 on the company and every officer in default, plus ₹5,000 per day of continuing default.',
     evidenceRequired: ['Notice of AGM', 'Attendance register', 'Signed AGM minutes'],
     evidenceLevel: 'REQUIRED',
     basedOnAnnualAccounts: true,
@@ -340,10 +460,11 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'Governance',
     legalReference: 'Section 173, Companies Act 2013',
-    description: 'Hold at least four board meetings a year with no more than 120 days between consecutive meetings.',
+    description:
+      'Hold at least four board meetings a year with no more than 120 days between consecutive meetings. OPCs and small companies may hold two, one in each half of the year.',
     severity: 'MEDIUM',
     penalty: '₹25,000 on the company and ₹5,000 on every officer in default.',
-    evidenceRequired: ['Notice of board meeting', 'Signed board minutes'],
+    evidenceRequired: ['Notice of board meeting', 'Signed board minutes', 'Attendance sheet'],
     evidenceLevel: 'ATTEST',
     signatoryRequired: true,
     periodKind: 'QUARTERLY',
@@ -357,7 +478,8 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'Governance',
     legalReference: 'Section 173(5), Companies Act 2013',
-    description: 'One Person Companies and small companies must hold at least one board meeting in each half of the calendar year.',
+    description:
+      'One Person Companies and small companies must hold at least one board meeting in each half of the calendar year, with a gap of at least 90 days between the two.',
     severity: 'MEDIUM',
     penalty: '₹25,000 on the company and ₹5,000 on every officer in default.',
     evidenceRequired: ['Notice of board meeting', 'Signed board minutes'],
@@ -373,10 +495,11 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'Governance',
     legalReference: 'Sections 184(1) and 164(2), Companies Act 2013',
-    description: 'Every director discloses their interest in Form MBP-1 at the first board meeting of each financial year.',
+    description:
+      'Every director discloses their interest in other entities in Form MBP-1 and confirms they are not disqualified in Form DIR-8, at the first board meeting of each financial year.',
     severity: 'MEDIUM',
-    penalty: 'Penalty of ₹1,00,000 on the director concerned.',
-    evidenceRequired: ['Signed MBP-1', 'Signed DIR-8'],
+    penalty: 'Contravention of s.184 attracts a penalty of ₹1,00,000 on the director concerned.',
+    evidenceRequired: ['Signed MBP-1 from each director', 'Signed DIR-8 from each director', 'Board minutes noting the disclosures'],
     evidenceLevel: 'ATTEST',
     signatoryRequired: true,
     periodKind: 'ANNUAL',
@@ -390,10 +513,11 @@ export const mcaRules: ComplianceRule[] = [
     category: 'Incorporation',
     form: 'INC-20A',
     legalReference: 'Section 10A, Companies Act 2013',
-    description: 'File INC-20A within 180 days of incorporation.',
+    description:
+      'A company with share capital must file the declaration that subscribers have paid the subscription money within 180 days of incorporation. The company cannot commence business or borrow until it is filed.',
     severity: 'CRITICAL',
-    penalty: '₹50,000 on the company and ₹1,000 per day on every officer.',
-    evidenceRequired: ['Bank statement showing subscription money received', 'INC-20A challan (SRN)'],
+    penalty: '₹50,000 on the company and ₹1,000 per day on every officer, up to ₹1,00,000. The RoC may strike the company off.',
+    evidenceRequired: ['Bank statement showing subscription money received', 'Proof of registered office', 'INC-20A challan (SRN)'],
     evidenceLevel: 'REQUIRED',
     periodKind: 'ONE_TIME',
     applicableWhen: [
@@ -410,10 +534,11 @@ export const mcaRules: ComplianceRule[] = [
     category: 'Annual filing',
     form: 'Form 11',
     legalReference: 'Section 35, LLP Act 2008',
-    description: 'File Form 11 within 60 days of the close of the financial year (by 30 May).',
+    description:
+      'File the annual return showing partners and contribution within 60 days of the close of the financial year — that is, by 30 May.',
     severity: 'CRITICAL',
     penalty: '₹100 per day of delay with no upper limit.',
-    evidenceRequired: ['Signed Form 11', 'Filing challan (SRN)'],
+    evidenceRequired: ['Signed Form 11', 'Partner contribution details', 'Filing challan (SRN)'],
     evidenceLevel: 'REQUIRED',
     basedOnAnnualAccounts: true,
     signatoryRequired: true,
@@ -428,10 +553,11 @@ export const mcaRules: ComplianceRule[] = [
     category: 'Annual filing',
     form: 'Form 8',
     legalReference: 'Section 34(2), LLP Act 2008',
-    description: 'File Form 8 by 30 October.',
+    description:
+      'File the statement of account and solvency within 30 days of the end of six months from the close of the financial year — that is, by 30 October.',
     severity: 'CRITICAL',
     penalty: '₹100 per day of delay with no upper limit.',
-    evidenceRequired: ['Statement of account and solvency', 'Filing challan (SRN)'],
+    evidenceRequired: ['Statement of account and solvency', 'Financial statements', 'Filing challan (SRN)'],
     evidenceLevel: 'REQUIRED',
     basedOnAnnualAccounts: true,
     signatoryRequired: true,
@@ -445,10 +571,11 @@ export const mcaRules: ComplianceRule[] = [
     authority: 'MCA',
     category: 'Audit',
     legalReference: 'Rule 24(8), LLP Rules 2009',
-    description: 'Audited accounts required if turnover exceeds ₹40 lakh or contribution exceeds ₹25 lakh.',
+    description:
+      'An LLP whose turnover exceeds ₹40 lakh or whose contribution exceeds ₹25 lakh must have its accounts audited by a chartered accountant.',
     severity: 'HIGH',
-    penalty: '₹25,000 to ₹5,00,000 on the LLP.',
-    evidenceRequired: ['Audited financial statements', 'Auditor report'],
+    penalty: '₹25,000 to ₹5,00,000 on the LLP and ₹10,000 to ₹1,00,000 on each designated partner.',
+    evidenceRequired: ['Audited financial statements', 'Auditor report', 'Auditor appointment letter'],
     evidenceLevel: 'REQUIRED',
     basedOnAnnualAccounts: true,
     signatoryRequired: true,

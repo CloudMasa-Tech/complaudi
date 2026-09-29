@@ -1,5 +1,6 @@
 // supabase/functions/tasks-api/index.ts
 import { handleCors } from '../_shared/cors.ts';
+import { reopenItemForTask } from '../_shared/completion.ts';
 import { assertCan, getAuthContext, seesEveryCompany } from '../_shared/auth.ts';
 import { getSupabaseAdminClient, serialiseBigInt } from '../_shared/database.ts';
 import { AppError, BadRequestError, NotFoundError } from '../_shared/errors.ts';
@@ -234,6 +235,8 @@ Deno.serve(async (req: Request) => {
 
         const updateData: Record<string, unknown> = { ...body };
         if (body.status === 'DONE') updateData.completedAt = new Date().toISOString();
+        // Moving away from DONE clears the completion the task was carrying.
+        else if (existingTask.status === 'DONE' && body.status !== undefined) updateData.completedAt = null;
 
         const { data: updatedTask, error } = await supabase
           .from('tasks')
@@ -244,12 +247,34 @@ Deno.serve(async (req: Request) => {
 
         if (error) throw new AppError(error.message, 400);
 
+        // Reopening the work reopens the filing: an obligation must never read
+        // COMPLETED while the task behind it has been pulled back open.
+        // Marking a task DONE still does not file the obligation — that stays a
+        // separate, gated act (compliance-api PATCH .../status).
+        //
+        // The task write has already landed, so if the filing cannot follow it
+        // back the task is put back too: a task that is open again with an
+        // obligation still marked complete is the exact state to avoid.
+        let reopened = false;
+        try {
+          ({ reopened } = await reopenItemForTask(supabase, existingTask, body.status, new Date()));
+        } catch (reopenErr: any) {
+          await supabase
+            .from('tasks')
+            .update({ status: existingTask.status, completedAt: existingTask.completedAt ?? null })
+            .eq('id', taskId);
+          throw new AppError(
+            `Task was reopened but its compliance item could not be reopened: ${reopenErr?.message ?? reopenErr}. Task status rolled back.`,
+            500,
+          );
+        }
+
         // Audit Log
         await supabase.from('audit_logs').insert({
           organizationId: authCtx.organizationId,
           actorId: authCtx.userId,
           actorEmail: authCtx.email,
-          action: 'task.update',
+          action: reopened ? 'task.reopen' : 'task.update',
           entityType: 'Task',
           entityId: taskId,
           before: { status: existingTask.status, assigneeId: existingTask.assigneeId },

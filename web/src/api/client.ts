@@ -72,6 +72,9 @@ export function resolveApiUrl(path: string): string {
     else if (primary === 'rules') functionName = 'rules-api';
     else if (primary === 'dashboard') functionName = 'dashboard-api';
     else if (primary === 'copilot') functionName = 'copilot-api';
+    else if (primary === 'gst') functionName = 'gst-api';
+    else if (primary === 'pan') functionName = 'pan-api';
+    else if (primary === 'udyam') functionName = 'udyam-api';
 
     return `${supabaseUrl}/functions/v1/${functionName}${normalizedPath}`;
   }

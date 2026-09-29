@@ -12,8 +12,9 @@ import { InviteMemberModal } from './InviteMemberModal';
 
 interface Detail extends ComplianceItem {
   company: { id: string; legalName: string };
-  task: Task | null;
-  documents: DocumentRow[];
+  /** Joined by GET /compliance/items/:id — absent when the item has no task yet. */
+  task?: Task | null;
+  documents?: DocumentRow[];
 }
 
 interface Explanation {
@@ -99,13 +100,17 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
   if (error) return <Drawer onClose={onClose}><div className="drawer-body"><ErrorNote error={error} /></div></Drawer>;
   if (initial || !item) return <Drawer onClose={onClose}><Loading /></Drawer>;
 
-  const task = item.task;
+  // Relations are joined by the API, not guaranteed by it. An item with no task
+  // and an item whose task came back without its checklist are the same thing to
+  // this component, and a missing array must never take the page down with it.
+  const documents = item.documents ?? [];
+  const task = item.task ?? null;
   const closed = item.status === 'COMPLETED' || item.status === 'WAIVED';
 
   const mayWork = canOn(item.company.id, 'work.write');
   const mayAttach = canOn(item.company.id, 'evidence.write');
   const gate = GATE_COPY[item.evidenceLevel];
-  const hasEvidence = item.documents.length > 0;
+  const hasEvidence = documents.length > 0;
   const gated = item.evidenceLevel !== 'NONE';
   // A document satisfies both levels; only REQUIRED refuses a declaration.
   const blockedByEvidence = item.evidenceLevel === 'REQUIRED' && !hasEvidence;
@@ -249,9 +254,9 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
                 Done means the work is finished. Filing the obligation is the separate final step below.
               </span>
 
-              {task.checklist.length > 0 && (
+              {checklist.length > 0 && (
                 <div className="checklist">
-                  {task.checklist.map((c) => (
+                  {checklist.map((c) => (
                     <label key={c.id} className={`checklist-row ${c.done ? 'done' : ''}`}>
                       <input
                         type="checkbox"
@@ -272,19 +277,19 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
           <header className="card-head">
             <h2>Evidence</h2>
             <span className="card-note">
-              {item.documents.length} file{item.documents.length === 1 ? '' : 's'}
+              {documents.length} file{documents.length === 1 ? '' : 's'}
               {item.evidenceLevel === 'REQUIRED' ? ' · required' : item.evidenceLevel === 'ATTEST' ? ' · or a declaration' : ''}
             </span>
           </header>
           <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {item.evidenceRequired.length > 0 && item.documents.length === 0 && (
+            {item.evidenceRequired.length > 0 && documents.length === 0 && (
               <div className="stack tiny muted">
                 <span className="dim">Expected for this filing:</span>
                 {item.evidenceRequired.map((e) => <span key={e}>· {e}</span>)}
               </div>
             )}
 
-            {item.documents.map((doc) => (
+            {documents.map((doc) => (
               <div key={doc.id} className="file-row">
                 <span className="file-icon">{(doc.fileName.split('.').pop() ?? '?').slice(0, 4).toUpperCase()}</span>
                 <div className="stack" style={{ flex: 1, minWidth: 0 }}>
@@ -306,7 +311,7 @@ export function ItemDrawer({ itemId, onClose, onChanged }: {
                       }
                     >
                       {doc.hasDigitalSignature
-                        ? `✓ digitally signed${doc.signers.length ? ` — ${doc.signers.join(', ')}` : ''}`
+                        ? `✓ digitally signed${doc.signers?.length ? ` — ${doc.signers.join(', ')}` : ''}`
                         : '○ no digital signature'}
                     </span>
                   )}

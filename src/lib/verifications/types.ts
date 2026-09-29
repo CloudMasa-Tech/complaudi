@@ -23,3 +23,194 @@ export interface CompanyVerificationResult {
 export interface CompanyVerificationProvider {
   verifyCompany(cin: string): Promise<CompanyVerificationResult>;
 }
+
+export type GstVerificationErrorCode =
+  | 'INVALID_GSTIN'
+  | 'INVALID_CAPTCHA'
+  | 'SESSION_EXPIRED'
+  | 'GSTIN_NOT_FOUND'
+  | 'UNAUTHORIZED'
+  | 'SERVICE_UNAVAILABLE'
+  | 'PROVIDER_ERROR';
+
+export interface GstVerificationError {
+  code: GstVerificationErrorCode;
+  message: string;
+  details?: unknown;
+}
+
+export interface GstSessionResult {
+  success: boolean;
+  sessionId?: string;
+  gstin?: string;
+  captchaImage?: string;
+  expiresAt?: string;
+  error?: GstVerificationError;
+  rawResponse?: unknown;
+}
+
+export interface GstMasterRecord {
+  gstin: string;
+  legalName: string;
+  tradeName: string | null;
+  registrationDate: string | null;
+  status: string;
+  taxpayerType: string | null;
+  constitution: string | null;
+  state: string | null;
+  stateCode: string | null;
+  panEmbedded: string | null;
+  principalPlaceOfBusiness: {
+    address: string;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  } | null;
+  natureOfBusiness: string[];
+  jurisdiction: {
+    stateJurisdiction: string | null;
+    centralJurisdiction: string | null;
+  } | null;
+  einvoiceStatus: string | null;
+}
+
+export interface GstVerificationResult {
+  success: boolean;
+  data?: GstMasterRecord | null;
+  error?: GstVerificationError;
+  rawResponse?: unknown;
+}
+
+export interface GstVerificationProvider {
+  createSession(gstin: string): Promise<GstSessionResult>;
+  verifySession(params: {
+    sessionId: string;
+    gstin: string;
+    captcha: string;
+  }): Promise<GstVerificationResult>;
+}
+
+export type PanVerificationErrorCode =
+  | 'INVALID_PAN'
+  | 'PAN_NOT_FOUND'
+  | 'UNAUTHORIZED'
+  | 'SERVICE_UNAVAILABLE'
+  | 'PROVIDER_ERROR';
+
+export interface PanVerificationError {
+  code: PanVerificationErrorCode;
+  message: string;
+  details?: unknown;
+}
+
+export interface PanGstCrossReference {
+  legalName: string;
+  tradeName: string | null;
+  status: string;
+  constitution: string | null;
+  registrationDate: string | null;
+}
+
+export interface PanMasterRecord {
+  pan: string;
+  verified: boolean;
+  panStatus: string;
+  formatValid: boolean;
+  entityTypeCode: string;
+  entityType: string;
+  verificationLevel: string;
+  verificationSource: string;
+  verificationMethod: string;
+  linkedGstins: string[];
+  gst: PanGstCrossReference | null;
+  note?: string | null;
+  source?: string | null;
+  fetchedAt?: string | null;
+}
+
+export interface PanVerificationResult {
+  success: boolean;
+  data?: PanMasterRecord | null;
+  error?: PanVerificationError;
+  rawResponse?: unknown;
+}
+
+export interface PanVerificationProvider {
+  verifyPan(pan: string): Promise<PanVerificationResult>;
+}
+
+export type UdyamVerificationErrorCode =
+  | 'INVALID_UDYAM'
+  | 'INVALID_CAPTCHA'
+  | 'SESSION_EXPIRED'
+  | 'UDYAM_NOT_FOUND'
+  | 'UNAUTHORIZED'
+  | 'SERVICE_UNAVAILABLE'
+  | 'PROVIDER_ERROR';
+
+export interface UdyamVerificationError {
+  code: UdyamVerificationErrorCode;
+  message: string;
+  details?: unknown;
+}
+
+export interface UdyamSessionResult {
+  success: boolean;
+  sessionId?: string;
+  udyamNumber?: string;
+  captchaImage?: string;
+  expiresAt?: string;
+  error?: UdyamVerificationError;
+  rawResponse?: unknown;
+}
+
+export interface UdyamMasterRecord {
+  udyamNumber: string;
+  enterpriseName: string;
+  ownerName: string;
+  category: 'Micro' | 'Small' | 'Medium';
+  activityType: 'Manufacturing' | 'Service';
+  nicCode: string;
+  nicDescription: string;
+  dateOfRegistration: string;
+  dateOfCommencement: string;
+  pan: string | null;
+  gstin: string | null;
+  socialCategory: string;
+  district: string;
+  state: string;
+  status: string;
+  employees: {
+    male: number;
+    female: number;
+    total: number;
+  };
+  investmentInPlantMachineryInr: number | null;
+  turnoverInr: number | null;
+  source?: string;
+  fetchedAt?: string;
+}
+
+export interface UdyamVerificationResult {
+  success: boolean;
+  data?: UdyamMasterRecord | null;
+  error?: UdyamVerificationError;
+  rawResponse?: unknown;
+}
+
+export interface UdyamVerificationProvider {
+  createSession(udyamNumber: string): Promise<UdyamSessionResult>;
+  verifySession(params: {
+    sessionId: string;
+    udyamNumber: string;
+    captcha: string;
+  }): Promise<UdyamVerificationResult>;
+}
+
+export interface DirectorVerificationResult {
+  success: boolean;
+  din?: string;
+  name?: string;
+  designation?: string;
+  error?: { code: string; message: string };
+}

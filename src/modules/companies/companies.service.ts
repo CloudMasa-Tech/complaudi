@@ -537,6 +537,8 @@ export async function addGstRegistration(actor: Actor, companyId: string, input:
       gstin,
       stateCode: (input.stateCode as string) ?? result.stateCode ?? company.stateCode,
       legalName: (input.legalName as string | null) ?? null,
+      tradeName: (input.tradeName as string | null) ?? null,
+      constitution: (input.constitution as string | null) ?? null,
       filingFrequency: (input.filingFrequency as 'MONTHLY' | 'QRMP' | 'COMPOSITION') ?? 'MONTHLY',
       isTdsDeductor: (input.isTdsDeductor as boolean) ?? false,
       isEcommerceOperator: (input.isEcommerceOperator as boolean) ?? false,

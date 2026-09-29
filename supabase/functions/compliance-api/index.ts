@@ -8,6 +8,7 @@ import { parseJsonBody, parseQueryParams } from '../_shared/validation.ts';
 import { allRules, evaluateAll, explainRule, generateCalendar, deriveStatus } from '../_shared/engine/index.ts';
 import { applicableEntityTypes } from '../_shared/engine/entityApplicability.ts';
 import { addDays, parseDate, today } from '../_shared/dates.ts';
+import { applyItemStatusChange } from '../_shared/completion.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
 
@@ -106,7 +107,9 @@ Deno.serve(async (req: Request) => {
 
       const { data: company, error: companyErr } = await supabase
         .from('companies')
-        .select('*, directors(*), gstRegistrations:gst_registrations(*), msme:msme_registrations(*)')
+        .select(
+          '*, directors(*), gstRegistrations:gst_registrations(*), msme:msme_registrations(*), company_events:company_events(*)',
+        )
         .eq('id', companyId)
         .single();
 
@@ -119,6 +122,16 @@ Deno.serve(async (req: Request) => {
           paidUpCapital: Number(company.paidUpCapital || 0),
           incorporationDate: company.incorporationDate ? parseDate(company.incorporationDate) : null,
           agmDate: company.agmDate ? parseDate(company.agmDate) : null,
+          // Logged compliance events drive the MCA event-based rules (DIR-11,
+          // DIR-12, CHG-1, CHG-4, INC-22, MGT-14, PAS-3, SH-7). Node loads the
+          // CompanyEvent table the same way in syncCompany().
+          events: (company.company_events || [])
+            .filter((e: any) => e && e.eventDate)
+            .map((e: any) => ({
+              eventType: e.eventType,
+              eventDate: parseDate(e.eventDate)!,
+              metadata: (e.metadata as Record<string, unknown>) || {},
+            })),
         },
         directors: (company.directors || []).map((d: any) => ({
           ...d,
@@ -254,14 +267,34 @@ Deno.serve(async (req: Request) => {
     const getItemMatch = path.match(/^\/items\/([a-f0-9-]+)$/);
     if (req.method === 'GET' && getItemMatch) {
       const itemId = getItemMatch[1];
-      const { data: item } = await supabase.from('compliance_items').select('*, company:companies(*)').eq('id', itemId).single();
+      // The drawer reads the evidence list and the task off this payload, so the
+      // relations have to travel with the item: without them the client gets
+      // `documents: undefined` and white-screens the moment a task is opened.
+      // Same shape as the Node API's getItemOrThrow.
+      const { data: item, error: itemErr } = await supabase
+        .from('compliance_items')
+        .select(
+          '*, company:companies(*), documents(*, uploadedBy:users(id, name, email)), tasks(*, assignee:users(id, name, email))',
+        )
+        .eq('id', itemId)
+        .single();
+      if (itemErr) throw new AppError(itemErr.message, 400);
       if (!item) throw new NotFoundError('Compliance item not found');
 
       await assertCan(authCtx, item.companyId, 'compliance.view');
-      return jsonResponse(serialiseBigInt(item));
+
+      // PostgREST embeds the reverse one-to-one as a list. The drawer wants the
+      // task itself, and the client types it as one.
+      const { tasks, ...rest } = item as Record<string, unknown> & { tasks?: unknown[] };
+      return jsonResponse(serialiseBigInt({ ...rest, documents: item.documents || [], task: tasks?.[0] ?? null }));
     }
 
-    // PATCH /items/:id/status (With Explicit Multi-Step Transaction Rollback Safety)
+    // PATCH /items/:id/status
+    //
+    // The gate, the task sync and the audit write all live in _shared/completion
+    // so they can be tested without a database. Marking an obligation complete is
+    // a statutory claim: it is refused with 422 unless the work was owned, worked
+    // through, evidenced and — where a human signs — attributed.
     const itemStatusMatch = path.match(/^\/items\/([a-f0-9-]+)\/status$/);
     if (req.method === 'PATCH' && itemStatusMatch) {
       const itemId = itemStatusMatch[1];
@@ -278,61 +311,16 @@ Deno.serve(async (req: Request) => {
 
       await assertCan(authCtx, existingItem.companyId, 'compliance.update');
 
-      const beforeStatus = existingItem.status;
-      const beforeWaivedReason = existingItem.waivedReason;
-      const beforeAttestation = existingItem.attestationText;
-      const beforeSignatory = existingItem.signatoryName;
-      const beforeCompletedAt = existingItem.completedAt;
-
-      // 1. Update compliance item status
-      const updateData: Record<string, unknown> = {
+      const { item: updatedItem } = await applyItemStatusChange(supabase, {
+        itemId,
         status: body.status,
-        waivedReason: body.waivedReason || null,
-        attestationText: body.attestation || null,
-        signatoryName: body.signatoryName || null,
-        completedAt: body.status === 'COMPLETED' ? new Date().toISOString() : null,
-      };
-
-      const { data: updatedItem, error: updateErr } = await supabase
-        .from('compliance_items')
-        .update(updateData)
-        .eq('id', itemId)
-        .select()
-        .single();
-
-      if (updateErr) throw new AppError(updateErr.message, 400);
-
-      // 2. Multi-Step Atomic Audit Log Write
-      try {
-        const { error: auditErr } = await supabase.from('audit_logs').insert({
-          id: crypto.randomUUID(),
-          organizationId: authCtx.organizationId,
-          actorId: authCtx.userId,
-          actorEmail: authCtx.email,
-          action: `item.${body.status.toLowerCase()}`,
-          entityType: 'ComplianceItem',
-          entityId: itemId,
-          after: {
-            status: updatedItem.status,
-            waivedReason: updatedItem.waivedReason,
-            attestation: updatedItem.attestationText,
-            signatoryName: updatedItem.signatoryName,
-          },
-        });
-
-        if (auditErr) throw auditErr;
-      } catch (stepErr: any) {
-        // TRANSACTION ROLLBACK GUARANTEE: Revert compliance item back to original state if audit write fails
-        await supabase.from('compliance_items').update({
-          status: beforeStatus,
-          waivedReason: beforeWaivedReason,
-          attestationText: beforeAttestation,
-          signatoryName: beforeSignatory,
-          completedAt: beforeCompletedAt,
-        }).eq('id', itemId);
-
-        throw new AppError(`Multi-step transaction failed: ${stepErr.message || stepErr}. Rolled back compliance item status.`, 500);
-      }
+        waivedReason: body.waivedReason,
+        attestation: body.attestation,
+        signatoryName: body.signatoryName,
+        actorId: authCtx.userId,
+        email: authCtx.email,
+        organizationId: authCtx.organizationId,
+      });
 
       return jsonResponse(serialiseBigInt(updatedItem));
     }

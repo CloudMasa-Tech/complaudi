@@ -3,9 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, del, forceDownload, patch, post, put, upload, view, resolveApiUrl } from '../api/client';
 import { useResource } from '../api/useResource';
 import { useCompanies } from '../auth/CompanyContext';
-import type { BusinessType, Company, Director, EntityType, SyncResult } from '../api/types';
+import type { BusinessType, Company, Director, EntityType, GstMasterRecord, GstSessionResult, GstVerificationResult, PanMasterRecord, PanVerificationResult, SyncResult, UdyamMasterRecord, UdyamSessionResult, UdyamVerificationResult } from '../api/types';
 import { BUSINESS_TYPE_LABEL, Card, ErrorNote, Field, Loading, ServiceLink, Spinner, fmtDate, fmtINR, inc20aNote, officersFor } from '../components/ui';
 import { REGISTRATION_FIELD_LINKS } from '../lib/registrationLinks';
+import { GSTIN_REGEX, PAN_REGEX } from '../lib/india';
+import { compareLegalNames, validateGstForCompany, type GstCompanyValidationSummary } from '../lib/gstValidation';
+import { UDYAM_REGEX, validateUdyamForCompany, type UdyamCompanyValidationSummary } from '../lib/udyamValidation';
 
 /** Shared with the onboarding form so create and edit read identically. */
 const ENTITY_TYPES: { value: EntityType; label: string }[] = [
@@ -314,6 +317,10 @@ export function CompanyEdit() {
   const [cinError, setCinError] = useState<string | null>(null);
   const [serviceUnavailable, setServiceUnavailable] = useState(false);
   const [mismatches, setMismatches] = useState<string[]>([]);
+  const [verifyingPan, setVerifyingPan] = useState(false);
+  const [panError, setPanError] = useState<string | null>(null);
+  const [verifiedPanResult, setVerifiedPanResult] = useState<PanMasterRecord | null>(null);
+  const [verifiedForPan, setVerifiedForPan] = useState<string | null>(null);
 
   // Load the server's copy into the form once, then leave the user's edits alone.
   useEffect(() => {
@@ -365,6 +372,47 @@ export function CompanyEdit() {
   }
 
   if (initial || !company || !form) return <Loading label="Loading company details..." />;
+
+  const handleVerifyPan = async () => {
+    if (!form || !company) return;
+    const cleanPan = (form.pan || '').trim().toUpperCase();
+
+    if (!cleanPan) {
+      setErrors((prev) => ({ ...prev, pan: 'Enter a valid PAN.' }));
+      return;
+    }
+
+    if (!PAN_REGEX.test(cleanPan)) {
+      setErrors((prev) => ({ ...prev, pan: 'Enter a valid PAN.' }));
+      return;
+    }
+
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.pan;
+      return next;
+    });
+    setPanError(null);
+    setVerifyingPan(true);
+
+    try {
+      const res = await post<PanVerificationResult>('/pan/verify', {
+        companyId: company.id,
+        pan: cleanPan,
+      });
+
+      if (res && res.success && res.data) {
+        setVerifiedPanResult(res.data);
+        setVerifiedForPan(cleanPan);
+      } else {
+        setPanError(res?.error?.message || 'PAN verification failed. Please try again.');
+      }
+    } catch (err: any) {
+      setPanError(err?.message || 'Error connecting to PAN verification service.');
+    } finally {
+      setVerifyingPan(false);
+    }
+  };
 
   async function verifyCin(cinToTest: string, currentForm: ProfileForm) {
     const rawCin = cinToTest.trim().toUpperCase();
@@ -695,7 +743,100 @@ export function CompanyEdit() {
                 )}
 
                 <Field label="PAN" error={errors.pan}>
-                  <input value={form.pan} onChange={(e) => set('pan', e.target.value.toUpperCase())} />
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      value={form.pan}
+                      onChange={(e) => {
+                        const nextPan = e.target.value.toUpperCase();
+                        set('pan', nextPan);
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.pan;
+                          return next;
+                        });
+                        if (verifiedPanResult && nextPan.trim() !== verifiedForPan) {
+                          setVerifiedPanResult(null);
+                          setVerifiedForPan(null);
+                        }
+                      }}
+                      placeholder="e.g. AAACT1234A"
+                    />
+                    <button
+                      type="button"
+                      className="btn-sm"
+                      style={{ whiteSpace: 'nowrap' }}
+                      disabled={verifyingPan || !form.pan.trim()}
+                      onClick={handleVerifyPan}
+                    >
+                      {verifyingPan
+                        ? 'Verifying...'
+                        : verifiedPanResult && form.pan.trim() === verifiedForPan
+                        ? '✓ Verified'
+                        : panError
+                        ? 'Try Again'
+                        : 'Verify PAN'}
+                    </button>
+                  </div>
+
+                  {panError && (
+                    <div style={{ color: 'var(--color-danger, #e53935)', fontSize: '12px', marginTop: '4px' }}>
+                      {panError}
+                    </div>
+                  )}
+
+                  {verifiedPanResult && form.pan.trim() === verifiedForPan && (
+                    <div style={{ marginTop: '8px', padding: '10px 12px', background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border, #e2e8f0)', borderRadius: '6px', fontSize: '12px' }}>
+                      {verifiedPanResult.verificationLevel === 'GST_CROSS_REFERENCE' ? (
+                        <>
+                          <div style={{ fontWeight: 600, color: 'var(--color-success, #2e7d32)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                            ✓ PAN Verified &nbsp;•&nbsp; ✓ GST Cross-Reference Found
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px 12px', marginBottom: '8px' }}>
+                            <div><span className="dim">PAN Status:</span> <strong style={{ color: 'var(--color-success, #2e7d32)' }}>{verifiedPanResult.panStatus ? verifiedPanResult.panStatus.charAt(0).toUpperCase() + verifiedPanResult.panStatus.slice(1).toLowerCase() : 'Active'}</strong></div>
+                            <div><span className="dim">Company Type:</span> <strong>{ENTITY_TYPES.find((t) => t.value === form.entityType)?.label || form.entityType}</strong></div>
+                            <div><span className="dim">PAN Structure:</span> <strong>Valid</strong></div>
+                            <div><span className="dim">Verification Level:</span> <strong>GST Cross-Reference</strong></div>
+                            <div><span className="dim">Linked GSTIN:</span> <strong>{verifiedPanResult.linkedGstins[0] || '—'}</strong></div>
+                            <div><span className="dim">GST Status:</span> <strong>{verifiedPanResult.gst?.status || 'Active'}</strong></div>
+                            <div><span className="dim">GST Legal Name:</span> <strong>{verifiedPanResult.gst?.legalName || '—'}</strong></div>
+                            <div><span className="dim">GST Trade Name:</span> <strong>{verifiedPanResult.gst?.tradeName || '—'}</strong></div>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted, #64748b)', paddingTop: '4px', borderTop: '1px dashed var(--border, #e2e8f0)' }}>
+                            Verification Source: GST Portal &nbsp;|&nbsp; Verification Level: GST Cross-Reference
+                          </div>
+                          {verifiedPanResult.gst?.legalName && (
+                            <div style={{ marginTop: '6px', fontSize: '11px' }}>
+                              {compareLegalNames(form.legalName, verifiedPanResult.gst.legalName).match ? (
+                                <span style={{ color: 'var(--color-success, #2e7d32)' }}>✓ Legal name matches company name</span>
+                              ) : (
+                                <span style={{ color: 'var(--color-warn, #ed6c02)' }}>
+                                  ⚠ Legal name mismatch (Company: "{form.legalName}" vs GST: "{verifiedPanResult.gst.legalName}")
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 600, color: 'var(--color-success, #2e7d32)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                            ✓ PAN Verified
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px 12px', marginBottom: '8px' }}>
+                            <div><span className="dim">PAN Status:</span> <strong style={{ color: 'var(--color-success, #2e7d32)' }}>{verifiedPanResult.panStatus ? verifiedPanResult.panStatus.charAt(0).toUpperCase() + verifiedPanResult.panStatus.slice(1).toLowerCase() : 'Active'}</strong></div>
+                            <div><span className="dim">Company Type:</span> <strong>{ENTITY_TYPES.find((t) => t.value === form.entityType)?.label || form.entityType}</strong></div>
+                            <div><span className="dim">PAN Structure:</span> <strong>Valid</strong></div>
+                            <div><span className="dim">Verification Level:</span> <strong>Local PAN Validation</strong></div>
+                          </div>
+                          <div style={{ color: 'var(--text-muted, #475569)', fontSize: '11px', lineHeight: '1.4', paddingTop: '4px', borderTop: '1px dashed var(--border, #e2e8f0)' }}>
+                            <div>PAN format and entity structure are valid.</div>
+                            {verifiedPanResult.linkedGstins.length === 0 && (
+                              <div style={{ marginTop: '2px' }}>No linked GST registration was found through the available GST cross-reference.</div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </Field>
                 <Field label="TAN" hint="Needed for TDS obligations" error={errors.tan}>
                   <input value={form.tan} onChange={(e) => set('tan', e.target.value.toUpperCase())} />
@@ -1084,6 +1225,782 @@ function DirectorRow({ companyId, director, busy, run }: {
   );
 }
 
+function GstValidationSummaryBox({
+  summary,
+}: {
+  summary: GstCompanyValidationSummary;
+}) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, marginBottom: 16 }}>
+      <div className="tiny" style={{ fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', color: '#64748b' }}>
+        Company Data Validation Summary
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+        <div>
+          {summary.formatValid && summary.checksumValid
+            ? '✓ GSTIN format & checksum valid'
+            : '⚠ GSTIN format or checksum mismatch'}
+        </div>
+        <div>
+          {summary.isActiveStatus
+            ? '✓ GST status: Active'
+            : `⚠ ${summary.statusDetails}`}
+        </div>
+        <div>
+          {summary.stateCheck.match
+            ? `✓ ${summary.stateCheck.details}`
+            : `⚠ ${summary.stateCheck.details}`}
+        </div>
+        <div>
+          {summary.legalNameCheck.match
+            ? `✓ ${summary.legalNameCheck.details}`
+            : `⚠ ${summary.legalNameCheck.details}`}
+        </div>
+        <div>
+          {summary.constitutionCheck.match
+            ? `✓ ${summary.constitutionCheck.details}`
+            : `⚠ ${summary.constitutionCheck.details}`}
+        </div>
+        {summary.registrationDateCheck && summary.registrationDateCheck.details && (
+          <div>
+            {summary.registrationDateCheck.valid
+              ? `✓ ${summary.registrationDateCheck.details}`
+              : `⚠ ${summary.registrationDateCheck.details}`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GstRegistrationSection({
+  company,
+  busy,
+  errors,
+  run,
+  local,
+  setLocalError,
+}: {
+  company: Company;
+  busy: boolean;
+  errors: Record<string, string>;
+  run: (fn: () => Promise<unknown>) => Promise<void>;
+  local: Record<string, string>;
+  setLocalError: (key: string, message: string | null) => void;
+}) {
+  const [gstinInput, setGstinInput] = useState('');
+  const [gstFilingFrequency, setGstFilingFrequency] = useState<'MONTHLY' | 'QRMP' | 'COMPOSITION'>('MONTHLY');
+  const [gstSession, setGstSession] = useState<GstSessionResult | null>(null);
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [verifiedGst, setVerifiedGst] = useState<GstMasterRecord | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [gstError, setGstError] = useState<string | null>(null);
+
+  const cleanGstin = gstinInput.trim().toUpperCase();
+
+  const handleStartSession = async () => {
+    if (!cleanGstin) {
+      setLocalError('gstin', 'Please enter a 15-character GSTIN.');
+      return;
+    }
+    if (!GSTIN_REGEX.test(cleanGstin)) {
+      setLocalError('gstin', 'A GSTIN must be 15 characters, e.g. 33AAACN4321B1ZA.');
+      return;
+    }
+
+    setLocalError('gstin', null);
+    setGstError(null);
+    setVerifying(true);
+    try {
+      const res = await post<GstSessionResult>('/gst/session', {
+        companyId: company.id,
+        gstin: cleanGstin,
+      });
+
+      if (res && res.success && res.sessionId) {
+        setGstSession(res);
+        setCaptchaInput('');
+      } else {
+        setGstError(res?.error?.message || 'Failed to initiate GST verification session.');
+      }
+    } catch (err: any) {
+      setGstError(err?.message || 'Error connecting to GST verification service.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleVerifyCaptcha = async () => {
+    if (!captchaInput.trim()) {
+      setGstError('CAPTCHA code is required.');
+      return;
+    }
+    if (!gstSession || !gstSession.sessionId) {
+      setGstError('Session expired. Please fetch a new CAPTCHA.');
+      return;
+    }
+
+    setGstError(null);
+    setVerifying(true);
+    try {
+      const res = await post<GstVerificationResult>('/gst/verify', {
+        companyId: company.id,
+        sessionId: gstSession.sessionId,
+        gstin: cleanGstin,
+        captcha: captchaInput.trim(),
+      });
+
+      if (res && res.success && res.gst) {
+        setVerifiedGst(res.gst);
+        setGstSession(null);
+      } else {
+        setGstError(res?.error?.message || 'Invalid CAPTCHA code entered. Please try again.');
+      }
+    } catch (err: any) {
+      setGstError(err?.message || 'Failed to verify CAPTCHA with GST Portal.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleSaveVerified = async () => {
+    if (!verifiedGst) return;
+    setGstError(null);
+    await run(async () => {
+      await post(`/companies/${company.id}/gst-registrations`, {
+        gstin: verifiedGst.gstin,
+        stateCode: verifiedGst.stateCode || verifiedGst.gstin.slice(0, 2),
+        legalName: verifiedGst.legalName,
+        tradeName: verifiedGst.tradeName,
+        constitution: verifiedGst.constitution,
+        registeredOn: verifiedGst.registrationDate,
+        filingFrequency: gstFilingFrequency,
+        isActive: verifiedGst.status.toUpperCase() === 'ACTIVE',
+      });
+      setVerifiedGst(null);
+      setGstinInput('');
+      setGstSession(null);
+    });
+  };
+
+  const handleDirectAdd = async () => {
+    if (cleanGstin.length !== 15) {
+      setLocalError('gstin', 'A GSTIN is 15 characters, e.g. 33AAACN4321B1ZA.');
+      return;
+    }
+    if (!GSTIN_REGEX.test(cleanGstin)) {
+      setLocalError('gstin', 'A GSTIN must be 15 characters, e.g. 33AAACN4321B1ZA.');
+      return;
+    }
+
+    setLocalError('gstin', null);
+    await run(async () => {
+      await post(`/companies/${company.id}/gst-registrations`, {
+        gstin: cleanGstin,
+        stateCode: cleanGstin.slice(0, 2),
+        filingFrequency: gstFilingFrequency,
+      });
+      setGstinInput('');
+    });
+  };
+
+  const activeSummary = verifiedGst ? validateGstForCompany(verifiedGst, company) : null;
+
+  return (
+    <Card title="GST Registrations" note="One set of returns is generated per GSTIN">
+      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Stored Verified Registrations */}
+        {company.gstRegistrations.map((g) => {
+          const storedMaster: GstMasterRecord = {
+            gstin: g.gstin,
+            legalName: g.legalName || company.legalName || 'N/A',
+            tradeName: g.tradeName || null,
+            registrationDate: g.registeredOn || null,
+            status: g.isActive ? 'Active' : 'Inactive',
+            taxpayerType: null,
+            constitution: g.constitution || null,
+            state: null,
+            stateCode: g.stateCode,
+            panEmbedded: g.gstin.length === 15 ? g.gstin.slice(2, 12) : null,
+            principalPlaceOfBusiness: null,
+            natureOfBusiness: [],
+            jurisdiction: null,
+            einvoiceStatus: null,
+          };
+          const summary = validateGstForCompany(storedMaster, company);
+
+          return (
+            <div key={g.id} style={{ background: 'var(--bg-subtle, #f8fafc)', border: '1px solid #cbd5e1', borderRadius: 8, padding: 16 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div>
+                  <strong style={{ fontSize: 15 }} className="mono">{g.gstin}</strong>
+                  <div className="tiny" style={{ color: '#16a34a', fontWeight: 500 }}>
+                    ✓ Verified GST Registration &nbsp;•&nbsp; {g.stateCode}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-sm btn-ghost btn-danger"
+                  disabled={busy}
+                  onClick={() => run(() => del(`/companies/${company.id}/gst-registrations/${g.id}`))}
+                >
+                  Remove
+                </button>
+              </div>
+
+              {/* Persisted Company Data Validation Summary */}
+              <GstValidationSummaryBox summary={summary} />
+
+              <div className="grid grid-2" style={{ gap: 10, fontSize: 13, marginBottom: 12 }}>
+                <div><strong>GSTIN:</strong> <span className="mono">{g.gstin}</span></div>
+                <div><strong>Legal Name:</strong> {g.legalName || 'N/A'}</div>
+                <div><strong>Trade Name:</strong> {g.tradeName || 'N/A'}</div>
+                <div><strong>Status:</strong> {g.isActive ? 'Active' : 'Inactive'}</div>
+                <div><strong>Constitution:</strong> {g.constitution || 'N/A'}</div>
+                <div><strong>State Code:</strong> {g.stateCode}</div>
+                <div><strong>Registered On:</strong> {g.registeredOn || 'N/A'}</div>
+                <div><strong>Filing Frequency:</strong> {g.filingFrequency}</div>
+              </div>
+
+              <div className="grid grid-2" style={{ alignItems: 'end', borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+                <Field label="Filing Frequency">
+                  <select
+                    value={g.filingFrequency}
+                    disabled={busy}
+                    onChange={(e) => run(() => patch(`/companies/${company.id}/gst-registrations/${g.id}`, { filingFrequency: e.target.value }))}
+                  >
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="QRMP">QRMP (quarterly)</option>
+                    <option value="COMPOSITION">Composition</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
+          );
+        })}
+
+        {company.gstRegistrations.length === 0 && <span className="tiny dim">None on record.</span>}
+
+        {gstError && <ErrorNote error={gstError} />}
+
+        {/* GST Verification / Add Form */}
+        {!gstSession && !verifiedGst && (
+          <div className="grid grid-3" style={{ alignItems: 'end', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            <Field label="GSTIN" error={local.gstin ?? errors[`gstin:${cleanGstin}`]}>
+              <input
+                value={gstinInput}
+                placeholder="33AAACN4321B1ZA"
+                onChange={(e) => {
+                  setGstinInput(e.target.value.toUpperCase());
+                  setLocalError('gstin', null);
+                  setGstError(null);
+                }}
+              />
+            </Field>
+
+            <Field label="Filing frequency">
+              <select value={gstFilingFrequency} onChange={(e) => setGstFilingFrequency(e.target.value as any)}>
+                <option value="MONTHLY">Monthly</option>
+                <option value="QRMP">QRMP (quarterly)</option>
+                <option value="COMPOSITION">Composition</option>
+              </select>
+            </Field>
+
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || verifying}
+                onClick={handleStartSession}
+              >
+                {verifying ? <Spinner /> : 'Verify & Fetch Details'}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy || verifying}
+                onClick={handleDirectAdd}
+                title="Add GSTIN without live verification"
+              >
+                Add Directly
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* CAPTCHA Modal / Panel */}
+        {gstSession && !verifiedGst && (
+          <div style={{ background: 'var(--bg-subtle, #f9fafb)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginTop: 6 }}>
+            <div className="stack" style={{ gap: 4, marginBottom: 12 }}>
+              <strong style={{ fontSize: 14 }}>GST Portal Verification - Human CAPTCHA Entry</strong>
+              <span className="tiny dim">Enter the visible characters shown below to fetch official GST master data.</span>
+            </div>
+
+            <div className="row" style={{ alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
+              {gstSession.captchaImage ? (
+                <div style={{ background: '#fff', padding: 6, border: '1px solid #ccc', borderRadius: 4 }}>
+                  <img src={gstSession.captchaImage} alt="GST CAPTCHA Challenge" style={{ height: 46, display: 'block' }} />
+                </div>
+              ) : (
+                <span className="tiny error">CAPTCHA image unavailable</span>
+              )}
+
+              <button
+                type="button"
+                className="btn-sm btn-ghost"
+                disabled={verifying}
+                onClick={handleStartSession}
+              >
+                Refresh CAPTCHA
+              </button>
+            </div>
+
+            <div className="grid grid-2" style={{ alignItems: 'end' }}>
+              <Field label="Enter CAPTCHA Code">
+                <input
+                  value={captchaInput}
+                  placeholder="Type visible characters"
+                  onChange={(e) => setCaptchaInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyCaptcha(); }}
+                />
+              </Field>
+
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={verifying || !captchaInput.trim()}
+                  onClick={handleVerifyCaptcha}
+                >
+                  {verifying ? <Spinner /> : 'Verify CAPTCHA'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={verifying}
+                  onClick={() => setGstSession(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Verified GST Master Data & Immediate Validation Summary Panel */}
+        {verifiedGst && activeSummary && (
+          <div style={{ background: 'var(--bg-subtle, #f8fafc)', border: '1px solid #cbd5e1', borderRadius: 8, padding: 16, marginTop: 6 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <strong style={{ fontSize: 15 }}>Verified GST Details</strong>
+                <div className="tiny" style={{ color: '#16a34a', fontWeight: 500 }}>✓ Verified via BizVerify / GST Portal</div>
+              </div>
+              <button type="button" className="btn-sm btn-ghost" onClick={() => setVerifiedGst(null)}>Clear</button>
+            </div>
+
+            {/* Immediate Validation Summary */}
+            <GstValidationSummaryBox summary={activeSummary} />
+
+            {/* Key-Value Details Grid */}
+            <div className="grid grid-2" style={{ gap: 10, fontSize: 13, marginBottom: 16 }}>
+              <div><strong>GSTIN:</strong> <span className="mono">{verifiedGst.gstin}</span></div>
+              <div><strong>Legal Name:</strong> {verifiedGst.legalName}</div>
+              <div><strong>Trade Name:</strong> {verifiedGst.tradeName || 'N/A'}</div>
+              <div><strong>Status:</strong> {verifiedGst.status}</div>
+              <div><strong>Registration Date:</strong> {verifiedGst.registrationDate || 'N/A'}</div>
+              <div><strong>Taxpayer Type:</strong> {verifiedGst.taxpayerType || 'N/A'}</div>
+              <div><strong>Constitution:</strong> {verifiedGst.constitution || 'N/A'}</div>
+              <div><strong>State / Code:</strong> {verifiedGst.state || 'N/A'} ({verifiedGst.stateCode})</div>
+              <div><strong>Embedded PAN:</strong> <span className="mono">{verifiedGst.panEmbedded || 'N/A'}</span></div>
+              <div><strong>e-Invoice Status:</strong> {verifiedGst.einvoiceStatus || 'N/A'}</div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <strong>Principal Place of Business:</strong> {verifiedGst.principalPlaceOfBusiness?.address || 'N/A'}
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <strong>Nature of Business:</strong> {verifiedGst.natureOfBusiness.join(', ') || 'N/A'}
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <strong>Jurisdiction:</strong> State: {verifiedGst.jurisdiction?.stateJurisdiction || 'N/A'} · Central: {verifiedGst.jurisdiction?.centralJurisdiction || 'N/A'}
+              </div>
+            </div>
+
+            {/* Confirmation & Save */}
+            <div className="grid grid-2" style={{ alignItems: 'end', borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+              <Field label="Select Filing Frequency">
+                <select value={gstFilingFrequency} onChange={(e) => setGstFilingFrequency(e.target.value as any)}>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QRMP">QRMP (quarterly)</option>
+                  <option value="COMPOSITION">Composition</option>
+                </select>
+              </Field>
+
+              <button type="button" className="btn-primary" disabled={busy} onClick={handleSaveVerified}>
+                Confirm & Save GST Registration
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function UdyamValidationSummaryBox({
+  summary,
+}: {
+  summary: UdyamCompanyValidationSummary;
+}) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, marginBottom: 16 }}>
+      <div className="tiny" style={{ fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', color: '#64748b' }}>
+        Company Udyam Data Validation Summary
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+        {summary.passedChecks.map((check, i) => (
+          <div key={`pass-${i}`} style={{ color: 'var(--color-success, #2e7d32)' }}>
+            ✓ {check}
+          </div>
+        ))}
+        {summary.failedChecks.map((check, i) => (
+          <div key={`fail-${i}`} style={{ color: 'var(--color-danger, #e53935)' }}>
+            ⚠ {check}
+          </div>
+        ))}
+        {summary.warnings.map((warn, i) => (
+          <div key={`warn-${i}`} style={{ color: 'var(--color-warn, #ed6c02)' }}>
+            ⚠ {warn}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UdyamRegistrationSection({
+  company,
+  busy,
+  errors,
+  run,
+  local,
+  setLocalError,
+}: {
+  company: Company;
+  busy: boolean;
+  errors: Record<string, string>;
+  run: (fn: () => Promise<unknown>) => Promise<void>;
+  local: Record<string, string>;
+  setLocalError: (key: string, message: string | null) => void;
+}) {
+  const [udyamInput, setUdyamInput] = useState(company.msmeRegistration?.udyamNumber ?? '');
+  const [categoryInput, setCategoryInput] = useState<string>(company.msmeRegistration?.category ?? 'MICRO');
+  const [udyamSession, setUdyamSession] = useState<UdyamSessionResult | null>(null);
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [verifiedUdyam, setVerifiedUdyam] = useState<UdyamMasterRecord | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [udyamError, setUdyamError] = useState<string | null>(null);
+
+  const cleanUdyam = udyamInput.trim().toUpperCase();
+
+  const handleStartSession = async () => {
+    if (!cleanUdyam) {
+      setLocalError('udyam', 'Please enter a valid Udyam Registration Number.');
+      return;
+    }
+    if (!UDYAM_REGEX.test(cleanUdyam)) {
+      setLocalError('udyam', 'A Udyam number looks like UDYAM-TN-28-0008330.');
+      return;
+    }
+
+    setLocalError('udyam', null);
+    setUdyamError(null);
+    setVerifying(true);
+    try {
+      const res = await post<UdyamSessionResult>('/udyam/session', {
+        companyId: company.id,
+        udyam_number: cleanUdyam,
+      });
+
+      if (res && res.success && res.sessionId) {
+        setUdyamSession(res);
+        setCaptchaInput('');
+      } else {
+        const msg = res?.error?.message || 'Failed to initiate Udyam verification session.';
+        setUdyamError(msg);
+      }
+    } catch (err: any) {
+      setUdyamError(err?.message || 'Udyam verification service is temporarily unavailable. Please try again later.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleVerifyCaptcha = async () => {
+    if (!captchaInput.trim()) {
+      setUdyamError('Invalid CAPTCHA. Please try again.');
+      return;
+    }
+    if (!udyamSession || !udyamSession.sessionId) {
+      setUdyamError('Verification session expired. Please get a new CAPTCHA.');
+      return;
+    }
+
+    setUdyamError(null);
+    setVerifying(true);
+    try {
+      const res = await post<UdyamVerificationResult>('/udyam/verify', {
+        companyId: company.id,
+        sessionId: udyamSession.sessionId,
+        udyam_number: cleanUdyam,
+        captcha: captchaInput.trim(),
+      });
+
+      const master = res?.registration || res?.data;
+      if (res && res.success && master) {
+        setVerifiedUdyam(master);
+        if (master.category) {
+          setCategoryInput(master.category.toUpperCase());
+        }
+        setUdyamSession(null);
+      } else {
+        const errMsg = res?.error?.message || 'Invalid CAPTCHA. Please try again.';
+        setUdyamError(errMsg);
+      }
+    } catch (err: any) {
+      setUdyamError(err?.message || 'Udyam verification service is temporarily unavailable. Please try again later.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleSaveVerified = async () => {
+    const recordToSave = verifiedUdyam;
+    const finalUdyamNo = recordToSave?.udyamNumber || cleanUdyam;
+    const finalCategory = (recordToSave?.category || categoryInput).toUpperCase();
+    const registeredOn = recordToSave?.dateOfRegistration || null;
+
+    setUdyamError(null);
+    await run(async () => {
+      await put(`/companies/${company.id}/msme-registration`, {
+        udyamNumber: finalUdyamNo,
+        category: finalCategory,
+        registeredOn,
+      });
+      setVerifiedUdyam(null);
+      setUdyamSession(null);
+    });
+  };
+
+  const handleDirectSave = async () => {
+    if (!UDYAM_REGEX.test(cleanUdyam)) {
+      setLocalError('udyam', 'A Udyam number looks like UDYAM-TN-28-0008330.');
+      return;
+    }
+
+    setLocalError('udyam', null);
+    await run(async () => {
+      await put(`/companies/${company.id}/msme-registration`, {
+        udyamNumber: cleanUdyam,
+        category: categoryInput.toUpperCase(),
+      });
+    });
+  };
+
+  const activeSummary = verifiedUdyam ? validateUdyamForCompany(verifiedUdyam, company) : null;
+
+  return (
+    <Card title="Udyam (MSME) Registration">
+      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Persisted MSME Registration */}
+        {company.msmeRegistration && !verifiedUdyam && !udyamSession && (
+          <div style={{ background: 'var(--bg-subtle, #f8fafc)', border: '1px solid #cbd5e1', borderRadius: 8, padding: 16 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <strong style={{ fontSize: 15 }} className="mono">{company.msmeRegistration.udyamNumber}</strong>
+                <div className="tiny" style={{ color: '#16a34a', fontWeight: 500 }}>
+                  ✓ Saved Udyam Registration &nbsp;•&nbsp; {company.msmeRegistration.category}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-sm btn-ghost btn-danger"
+                disabled={busy}
+                onClick={() => run(async () => {
+                  await del(`/companies/${company.id}/msme-registration`);
+                  setUdyamInput('');
+                  setCategoryInput('MICRO');
+                })}
+              >
+                Remove
+              </button>
+            </div>
+
+            <div className="grid grid-2" style={{ gap: 10, fontSize: 13 }}>
+              <div><strong>Udyam Number:</strong> <span className="mono">{company.msmeRegistration.udyamNumber}</span></div>
+              <div><strong>Category:</strong> {company.msmeRegistration.category}</div>
+              {company.msmeRegistration.registeredOn && (
+                <div><strong>Registered On:</strong> {company.msmeRegistration.registeredOn}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {udyamError && <ErrorNote error={udyamError} />}
+
+        {/* Verification / Entry Form */}
+        {!udyamSession && !verifiedUdyam && (
+          <div className="grid grid-3" style={{ alignItems: 'end', paddingTop: company.msmeRegistration ? 10 : 0, borderTop: company.msmeRegistration ? '1px solid var(--border)' : 'none' }}>
+            <Field label="Udyam Number" error={local.udyam ?? errors['udyamNumber']}>
+              <input
+                value={udyamInput}
+                placeholder="UDYAM-TN-28-0008330"
+                onChange={(e) => {
+                  setUdyamInput(e.target.value.toUpperCase());
+                  setLocalError('udyam', null);
+                  setUdyamError(null);
+                }}
+              />
+            </Field>
+
+            <Field label="Category">
+              <select value={categoryInput} onChange={(e) => setCategoryInput(e.target.value)}>
+                <option value="MICRO">Micro</option>
+                <option value="SMALL">Small</option>
+                <option value="MEDIUM">Medium</option>
+              </select>
+            </Field>
+
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || verifying}
+                onClick={handleStartSession}
+              >
+                {verifying ? <Spinner /> : 'Get CAPTCHA'}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy || verifying}
+                onClick={handleDirectSave}
+                title="Save Udyam number directly without live CAPTCHA"
+              >
+                Save Directly
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* CAPTCHA Session Panel */}
+        {udyamSession && !verifiedUdyam && (
+          <div style={{ background: 'var(--bg-subtle, #f9fafb)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginTop: 6 }}>
+            <div className="stack" style={{ gap: 4, marginBottom: 12 }}>
+              <strong style={{ fontSize: 14 }}>Official Udyam Portal Verification - Enter CAPTCHA</strong>
+              <span className="tiny dim">Enter the visual CAPTCHA from official portal to verify enterprise details.</span>
+            </div>
+
+            <div className="row" style={{ alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
+              {udyamSession.captchaImage ? (
+                <div style={{ background: '#fff', padding: 6, border: '1px solid #ccc', borderRadius: 4 }}>
+                  <img src={udyamSession.captchaImage} alt="Udyam CAPTCHA Challenge" style={{ height: 46, display: 'block' }} />
+                </div>
+              ) : (
+                <span className="tiny error">CAPTCHA image unavailable</span>
+              )}
+
+              <button
+                type="button"
+                className="btn-sm btn-ghost"
+                disabled={verifying}
+                onClick={handleStartSession}
+              >
+                Refresh CAPTCHA
+              </button>
+            </div>
+
+            <div className="grid grid-2" style={{ alignItems: 'end' }}>
+              <Field label="Enter CAPTCHA Code">
+                <input
+                  value={captchaInput}
+                  placeholder="Type visible characters"
+                  onChange={(e) => setCaptchaInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyCaptcha(); }}
+                />
+              </Field>
+
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={verifying || !captchaInput.trim()}
+                  onClick={handleVerifyCaptcha}
+                >
+                  {verifying ? <Spinner /> : 'Verify Udyam'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={verifying}
+                  onClick={() => setUdyamSession(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Verified Udyam Record & Company Validation Summary */}
+        {verifiedUdyam && activeSummary && (
+          <div style={{ background: 'var(--bg-subtle, #f8fafc)', border: '1px solid #cbd5e1', borderRadius: 8, padding: 16, marginTop: 6 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <strong style={{ fontSize: 15 }}>Verified Udyam Details</strong>
+                <div className="tiny" style={{ color: '#16a34a', fontWeight: 500 }}>✓ Verified via BizVerify / Official Udyam Portal</div>
+              </div>
+              <button type="button" className="btn-sm btn-ghost" onClick={() => setVerifiedUdyam(null)}>Clear</button>
+            </div>
+
+            {/* Validation Summary */}
+            <UdyamValidationSummaryBox summary={activeSummary} />
+
+            {/* Key-Value Details Grid */}
+            <div className="grid grid-2" style={{ gap: 10, fontSize: 13, marginBottom: 16 }}>
+              <div><strong>Udyam Number:</strong> <span className="mono">{verifiedUdyam.udyamNumber}</span></div>
+              <div><strong>Enterprise Name:</strong> {verifiedUdyam.enterpriseName}</div>
+              <div><strong>Owner / Entrepreneur Name:</strong> {verifiedUdyam.ownerName || 'N/A'}</div>
+              <div><strong>Category:</strong> {verifiedUdyam.category}</div>
+              <div><strong>Major Activity:</strong> {verifiedUdyam.activityType}</div>
+              <div><strong>Status:</strong> {verifiedUdyam.status}</div>
+              <div><strong>Registration Date:</strong> {verifiedUdyam.dateOfRegistration || 'N/A'}</div>
+              <div><strong>Commencement Date:</strong> {verifiedUdyam.dateOfCommencement || 'N/A'}</div>
+              <div><strong>PAN:</strong> <span className="mono">{verifiedUdyam.pan || 'N/A'}</span></div>
+              <div><strong>GSTIN:</strong> <span className="mono">{verifiedUdyam.gstin || 'N/A'}</span></div>
+              <div><strong>Social Category:</strong> {verifiedUdyam.socialCategory || 'N/A'}</div>
+              <div><strong>Location:</strong> {verifiedUdyam.district ? `${verifiedUdyam.district}, ` : ''}{verifiedUdyam.state || 'N/A'}</div>
+              <div><strong>Employees:</strong> Total: {verifiedUdyam.employees?.total ?? 0} (M: {verifiedUdyam.employees?.male ?? 0}, F: {verifiedUdyam.employees?.female ?? 0})</div>
+              <div><strong>NIC Code:</strong> {verifiedUdyam.nicCode || 'N/A'} - {verifiedUdyam.nicDescription || ''}</div>
+              {verifiedUdyam.turnoverInr !== null && (
+                <div><strong>Turnover:</strong> {fmtINR(verifiedUdyam.turnoverInr)}</div>
+              )}
+              {verifiedUdyam.investmentInPlantMachineryInr !== null && (
+                <div><strong>Investment in Plant & Machinery:</strong> {fmtINR(verifiedUdyam.investmentInPlantMachineryInr)}</div>
+              )}
+            </div>
+
+            {/* Confirm & Save */}
+            <div className="row" style={{ justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+              <button type="button" className="btn-primary" disabled={busy} onClick={handleSaveVerified}>
+                Confirm & Save Udyam Registration
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function Registrations({
   company, busy, errors, run, showOnly,
 }: {
@@ -1101,11 +2018,6 @@ function Registrations({
       else delete next[key];
       return next;
     });
-  const [gst, setGst] = useState({ gstin: '', filingFrequency: 'MONTHLY' });
-  const [msme, setMsme] = useState({
-    udyamNumber: company.msmeRegistration?.udyamNumber ?? '',
-    category: company.msmeRegistration?.category ?? 'MICRO',
-  });
 
   return (
     <>
@@ -1171,89 +2083,25 @@ function Registrations({
       )}
 
       {(!showOnly || showOnly === 'gst') && (
-        <Card title="GST Registrations" note="One set of returns is generated per GSTIN">
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {company.gstRegistrations.map((g) => (
-              <div key={g.id} className="file-row">
-                <div className="stack" style={{ flex: 1 }}>
-                  <span className="mono" style={{ fontWeight: 500 }}>{g.gstin}</span>
-                  <span className="tiny dim">{g.stateCode} · {g.filingFrequency.toLowerCase()}{g.isActive ? '' : ' · inactive'}</span>
-                </div>
-                <select value={g.filingFrequency} disabled={busy} style={{ width: 150 }}
-                        onChange={(e) => run(() => patch(`/companies/${company.id}/gst-registrations/${g.id}`, { filingFrequency: e.target.value }))}>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QRMP">QRMP</option>
-                  <option value="COMPOSITION">Composition</option>
-                </select>
-                <button className="btn-sm btn-ghost btn-danger" disabled={busy}
-                        onClick={() => run(() => del(`/companies/${company.id}/gst-registrations/${g.id}`))}>Remove</button>
-              </div>
-            ))}
-            {company.gstRegistrations.length === 0 && <span className="tiny dim">None on record.</span>}
-
-            <div className="grid grid-3" style={{ alignItems: 'end' }}>
-              <Field label="GSTIN" error={local.gstin ?? errors[`gstin:${gst.gstin.trim().toUpperCase()}`]}>
-                <input value={gst.gstin} placeholder="33AAACN4321B1ZA"
-                       onChange={(e) => { setGst({ ...gst, gstin: e.target.value.toUpperCase() }); setLocalError('gstin', null); }} />
-              </Field>
-              <Field label="Filing frequency">
-                <select value={gst.filingFrequency} onChange={(e) => setGst({ ...gst, filingFrequency: e.target.value })}>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QRMP">QRMP (quarterly)</option>
-                  <option value="COMPOSITION">Composition</option>
-                </select>
-              </Field>
-              <button type="button" disabled={busy} onClick={() => {
-                if (gst.gstin.trim().length !== 15) {
-                  setLocalError('gstin', 'A GSTIN is 15 characters, e.g. 33AAACN4321B1ZA.');
-                  return;
-                }
-                setLocalError('gstin', null);
-                void run(async () => {
-                  await post(`/companies/${company.id}/gst-registrations`, {
-                    gstin: gst.gstin.trim().toUpperCase(), filingFrequency: gst.filingFrequency,
-                  });
-                  setGst({ gstin: '', filingFrequency: 'MONTHLY' });
-                });
-              }}>Add GSTIN</button>
-            </div>
-          </div>
-        </Card>
+        <GstRegistrationSection
+          company={company}
+          busy={busy}
+          errors={errors}
+          run={run}
+          local={local}
+          setLocalError={setLocalError}
+        />
       )}
 
       {(!showOnly || showOnly === 'msme') && (
-        <Card title="Udyam (MSME) Registration">
-          <div className="card-body grid grid-3" style={{ alignItems: 'end' }}>
-            <Field label="Udyam number" error={local.udyam ?? errors['udyamNumber']}>
-              <input value={msme.udyamNumber}
-                     onChange={(e) => { setMsme({ ...msme, udyamNumber: e.target.value.toUpperCase() }); setLocalError('udyam', null); }} />
-            </Field>
-            <Field label="Category">
-              <select value={msme.category} onChange={(e) => setMsme({ ...msme, category: e.target.value })}>
-                <option value="MICRO">Micro</option><option value="SMALL">Small</option><option value="MEDIUM">Medium</option>
-              </select>
-            </Field>
-            <div className="row">
-              <button type="button" disabled={busy} onClick={() => {
-                if (!/^UDYAM-[A-Z]{2}-\d{2}-\d{7}$/.test(msme.udyamNumber.trim().toUpperCase())) {
-                  setLocalError('udyam', 'A Udyam number looks like UDYAM-KA-03-0114562.');
-                  return;
-                }
-                setLocalError('udyam', null);
-                void run(() => put(`/companies/${company.id}/msme-registration`, {
-                  udyamNumber: msme.udyamNumber.trim().toUpperCase(), category: msme.category,
-                }));
-              }}>Save</button>
-              {company.msmeRegistration && (
-                <button type="button" className="btn-ghost btn-danger" disabled={busy}
-                        onClick={() => run(async () => {
-                          await del(`/companies/${company.id}/msme-registration`);
-                          setMsme({ udyamNumber: '', category: 'MICRO' });
-                        })}>Remove</button>
-              )}
-            </div>
-          </div>
-        </Card>
+        <UdyamRegistrationSection
+          company={company}
+          busy={busy}
+          errors={errors}
+          run={run}
+          local={local}
+          setLocalError={setLocalError}
+        />
       )}
     </>
   );

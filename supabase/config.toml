@@ -153,3 +153,13 @@ verify_jwt = false
 [functions.razorpay-webhook]
 verify_jwt = false
 
+[functions.gst-api]
+verify_jwt = false
+
+[functions.pan-api]
+verify_jwt = false
+
+[functions.udyam-api]
+verify_jwt = false
+
+

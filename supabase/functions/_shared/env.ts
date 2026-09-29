@@ -18,6 +18,10 @@ export const env = {
   get JWT_REFRESH_SECRET(): string {
     return (typeof Deno !== 'undefined' ? Deno.env.get('JWT_REFRESH_SECRET') : '') || 'default-jwt-refresh-secret-min-16-chars';
   },
+  /** Web origin the password-reset email redirects back to (the SPA's /reset-password route). */
+  get APP_BASE_URL(): string {
+    return (typeof Deno !== 'undefined' ? Deno.env.get('APP_BASE_URL') : '') || 'http://localhost:5173';
+  },
   get RAZORPAY_KEY_ID(): string {
     return (typeof Deno !== 'undefined' ? Deno.env.get('RAZORPAY_KEY_ID') : '') || 'rzp_test_mockkey12345';
   },

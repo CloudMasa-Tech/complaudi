@@ -832,12 +832,28 @@ Deno.serve(async (req: Request) => {
       const schema = z.object({
         gstin: z.string().length(15),
         stateCode: z.string().min(2),
-        filingFrequency: z.enum(['MONTHLY', 'QUARTERLY']).default('MONTHLY'),
+        filingFrequency: z.enum(['MONTHLY', 'QRMP', 'COMPOSITION', 'QUARTERLY']).default('MONTHLY'),
+        legalName: z.string().optional().nullable(),
+        tradeName: z.string().optional().nullable(),
+        constitution: z.string().optional().nullable(),
+        registeredOn: z.string().optional().nullable(),
+        isActive: z.boolean().optional(),
       });
       const body = await parseJsonBody(req, schema);
 
       const { data: reg, error } = await supabase.from('gst_registrations')
-        .insert({ id: crypto.randomUUID(), companyId, gstin: body.gstin, stateCode: body.stateCode, filingFrequency: body.filingFrequency, isActive: true })
+        .insert({
+          id: crypto.randomUUID(),
+          companyId,
+          gstin: body.gstin,
+          stateCode: body.stateCode,
+          legalName: body.legalName || null,
+          tradeName: body.tradeName || null,
+          constitution: body.constitution || null,
+          registeredOn: body.registeredOn || null,
+          filingFrequency: body.filingFrequency,
+          isActive: body.isActive ?? true,
+        })
         .select().single();
 
       if (error) throw new AppError(error.message, 400);

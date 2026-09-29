@@ -68,6 +68,8 @@ export const gstRegistrationSchema = z.object({
   gstin: z.string().transform(upper).refine((v) => GSTIN_REGEX.test(v), 'GSTIN must be 15 characters, e.g. 33AAACT1234A1Z8'),
   stateCode: stateCodeSchema.optional(),
   legalName: z.string().max(200).optional().nullable(),
+  tradeName: z.string().max(200).optional().nullable(),
+  constitution: z.string().max(100).optional().nullable(),
   filingFrequency: z.enum(['MONTHLY', 'QRMP', 'COMPOSITION']).default('MONTHLY'),
   isTdsDeductor: z.boolean().default(false),
   isEcommerceOperator: z.boolean().default(false),
