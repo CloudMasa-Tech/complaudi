@@ -152,7 +152,12 @@ p { margin: 0; }
 a { color: inherit; }
 
 /* ── app shell ─────────────────────────────────────────────────────────── */
-.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+/* 280px, up from 232. The mark and the strapline could not grow without it:
+   the login panel sets the logo at 76px, which is 276px of artwork, and the old
+   sidebar had 196px of usable width in total. This is as close as the rail gets
+   without taking a third of the screen — matching 76px exactly would need a
+   ~312px sidebar. */
+.shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
 
 /* The sidebar is dark in both themes, matching the panel on the signed-out
    pages, so the brand does not change ground at the moment somebody logs in.
@@ -188,11 +193,13 @@ a { color: inherit; }
    the strapline 56px into the wordmark. Fourth time this stylesheet has decided
    a conflict by line number this session. */
 .brand-lockup.sidebar-lockup {
-  --logo-h: 34px;
+  /* 62px of 76 — 225px of artwork against 244px usable, leaving real margin
+     rather than the few pixels two earlier attempts here were wrong by. */
+  --logo-h: 62px;
   /* No hanging indent here. Starting the strapline under the wordmark's "p"
-     works on the 460px auth panel; in a 232px sidebar the 62px offset left only
-     ~140px for a ~200px line, wrapping it into three narrow indented lines.
-     The mark and its treatment are the same; only the indent is dropped. */
+     works on the 460px auth panel; even at 280px the offset would be ~101px
+     against a ~223px line, wrapping it into narrow indented rows. The mark and
+     its treatment are the same; only the indent is dropped. */
   --wordmark-p: 0;
 }
 /* Also compounded. The base declares `text-wrap: balance`, and `balance` sets
@@ -200,11 +207,10 @@ a { color: inherit; }
    nowrap }` was being undone by a later rule that never mentions white-space.
    Both properties are set here so neither depends on order. */
 .brand-lockup-tagline.sidebar-tagline {
-  /* One line, held by nowrap rather than by hoping a measurement is right:
-     10.5px wrapped in the ~196px of usable sidebar although the arithmetic said
-     it would just fit. 9.5px with no extra tracking leaves real margin, and the
-     emphasis below carries the legibility the size gives up. */
-  font-size: 9.5px;
+  /* 11px now the column is wider — a ~223px line in 244px, still held on one
+     line by nowrap rather than by trusting the measurement, since two earlier
+     estimates here were wrong in the other direction. */
+  font-size: 11px;
   letter-spacing: 0;
   white-space: nowrap;
   text-wrap: nowrap;
