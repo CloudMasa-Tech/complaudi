@@ -37,9 +37,9 @@ export function AuthShell({
               the gap below separates the pair from the headline. logo-dark is
               the same artwork with only the wordmark's navy letters recoloured
               white, so it needs no plate and sits straight on the gradient. */}
-          <div className="auth-aside-lockup">
-            <img src="/logo-dark.png" alt="Complaudi" className="auth-aside-logo" />
-            <p className="auth-aside-tagline">{BRAND_TAGLINE}</p>
+          <div className="brand-lockup auth-aside-lockup">
+            <img src="/logo-dark.png" alt="Complaudi" className="brand-lockup-logo auth-aside-logo" />
+            <p className="brand-lockup-tagline auth-aside-tagline">{BRAND_TAGLINE}</p>
           </div>
 
           <h1 className="auth-headline">Never miss a statutory deadline again.</h1>

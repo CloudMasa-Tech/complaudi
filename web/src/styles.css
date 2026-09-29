@@ -169,6 +169,31 @@ a { color: inherit; }
 }
 
 .brand { display: flex; flex-direction: column; gap: 9px; padding: 0 4px; }
+
+/* Signed in: the same lockup, sized for the sidebar and coloured for a light
+   surface. The light artwork has navy letters for white, the dark one white
+   letters for when the surface goes near-black; CSS picks, since an <img src>
+   cannot follow a theme on its own. */
+.sidebar-lockup {
+  --logo-h: 34px;
+  /* No hanging indent here. Starting the strapline under the wordmark's "p"
+     works on the 460px auth panel; in a 232px sidebar the 62px offset left only
+     ~140px for a ~200px line, wrapping it into three narrow indented lines.
+     The mark and its treatment are the same; only the indent is dropped. */
+  --wordmark-p: 0;
+}
+.sidebar-tagline {
+  /* 10.5px with the shared 0.055em tracking measured ~200px against ~196px of
+     sidebar — a four-pixel miss that costs a whole second line. Tightening the
+     tracking here buys it back without changing the size. */
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.brand-logo-dark { display: none; }
+:root[data-theme="dark"] .brand-logo-light { display: none; }
+:root[data-theme="dark"] .brand-logo-dark { display: block; }
+:root[data-theme="dark"] .sidebar-tagline { color: rgba(255, 255, 255, 0.62); }
 .brand-row { display: flex; align-items: center; gap: 10px; }
 .brand-mark {
   width: 32px; height: 32px; border-radius: 8px; flex: none;
@@ -888,12 +913,16 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
    transparent padding below the mark, which at render size added ~9px of dead
    space that no margin could see or remove. With the box matching the ink, the
    margin below is exactly the gap you get. */
-.auth-aside-lockup {
+/* ── the brand lockup ────────────────────────────────────────────────────
+ * One definition, used signed-out on the auth panel and signed-in in the
+ * sidebar, so the mark does not change shape at the moment somebody logs in.
+ * Each context sets only --logo-h and the colour; the geometry is shared.
+ */
+.brand-lockup {
   /* The logo's height is the one dimension set in CSS; its width follows from
      the artwork's own aspect (941x259 after cropping to the ink). Deriving the
-     width here lets the tagline's offset track the clamp instead of being
-     pinned to one screen size. */
-  --logo-h: clamp(56px, 5vw, 76px);
+     width here lets the tagline's offset track the size instead of being
+     pinned to one of them. */
   --logo-w: calc(var(--logo-h) * 3.633);
   /* Where the "p" of "Complaudi" begins, measured off the artwork: the glyph
      runs x=422..525 of 941, so its left edge is 44.8% across the wordmark. */
@@ -903,9 +932,9 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   flex-direction: column;
   align-items: flex-start;
   max-width: 100%;
-  margin-bottom: 36px;
 }
-.auth-aside-tagline {
+.brand-lockup-logo { display: block; height: var(--logo-h); object-fit: contain; max-width: 100%; }
+.brand-lockup-tagline {
   /* Hard against the mark, and starting under the wordmark's "p" rather than
      centred — the strapline hangs off a letter of the logo instead of floating
      beneath it. The artwork is cropped to its ink, so a zero top margin is a
@@ -913,15 +942,17 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
      line would otherwise reintroduce the gap it is meant to remove. */
   margin: 0 0 0 calc(var(--logo-w) * var(--wordmark-p));
   line-height: 1.25;
-  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.055em;
-  color: #fff;
   text-align: left;
   /* The mark ends in a lowercase "i"; sentence case under it reads as a
      strapline, where full caps would compete with the wordmark itself. */
   text-wrap: balance;
 }
+
+/* Signed out: large, on the navy panel. */
+.auth-aside-lockup { --logo-h: clamp(56px, 5vw, 76px); margin-bottom: 36px; }
+.auth-aside-tagline { font-size: 13px; color: #fff; }
 
 /* h1-h4 carry `color: var(--text)` globally, which is near-black and beat the
    panel's inherited white — the headline was rendering dark on dark navy.

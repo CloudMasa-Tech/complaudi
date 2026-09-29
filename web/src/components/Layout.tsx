@@ -168,10 +168,15 @@ export function Layout() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-row" style={{ width: '100%', padding: '0 8px', boxSizing: 'border-box' }}>
-            <img src="/logo.png" alt="Complaudi" style={{ width: '100%', maxWidth: 200, height: 'auto', objectFit: 'contain', display: 'block' }} />
+          {/* The same lockup the signed-out pages use, so the mark does not
+              change shape the moment somebody logs in. Two images because the
+              sidebar is white in light mode and near-black in dark, and the
+              wordmark's navy letters would vanish into the latter. */}
+          <div className="brand-lockup sidebar-lockup">
+            <img src="/logo.png" alt="Complaudi" className="brand-lockup-logo brand-logo-light" />
+            <img src="/logo-dark.png" alt="" aria-hidden="true" className="brand-lockup-logo brand-logo-dark" />
+            <p className="brand-lockup-tagline sidebar-tagline">{BRAND_TAGLINE}</p>
           </div>
-          <span className="brand-tagline">{BRAND_TAGLINE}</span>
         </div>
 
         <nav className="nav">
