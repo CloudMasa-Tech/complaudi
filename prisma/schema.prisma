@@ -9,51 +9,75 @@ datasource db {
 }
 
 model Organization {
-  id          String     @id @default(uuid())
-  name        String
-  slug        String     @unique
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id              String     @id @default(uuid())
+  name            String
+  slug            String     @unique
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
   /// Set for self-service trials. Null means a full account with no expiry, so
   /// existing organisations are unaffected.
-  trialEndsAt DateTime?
+  trialEndsAt     DateTime?
   /// When a self-service trial signed up. Null for accounts that never began on
   /// a trial. Kept so trial→paid conversion can be computed honestly platform-wide:
   /// the denominator is every organisation that actually started on a trial.
   trialSignedUpAt DateTime?
-  auditLogs   AuditLog[]
-  companies   Company[]
-  users       User[]
-  payments    Payment[]
+  auditLogs       AuditLog[]
+  companies       Company[]
+  users           User[]
+  payments        Payment[]
 
   @@map("organizations")
 }
 
 model User {
-  id                String              @id @default(uuid())
+  id                String               @id @default(uuid())
   organizationId    String
-  email             String              @unique
+  email             String               @unique
   passwordHash      String
   name              String
   /// The user's default capability. A grant may narrow or widen it per company.
-  role              UserRole            @default(VIEWER)
-  isActive          Boolean             @default(true)
+  role              UserRole             @default(VIEWER)
+  isActive          Boolean              @default(true)
   lastLoginAt       DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
   /// Access tokens issued before this are refused. Without it a password reset
   /// would leave any live session working until its token expired.
-  passwordChangedAt DateTime            @default(now())
+  passwordChangedAt DateTime             @default(now())
   /// Contact number captured at self-service signup.
   phone             String?
-  grantsMade        CompanyMembership[] @relation("MembershipGrantedBy")
-  memberships       CompanyMembership[] @relation("MembershipUser")
+  /// ── single active session ───────────────────────────────────────────────
+  /// The one session this account is allowed to have. Every access token
+  /// carries the session id it was minted under; a token whose `sid` no longer
+  /// matches is refused, so signing in on a second device signs the first one
+  /// out rather than letting one login be shared between two people.
+  /// Null means "never signed in", not "any session is acceptable".
+  activeSessionId   String?
+  /// Where and when that session started — shown to the displaced user so an
+  /// unexpected sign-out is explainable rather than alarming.
+  sessionStartedAt  DateTime?
+  sessionUserAgent  String?
+  sessionIp         String?
+  /// ── two-factor authentication ───────────────────────────────────────────
+  /// Base32 TOTP secret. Present but unconfirmed while enrolment is in
+  /// progress; `totpEnabledAt` is what decides whether 2FA is actually on, so
+  /// an abandoned enrolment can never lock anyone out.
+  totpSecret        String?
+  totpEnabledAt     DateTime?
+  /// Single-use recovery codes, stored as SHA-256 hashes — never in the clear,
+  /// and shown to the user exactly once at enrolment.
+  totpRecoveryCodes String[]             @default([])
+  grantsMade        CompanyMembership[]  @relation("MembershipGrantedBy")
+  memberships       CompanyMembership[]  @relation("MembershipUser")
   uploads           Document[]
   notifications     Notification[]
   refreshTokens     RefreshToken[]
-  assignedTasks     Task[]              @relation("TaskAssignee")
-  initiatedPayments Payment[]           @relation("PaymentCreator")
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedTasks     Task[]               @relation("TaskAssignee")
+  initiatedPayments Payment[]            @relation("PaymentCreator")
+  reviewedProposals RuleChangeProposal[]
+  overlaysCreated   RuleOverlay[]        @relation("OverlayCreatedBy")
+  overlaysRevoked   RuleOverlay[]        @relation("OverlayRevokedBy")
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@map("users")
@@ -221,18 +245,18 @@ model GstRegistration {
 }
 
 model MsmeRegistration {
-  id           String       @id @default(uuid())
-  companyId    String       @unique
-  udyamNumber  String
+  id             String       @id @default(uuid())
+  companyId      String       @unique
+  udyamNumber    String
   enterpriseName String?
-  category     MsmeCategory
-  majorActivity String?
+  category       MsmeCategory
+  majorActivity  String?
   socialCategory String?
-  registeredOn DateTime?    @db.Date
+  registeredOn   DateTime?    @db.Date
   certificateKey String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("msme_registrations")
 }
@@ -475,6 +499,148 @@ model ComplianceScoreSnapshot {
   @@map("compliance_score_snapshots")
 }
 
+/// ---------------------------------------------------------------------------
+/// Regulatory watch
+///
+/// A Claude-driven job reads what MCA, CBIC, CBDT, EPFO, ESIC, the MSME
+/// ministry and DPIIT have published, and writes what it found here. Nothing in
+/// these tables changes a single obligation on its own: a finding becomes a
+/// proposal, a proposal becomes an overlay only when a human approves it, and
+/// only an overlay is read by the engine.
+/// ---------------------------------------------------------------------------
+
+/// One circular, notification, amendment rule or press release the watcher
+/// found. Deduplicated on `fingerprint`, so re-running the job — daily, or after
+/// a failure — never produces the same update twice.
+model RegulatoryUpdate {
+  id            String               @id @default(uuid())
+  authority     Authority
+  /// The issuing reference where there is one, e.g. "General Circular 09/2026".
+  referenceNo   String?
+  title         String
+  summary       String
+  url           String
+  publishedOn   DateTime?            @db.Date
+  /// Circular / Notification / Amendment Rules / Press Release / Order.
+  documentType  String?
+  /// Stable hash over authority + reference + title + url. The dedupe key.
+  fingerprint   String               @unique
+  /// What the watcher believes this changes, in plain English. Null when it
+  /// found the document relevant but could not tie it to a specific obligation.
+  impactSummary String?
+  /// The model's raw finding, kept verbatim so a reviewer can audit the
+  /// reasoning behind a proposal rather than taking the patch on trust.
+  raw           Json?
+  discoveredAt  DateTime             @default(now())
+  /// The job run that found it — ties a batch of updates back to one sweep.
+  jobRunId      String?
+  proposals     RuleChangeProposal[]
+
+  @@index([authority, publishedOn])
+  @@index([discoveredAt])
+  @@map("regulatory_updates")
+}
+
+/// A drafted change to one rule, awaiting review.
+///
+/// `patch` is a RuleOverlayPatch (see src/engine/overlay.ts) and is validated
+/// against the engine's predicate registry before the row is written — a
+/// proposal that cannot be expressed as data is stored as CODE_CHANGE_REQUIRED
+/// with the patch left empty, so an engineer picks it up instead of it being
+/// silently dropped.
+model RuleChangeProposal {
+  id            String           @id @default(uuid())
+  updateId      String
+  update        RegulatoryUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+  /// Null only for a NEW_RULE proposal, which no overlay can express.
+  ruleCode      String?
+  changeKind    RuleChangeKind
+  status        ProposalStatus   @default(PENDING)
+  title         String
+  rationale     String
+  patch         Json
+  /// The model's own 0-1 confidence. Advisory — it gates nothing by itself.
+  confidence    Float
+  /// Source URLs backing the claim. A proposal with none should not be approved.
+  citations     Json
+  /// Which companies this would touch, in plain English, e.g. "Pvt Ltd with
+  /// turnover over ₹5 crore". Written for the reviewer, not parsed.
+  appliesToNote String?
+  reviewedById  String?
+  reviewedBy    User?            @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  reviewNote    String?
+  overlayId     String?          @unique
+  overlay       RuleOverlay?     @relation(fields: [overlayId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([ruleCode])
+  @@map("rule_change_proposals")
+}
+
+/// An approved, data-only amendment the engine actually applies.
+///
+/// This is the only table in this group the rule engine ever sees, and it sees
+/// it through one injection point: the runtime loads ACTIVE rows and pushes
+/// them into setRuleOverlays(). Revoking a row restores the committed catalog
+/// behaviour on the next refresh.
+model RuleOverlay {
+  id            String              @id @default(uuid())
+  ruleCode      String
+  patch         Json
+  /// Null bounds mean "since forever" / "until further notice".
+  effectiveFrom DateTime?           @db.Date
+  effectiveTo   DateTime?           @db.Date
+  status        OverlayStatus       @default(ACTIVE)
+  /// Shown to users as the reason an obligation changed. Cite the circular.
+  note          String?
+  createdById   String?
+  createdBy     User?               @relation("OverlayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  revokedById   String?
+  revokedBy     User?               @relation("OverlayRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  revokedAt     DateTime?
+  revokeReason  String?
+  proposal      RuleChangeProposal?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([ruleCode, status])
+  @@map("rule_overlays")
+}
+
+/// What kind of change a proposal represents. Drives how a reviewer reads it
+/// and how much scrutiny it deserves — a TEXT_UPDATE is cosmetic, an
+/// APPLICABILITY_CHANGE can add or remove an obligation for every customer.
+enum RuleChangeKind {
+  DUE_DATE_SHIFT
+  DUE_DATE_OVERRIDE
+  THRESHOLD_CHANGE
+  APPLICABILITY_CHANGE
+  EVIDENCE_CHANGE
+  PENALTY_CHANGE
+  TEXT_UPDATE
+  SUSPENSION
+  WITHDRAWAL
+  NEW_RULE
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Real, but not expressible as a data overlay — needs a catalog edit.
+  CODE_CHANGE_REQUIRED
+  /// A later proposal for the same rule replaced this one before review.
+  SUPERSEDED
+}
+
+enum OverlayStatus {
+  ACTIVE
+  REVOKED
+}
+
 enum EntityType {
   PRIVATE_LIMITED
   PUBLIC_LIMITED
@@ -507,6 +673,7 @@ enum Authority {
   INCOME_TAX
   MSME
   LABOUR
+  DPIIT
 }
 
 enum Severity {
