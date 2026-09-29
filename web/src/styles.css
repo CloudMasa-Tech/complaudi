@@ -152,12 +152,12 @@ p { margin: 0; }
 a { color: inherit; }
 
 /* ── app shell ─────────────────────────────────────────────────────────── */
-/* 280px, up from 232. The mark and the strapline could not grow without it:
-   the login panel sets the logo at 76px, which is 276px of artwork, and the old
-   sidebar had 196px of usable width in total. This is as close as the rail gets
-   without taking a third of the screen — matching 76px exactly would need a
-   ~312px sidebar. */
-.shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+/* 320px. Three things have to sit on one line inside it: a 62px mark (225px of
+   artwork), the 48px indent that starts the strapline after the "C", and the
+   ~223px strapline itself. 48 + 223 needs 271px of usable width, and the rail
+   carries 36px of padding — so anything under ~307px pushes the strapline out
+   of the column. This leaves 13px of margin rather than the last pixel. */
+.shell { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
 
 /* The sidebar is dark in both themes, matching the panel on the signed-out
    pages, so the brand does not change ground at the moment somebody logs in.
@@ -196,11 +196,11 @@ a { color: inherit; }
   /* 62px of 76 — 225px of artwork against 244px usable, leaving real margin
      rather than the few pixels two earlier attempts here were wrong by. */
   --logo-h: 62px;
-  /* No hanging indent here. Starting the strapline under the wordmark's "p"
-     works on the 460px auth panel; even at 280px the offset would be ~101px
-     against a ~223px line, wrapping it into narrow indented rows. The mark and
-     its treatment are the same; only the indent is dropped. */
-  --wordmark-p: 0;
+  /* The strapline starts where the "C" ends rather than under the "p".
+     Measured off the artwork: swoosh colour runs out at x=200 of 941, so the
+     lettering begins 21.3% across. The auth panel's 44.8% ("p") would put the
+     indent at 101px here and push the line out of the column. */
+  --wordmark-p: 0.213;
 }
 /* Also compounded. The base declares `text-wrap: balance`, and `balance` sets
    text-wrap-mode back to `wrap` — so a bare `.sidebar-tagline { white-space:
