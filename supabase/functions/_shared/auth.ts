@@ -2,8 +2,9 @@
 // @ts-ignore
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { env } from './env.ts';
-import { ForbiddenError, UnauthorizedError } from './errors.ts';
+import { AppError, ForbiddenError, UnauthorizedError } from './errors.ts';
 import { getSupabaseAdminClient } from './database.ts';
+import { checkSession } from './session.ts';
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'CA' | 'COMPANY_OWNER' | 'VIEWER';
 
@@ -13,6 +14,20 @@ export interface AuthContext {
   email: string;
   role: UserRole;
   name: string;
+  /** Absent on the Supabase-Auth path, which carries no session claim. */
+  sessionId?: string;
+}
+
+/**
+ * Signed out because the account was claimed elsewhere.
+ *
+ * Its own error so the client can tell "you were displaced" from "your token
+ * expired" and show the first without a silent bounce to the login screen.
+ */
+export class SessionDisplacedError extends AppError {
+  constructor(message: string) {
+    super(message, 401, 'SESSION_DISPLACED');
+  }
 }
 
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
@@ -99,28 +114,14 @@ export async function getAuthContext(req: Request): Promise<AuthContext> {
   const token = authHeader.slice(7).trim();
   const supabase = getSupabaseAdminClient();
 
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (user && !error) {
-      const { data: profile } = await supabase
-        .from('users')
-        .select('id, organizationId, email, role, name, isActive')
-        .eq('id', user.id)
-        .single();
-
-      if (profile && profile.isActive) {
-        return {
-          userId: profile.id,
-          organizationId: profile.organizationId,
-          email: profile.email,
-          role: profile.role as UserRole,
-          name: profile.name,
-        };
-      }
-    }
-  } catch (_e) {
-    // Fallback to custom JWT verification if token is custom app JWT
-  }
+  // A Supabase Auth token is deliberately NOT accepted here.
+  //
+  // Supabase Auth's own REST endpoint is public and the anon key ships in the
+  // browser bundle, so anyone holding a password could mint a token there
+  // directly. Such a token carries no session claim and never passed our 2FA
+  // step, so honouring it would bypass both the single-session rule and
+  // two-factor authentication completely. Every token this API trusts is one it
+  // issued itself, below.
 
   try {
     const key = await crypto.subtle.importKey(
@@ -136,21 +137,31 @@ export async function getAuthContext(req: Request): Promise<AuthContext> {
       const userId = String(payload.sub);
       const { data: profile } = await supabase
         .from('users')
-        .select('id, organizationId, email, role, name, isActive')
+        .select('id, organizationId, email, role, name, isActive, activeSessionId, sessionStartedAt, sessionUserAgent')
         .eq('id', userId)
         .single();
 
       if (profile && profile.isActive) {
+        // One session per account. Checked on every request rather than at
+        // sign-in, so a displaced device stops working on its next call instead
+        // of running on for the rest of its token's life.
+        const session = checkSession(profile, payload.sid);
+        if (!session.ok) throw new SessionDisplacedError(session.message);
+
         return {
           userId: profile.id,
           organizationId: profile.organizationId,
           email: profile.email,
           role: profile.role as UserRole,
           name: profile.name,
+          sessionId: String(payload.sid),
         };
       }
     }
-  } catch (_err) {
+  } catch (err) {
+    // A displaced session is a specific, explainable outcome — it must not be
+    // flattened into the generic "invalid token" by the catch-all below.
+    if (err instanceof SessionDisplacedError) throw err;
     throw new UnauthorizedError('Invalid access token or expired session');
   }
 

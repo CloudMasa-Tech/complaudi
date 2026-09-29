@@ -20,9 +20,15 @@ export const tokens = {
   },
 };
 
-/** Notifies the auth context when the session is beyond saving. */
-let onSessionLost: () => void = () => {};
-export const setSessionLostHandler = (fn: () => void) => { onSessionLost = fn; };
+/**
+ * Notifies the auth context when the session is beyond saving.
+ *
+ * `reason` is the server's own explanation where there is one — a session
+ * displaced by a newer sign-in says so, and the login screen repeats it instead
+ * of leaving the user guessing why they were thrown out.
+ */
+let onSessionLost: (reason?: string) => void = () => {};
+export const setSessionLostHandler = (fn: (reason?: string) => void) => { onSessionLost = fn; };
 
 
 function isTokenExpired(token: string): boolean {
@@ -113,6 +119,16 @@ async function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
+/** The server's message when this device was signed out by a newer sign-in. */
+async function displacementReason(res: Response): Promise<string | null> {
+  try {
+    const data = await res.json();
+    return data?.error?.code === 'SESSION_DISPLACED' ? String(data.error.message) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -166,10 +182,21 @@ async function send(path: string, opts: RequestOptions, isRetry = false): Promis
     redirect: 'follow',
   });
 
-  if (res.status === 401 && !isRetry && tokens.refresh()) {
-    if (await refreshSession()) return send(path, opts, true);
-    tokens.clear();
-    onSessionLost();
+  if (res.status === 401 && !isRetry) {
+    // Read the body without consuming it: the caller still needs to parse it.
+    const reason = await displacementReason(res.clone());
+    if (reason) {
+      // A displaced session cannot be refreshed back into life — the refresh
+      // token was revoked with it. Retrying would only burn a round trip.
+      tokens.clear();
+      onSessionLost(reason);
+      return res;
+    }
+    if (tokens.refresh()) {
+      if (await refreshSession()) return send(path, opts, true);
+      tokens.clear();
+      onSessionLost();
+    }
   }
 
   return res;

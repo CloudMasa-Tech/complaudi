@@ -8,6 +8,14 @@ import { parseJsonBody } from '../_shared/validation.ts';
 import { validateCompanyMasterData } from '../_shared/companyValidation.ts';
 import { getCompanyVerificationProvider } from '../_shared/verifications/index.ts';
 import { env } from '../_shared/env.ts';
+import { endSession, startSession, describeDevice } from '../_shared/session.ts';
+import {
+  generateRecoveryCodes,
+  generateTotpSecret,
+  hashRecoveryCode,
+  totpUri,
+  verifyTotp,
+} from '../_shared/totp.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
 // @ts-ignore
@@ -15,7 +23,7 @@ import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 // @ts-ignore
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
-async function generateAccessToken(payload: { sub: string; org: string; email: string; name: string; role: string }) {
+async function generateAccessToken(payload: { sub: string; org: string; email: string; name: string; role: string; sid: string }) {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(env.JWT_ACCESS_SECRET),
@@ -32,6 +40,9 @@ async function generateAccessToken(payload: { sub: string; org: string; email: s
       email: payload.email,
       name: payload.name,
       role: payload.role,
+      // The account's single active session. Verified on every request; a token
+      // whose sid no longer matches the stored one is refused.
+      sid: payload.sid,
       exp: getNumericDate(60 * 15),
       iat: getNumericDate(0),
     },
@@ -39,7 +50,88 @@ async function generateAccessToken(payload: { sub: string; org: string; email: s
   );
 }
 
-async function generateRefreshToken(userId: string) {
+/**
+ * A short-lived ticket proving the password step passed, handed out when the
+ * account has 2FA on.
+ *
+ * Five minutes, single purpose. It is not an access token and carries no
+ * session: `typ` is checked on the way back in, so a challenge ticket can never
+ * be presented as a bearer token to the rest of the API.
+ */
+async function generate2faChallenge(userId: string) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(env.JWT_ACCESS_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  return await create(
+    { alg: 'HS256', typ: 'JWT' },
+    { sub: userId, typ: '2fa', exp: getNumericDate(60 * 5), iat: getNumericDate(0) },
+    key,
+  );
+}
+
+async function verify2faChallenge(token: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(env.JWT_ACCESS_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  );
+  const payload = await verify(token, key) as Record<string, unknown>;
+  if (!payload?.sub || payload.typ !== '2fa') {
+    throw new AppError('This verification has expired. Sign in again.', 401, 'UNAUTHORIZED');
+  }
+  return String(payload.sub);
+}
+
+/**
+ * Everything a successful sign-in returns, once the account's single session
+ * has been claimed. Used by the password path, the 2FA path and the Supabase
+ * Auth fallback, so all three are guaranteed to issue the same shape of token.
+ */
+async function issueSession(supabase: any, req: Request, user: any) {
+  const stamp = await startSession(supabase, user.id, req);
+
+  const accessToken = await generateAccessToken({
+    sub: user.id,
+    org: user.organizationId,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    sid: stamp.sessionId,
+  });
+  const refreshToken = await generateRefreshToken(user.id, stamp.sessionId);
+
+  await supabase.from('refresh_tokens').insert({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    tokenHash: await sha256Hex(refreshToken),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(),
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      organizationId: user.organizationId,
+    },
+    session: {
+      startedAt: stamp.startedAt,
+      device: describeDevice(stamp.userAgent),
+    },
+  };
+}
+
+async function generateRefreshToken(userId: string, sid: string) {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(env.JWT_REFRESH_SECRET),
@@ -51,6 +143,7 @@ async function generateRefreshToken(userId: string) {
     { alg: 'HS256', typ: 'JWT' },
     {
       sub: userId,
+      sid,
       jti: crypto.randomUUID(),
       exp: getNumericDate(60 * 60 * 24 * 7),
       iat: getNumericDate(0),
@@ -277,45 +370,30 @@ Deno.serve(async (req: Request) => {
 
       let authenticatedUser: any = null;
 
-      if (dbUser && dbUser.isActive) {
-        if (dbUser.passwordHash && dbUser.passwordHash !== 'SUPABASE_AUTH_MANAGED') {
-          const isValid = bcrypt.compareSync(body.password, dbUser.passwordHash);
-          if (isValid) {
-            authenticatedUser = dbUser;
-          }
+      if (dbUser && dbUser.isActive && dbUser.passwordHash && dbUser.passwordHash !== 'SUPABASE_AUTH_MANAGED') {
+        if (bcrypt.compareSync(body.password, dbUser.passwordHash)) {
+          authenticatedUser = dbUser;
         }
+      } else {
+        // Compare against a throwaway hash when there is no password to check,
+        // so an unknown address costs the same time as a wrong password. Without
+        // this, response timing alone tells an attacker which of your clients
+        // hold accounts here.
+        bcrypt.compareSync(body.password, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidin');
       }
 
       if (authenticatedUser) {
-        const accessToken = await generateAccessToken({
-          sub: authenticatedUser.id,
-          org: authenticatedUser.organizationId,
-          email: authenticatedUser.email,
-          name: authenticatedUser.name,
-          role: authenticatedUser.role,
-        });
-        const refreshToken = await generateRefreshToken(authenticatedUser.id);
-        const tokenHash = await sha256Hex(refreshToken);
+        // Second factor, if the account has one. No session is claimed and no
+        // token is issued until the code checks out — so a stolen password on
+        // its own cannot displace the real user's live session.
+        if (authenticatedUser.totpEnabledAt) {
+          return jsonResponse({
+            twoFactorRequired: true,
+            challenge: await generate2faChallenge(authenticatedUser.id),
+          });
+        }
 
-        await supabase.from('refresh_tokens').insert({
-          id: crypto.randomUUID(),
-          userId: authenticatedUser.id,
-          tokenHash,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: new Date().toISOString(),
-        });
-
-        return jsonResponse({
-          accessToken,
-          refreshToken,
-          user: {
-            id: authenticatedUser.id,
-            name: authenticatedUser.name,
-            email: authenticatedUser.email,
-            role: authenticatedUser.role,
-            organizationId: authenticatedUser.organizationId,
-          },
-        });
+        return jsonResponse(await issueSession(supabase, req, authenticatedUser));
       }
 
       // 2. Fallback to Supabase Auth
@@ -361,11 +439,55 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      return jsonResponse({
-        accessToken: session.session.access_token,
-        refreshToken: session.session.refresh_token,
-        user: userProfile,
+      // Deliberately not returning Supabase's own session token: it carries no
+      // session claim, so accepting it would leave a way to hold a second
+      // concurrent session and bypass the single-session rule entirely.
+      if (userProfile.totpEnabledAt) {
+        return jsonResponse({
+          twoFactorRequired: true,
+          challenge: await generate2faChallenge(userProfile.id),
+        });
+      }
+      return jsonResponse(await issueSession(supabase, req, userProfile));
+    }
+
+    // POST /login/verify-2fa — the second step, holding the challenge ticket.
+    if (req.method === 'POST' && (path === '/login/verify-2fa' || path === '/login/verify-2fa/')) {
+      const schema = z.object({
+        challenge: z.string().min(1),
+        code: z.string().min(6).max(16),
       });
+      const body = await parseJsonBody(req, schema);
+
+      const userId = await verify2faChallenge(body.challenge);
+      const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+      if (!user || !user.isActive || !user.totpEnabledAt) {
+        throw new AppError('Two-factor verification is not available for this account', 401, 'UNAUTHORIZED');
+      }
+
+      const submitted = body.code.trim();
+      let accepted = await verifyTotp(user.totpSecret, submitted);
+
+      // A recovery code is spent on use. Burning it before issuing the session
+      // means an interrupted sign-in cannot leave the same code replayable.
+      if (!accepted && submitted.length > 6) {
+        const hashed = await hashRecoveryCode(submitted);
+        const remaining: string[] = user.totpRecoveryCodes ?? [];
+        if (remaining.includes(hashed)) {
+          accepted = true;
+          await supabase
+            .from('users')
+            .update({
+              totpRecoveryCodes: remaining.filter((h) => h !== hashed),
+              updatedAt: new Date().toISOString(),
+            })
+            .eq('id', user.id);
+        }
+      }
+
+      if (!accepted) throw new AppError('That code is not valid', 401, 'UNAUTHORIZED');
+
+      return jsonResponse(await issueSession(supabase, req, user));
     }
 
     // POST /refresh
@@ -401,6 +523,19 @@ Deno.serve(async (req: Request) => {
               .single();
 
             if (user && user.isActive) {
+              // A refresh token only renews the session it was minted for.
+              // Otherwise a displaced device could rotate its way back in and
+              // hold a second concurrent session indefinitely.
+              const sid = payload.sid ? String(payload.sid) : null;
+              if (!sid || user.activeSessionId !== sid) {
+                await supabase.from('refresh_tokens').delete().eq('id', storedToken.id);
+                throw new AppError(
+                  'This session was replaced by a newer sign-in. Please sign in again.',
+                  401,
+                  'SESSION_DISPLACED',
+                );
+              }
+
               await supabase.from('refresh_tokens').delete().eq('id', storedToken.id);
 
               const newAccessToken = await generateAccessToken({
@@ -409,8 +544,9 @@ Deno.serve(async (req: Request) => {
                 email: user.email,
                 name: user.name,
                 role: user.role,
+                sid,
               });
-              const newRefreshToken = await generateRefreshToken(user.id);
+              const newRefreshToken = await generateRefreshToken(user.id, sid);
               const newTokenHash = await sha256Hex(newRefreshToken);
 
               await supabase.from('refresh_tokens').insert({
@@ -428,27 +564,129 @@ Deno.serve(async (req: Request) => {
             }
           }
         }
-      } catch {
+      } catch (err) {
+        // A displaced session is a decision, not a verification failure — it
+        // must not fall through to the Supabase Auth fallback and quietly
+        // succeed there.
+        if (err instanceof AppError && err.code === 'SESSION_DISPLACED') throw err;
         // Custom JWT verification failed - proceed to Supabase Auth fallback
       }
 
-      // Try Supabase Auth refresh fallback
-      try {
-        const { data: session, error } = await supabase.auth.refreshSession({
-          refresh_token: body.refreshToken,
-        });
-        if (!error && session?.session) {
-          return jsonResponse({
-            accessToken: session.session.access_token,
-            refreshToken: session.session.refresh_token,
-          });
-        }
-      } catch {
-        // Supabase Auth also failed
-      }
+      // The Supabase Auth refresh fallback used to live here and has been
+      // removed. It minted a token carrying no session claim, which would have
+      // been accepted with the single-session check skipped entirely — a
+      // standing way around the one-session-per-account rule. Sign-in now
+      // always issues our own tokens, so the only holders of a Supabase refresh
+      // token are sessions predating that change; they get a clean 401 and sign
+      // in again.
 
       // Both custom JWT and Supabase Auth failed - throw 401 error
       throw new AppError('Could not refresh session', 401, 'UNAUTHORIZED');
+    }
+
+    // ── two-factor enrolment ────────────────────────────────────────────────
+    // Three steps on purpose: /2fa/setup mints a secret but turns nothing on,
+    // /2fa/enable proves the phone works before it does, and /2fa/disable
+    // re-checks the password. An enrolment abandoned halfway leaves the account
+    // exactly as it was, so nobody can lock themselves out by closing a tab.
+
+    // POST /2fa/setup
+    if (req.method === 'POST' && (path === '/2fa/setup' || path === '/2fa/setup/')) {
+      const ctx = await getAuthContext(req);
+      const { data: user } = await supabase.from('users').select('*').eq('id', ctx.userId).single();
+      if (user?.totpEnabledAt) {
+        throw new AppError('Two-factor authentication is already on for this account', 409, 'CONFLICT');
+      }
+
+      const secret = generateTotpSecret();
+      // Stored unconfirmed: totpEnabledAt is what actually switches 2FA on.
+      await supabase
+        .from('users')
+        .update({ totpSecret: secret, updatedAt: new Date().toISOString() })
+        .eq('id', ctx.userId);
+
+      return jsonResponse({
+        secret,
+        uri: totpUri({ secret, account: ctx.email, issuer: 'Complaudi' }),
+      });
+    }
+
+    // POST /2fa/enable
+    if (req.method === 'POST' && (path === '/2fa/enable' || path === '/2fa/enable/')) {
+      const ctx = await getAuthContext(req);
+      const body = await parseJsonBody(req, z.object({ code: z.string().min(6).max(8) }));
+
+      const { data: user } = await supabase.from('users').select('*').eq('id', ctx.userId).single();
+      if (!user?.totpSecret) throw new BadRequestError('Start the setup step first');
+      if (user.totpEnabledAt) throw new AppError('Already enabled', 409, 'CONFLICT');
+
+      if (!(await verifyTotp(user.totpSecret, body.code.trim()))) {
+        // Refusing to enable on a wrong code is the whole point of this step:
+        // it proves the authenticator is actually working before the account
+        // starts depending on it.
+        throw new BadRequestError('That code is not valid. Check your authenticator app and try again.');
+      }
+
+      const recoveryCodes = generateRecoveryCodes();
+      await supabase
+        .from('users')
+        .update({
+          totpEnabledAt: new Date().toISOString(),
+          totpRecoveryCodes: await Promise.all(recoveryCodes.map(hashRecoveryCode)),
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', ctx.userId);
+
+      // The only time these are ever readable. They are stored hashed, so
+      // neither we nor anyone with the database can show them again.
+      return jsonResponse({ enabled: true, recoveryCodes });
+    }
+
+    // POST /2fa/disable
+    if (req.method === 'POST' && (path === '/2fa/disable' || path === '/2fa/disable/')) {
+      const ctx = await getAuthContext(req);
+      const body = await parseJsonBody(req, z.object({ password: z.string().min(1) }));
+
+      const { data: user } = await supabase.from('users').select('*').eq('id', ctx.userId).single();
+      if (!user?.totpEnabledAt) throw new BadRequestError('Two-factor authentication is not on');
+
+      // Re-authenticate: turning a factor off is exactly the action a stolen
+      // session would want, and a live session alone must not be enough.
+      if (!user.passwordHash || !bcrypt.compareSync(body.password, user.passwordHash)) {
+        throw new AppError('That password is not correct', 401, 'UNAUTHORIZED');
+      }
+
+      await supabase
+        .from('users')
+        .update({
+          totpSecret: null,
+          totpEnabledAt: null,
+          totpRecoveryCodes: [],
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', ctx.userId);
+
+      return jsonResponse({ enabled: false });
+    }
+
+    // GET /2fa/status
+    if (req.method === 'GET' && (path === '/2fa/status' || path === '/2fa/status/')) {
+      const ctx = await getAuthContext(req);
+      const { data: user } = await supabase
+        .from('users')
+        .select('totpEnabledAt, totpRecoveryCodes, sessionStartedAt, sessionUserAgent')
+        .eq('id', ctx.userId)
+        .single();
+
+      return jsonResponse({
+        enabled: Boolean(user?.totpEnabledAt),
+        enabledAt: user?.totpEnabledAt ?? null,
+        recoveryCodesRemaining: (user?.totpRecoveryCodes ?? []).length,
+        session: {
+          startedAt: user?.sessionStartedAt ?? null,
+          device: describeDevice(user?.sessionUserAgent ?? null),
+        },
+      });
     }
 
     // POST /logout
@@ -458,7 +696,16 @@ Deno.serve(async (req: Request) => {
         const body = await parseJsonBody(req, schema).catch(() => ({ refreshToken: undefined }));
         if (body?.refreshToken) {
           const tokenHash = await sha256Hex(body.refreshToken);
+          const { data: stored } = await supabase
+            .from('refresh_tokens')
+            .select('userId')
+            .eq('tokenHash', tokenHash)
+            .maybeSingle();
+
           await supabase.from('refresh_tokens').delete().eq('tokenHash', tokenHash);
+          // Release the account's session too, or the slot stays claimed and
+          // the next sign-in looks like a displacement to nobody.
+          if (stored?.userId) await endSession(supabase, stored.userId);
           await supabase.auth.admin.signOut(body.refreshToken).catch(() => undefined);
         }
       } catch {

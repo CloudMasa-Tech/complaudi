@@ -15,13 +15,25 @@ interface Profile extends User {
   createdAt: string;
 }
 
+/**
+ * What a password submission produced. An account with 2FA on does not get a
+ * token yet — it gets a short-lived challenge to carry into the second step.
+ */
+export type LoginOutcome =
+  | { status: 'signed-in' }
+  | { status: 'two-factor'; challenge: string };
+
 interface AuthState {
   user: Profile | null;
   ready: boolean;
   /** Gate on capability, not role — the server is the source of both. */
   can: (capability: Capability) => boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginOutcome>;
+  verifyTwoFactor: (challenge: string, code: string) => Promise<void>;
   logout: () => void;
+  /** Set when the server signed this device out because the account was claimed elsewhere. */
+  displacedReason: string | null;
+  clearDisplaced: () => void;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -29,6 +41,7 @@ const Ctx = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [ready, setReady] = useState(false);
+  const [displacedReason, setDisplacedReason] = useState<string | null>(null);
 
   const logout = useCallback(() => {
     const refresh = tokens.refresh();
@@ -38,8 +51,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // The client calls this when a refresh fails and the session cannot be saved.
+  // A displacement carries the server's explanation, so the login screen can
+  // say why rather than looking like an unexplained sign-out.
   useEffect(() => {
-    setSessionLostHandler(() => setUser(null));
+    setSessionLostHandler((reason) => {
+      setDisplacedReason(reason ?? null);
+      setUser(null);
+    });
   }, []);
 
   // Restore the session on reload rather than bouncing the user to /login.
@@ -54,18 +72,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setReady(true));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await post<{ accessToken: string; refreshToken: string }>('/auth/login', { email, password });
+  const login = useCallback(async (email: string, password: string): Promise<LoginOutcome> => {
+    const result = await post<{
+      accessToken?: string;
+      refreshToken?: string;
+      twoFactorRequired?: boolean;
+      challenge?: string;
+    }>('/auth/login', { email, password });
+
+    if (result.twoFactorRequired && result.challenge) {
+      return { status: 'two-factor', challenge: result.challenge };
+    }
+
+    tokens.set(result.accessToken!, result.refreshToken!);
+    setDisplacedReason(null);
+    setUser(await get<Profile>('/auth/me'));
+    return { status: 'signed-in' };
+  }, []);
+
+  const verifyTwoFactor = useCallback(async (challenge: string, code: string) => {
+    const result = await post<{ accessToken: string; refreshToken: string }>(
+      '/auth/login/verify-2fa',
+      { challenge, code },
+    );
     tokens.set(result.accessToken, result.refreshToken);
+    setDisplacedReason(null);
     setUser(await get<Profile>('/auth/me'));
   }, []);
+
+  const clearDisplaced = useCallback(() => setDisplacedReason(null), []);
 
   const can = useCallback(
     (capability: Capability) => Boolean(user?.capabilities?.includes(capability)),
     [user],
   );
 
-  const value = useMemo(() => ({ user, ready, can, login, logout }), [user, ready, can, login, logout]);
+  const value = useMemo(
+    () => ({ user, ready, can, login, verifyTwoFactor, logout, displacedReason, clearDisplaced }),
+    [user, ready, can, login, verifyTwoFactor, logout, displacedReason, clearDisplaced],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
