@@ -191,13 +191,18 @@ a { color: inherit; }
   --wordmark-p: 0;
 }
 .sidebar-tagline {
-  /* 10.5px with the shared 0.055em tracking measured ~200px against ~196px of
-     sidebar — a four-pixel miss that costs a whole second line. Tightening the
-     tracking here buys it back without changing the size. */
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.66);
+  /* One line, held by nowrap rather than by hoping the measurement is right —
+     10.5px wrapped in the ~196px of usable sidebar despite the arithmetic
+     saying it would just fit. 9.5px with no extra tracking leaves real margin,
+     and the emphasis below carries the legibility the size gives up. */
+  font-size: 9.5px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.55);
 }
+/* The two phrases that say what the product is, at full strength; the words
+   joining them recede. */
+.sidebar-tagline strong { font-weight: 800; color: #fff; }
 /* No theme swap and no pair of images: the sidebar ground is fixed, so the
    white-lettered artwork is always correct. The pair that was here rendered
    both at once — `.brand-logo-dark { display: none }` and

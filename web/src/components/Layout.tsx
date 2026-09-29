@@ -10,7 +10,22 @@ import { ENTITY_LABEL, initials } from './ui';
 
 /** One source for the wordmark, so the sidebar and the header cannot disagree. */
 export const BRAND = 'Complaudi';
-export const BRAND_TAGLINE = 'An AI Platform for compliance Audit';
+/**
+ * The tagline in two forms, from one definition.
+ *
+ * `BRAND_TAGLINE_PARTS` carries which words do the work, for the renderings
+ * that emphasise them; `BRAND_TAGLINE` is joined from it, so the plain string
+ * used in the page header and the document title can never drift from the
+ * highlighted one in the sidebar.
+ */
+export const BRAND_TAGLINE_PARTS: Array<{ text: string; strong: boolean }> = [
+  { text: 'An ', strong: false },
+  { text: 'AI Platform', strong: true },
+  { text: ' for ', strong: false },
+  { text: 'compliance Audit', strong: true },
+];
+
+export const BRAND_TAGLINE = BRAND_TAGLINE_PARTS.map((p) => p.text).join('');
 
 const NAV: Array<{ to: string; label: string; icon: string; end?: boolean; capability?: Capability; adminOnly?: boolean }> = [
   { to: '/', label: 'Dashboard', icon: '◈', end: true },
@@ -174,7 +189,13 @@ export function Layout() {
               white lettering is always the right one. */}
           <div className="brand-lockup sidebar-lockup">
             <img src="/logo-dark.png" alt="Complaudi" className="brand-lockup-logo" />
-            <p className="brand-lockup-tagline sidebar-tagline">{BRAND_TAGLINE}</p>
+            <p className="brand-lockup-tagline sidebar-tagline">
+              {BRAND_TAGLINE_PARTS.map((part, i) =>
+                part.strong
+                  ? <strong key={i}>{part.text}</strong>
+                  : <span key={i}>{part.text}</span>,
+              )}
+            </p>
           </div>
         </div>
 
