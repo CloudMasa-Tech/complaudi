@@ -182,7 +182,12 @@ a { color: inherit; }
    surface. The light artwork has navy letters for white, the dark one white
    letters for when the surface goes near-black; CSS picks, since an <img src>
    cannot follow a theme on its own. */
-.sidebar-lockup {
+/* Compounded with .brand-lockup deliberately. As a bare `.sidebar-lockup` this
+   tied with the base rule at (0,1,0) and lost on declaration order — the base
+   sits ~740 lines further down — so --wordmark-p stayed at 0.448 and indented
+   the strapline 56px into the wordmark. Fourth time this stylesheet has decided
+   a conflict by line number this session. */
+.brand-lockup.sidebar-lockup {
   --logo-h: 34px;
   /* No hanging indent here. Starting the strapline under the wordmark's "p"
      works on the 460px auth panel; in a 232px sidebar the 62px offset left only
@@ -190,19 +195,24 @@ a { color: inherit; }
      The mark and its treatment are the same; only the indent is dropped. */
   --wordmark-p: 0;
 }
-.sidebar-tagline {
-  /* One line, held by nowrap rather than by hoping the measurement is right —
-     10.5px wrapped in the ~196px of usable sidebar despite the arithmetic
-     saying it would just fit. 9.5px with no extra tracking leaves real margin,
-     and the emphasis below carries the legibility the size gives up. */
+/* Also compounded. The base declares `text-wrap: balance`, and `balance` sets
+   text-wrap-mode back to `wrap` — so a bare `.sidebar-tagline { white-space:
+   nowrap }` was being undone by a later rule that never mentions white-space.
+   Both properties are set here so neither depends on order. */
+.brand-lockup-tagline.sidebar-tagline {
+  /* One line, held by nowrap rather than by hoping a measurement is right:
+     10.5px wrapped in the ~196px of usable sidebar although the arithmetic said
+     it would just fit. 9.5px with no extra tracking leaves real margin, and the
+     emphasis below carries the legibility the size gives up. */
   font-size: 9.5px;
   letter-spacing: 0;
   white-space: nowrap;
+  text-wrap: nowrap;
   color: rgba(255, 255, 255, 0.55);
 }
 /* The two phrases that say what the product is, at full strength; the words
    joining them recede. */
-.sidebar-tagline strong { font-weight: 800; color: #fff; }
+.brand-lockup-tagline.sidebar-tagline strong { font-weight: 800; color: #fff; }
 /* No theme swap and no pair of images: the sidebar ground is fixed, so the
    white-lettered artwork is always correct. The pair that was here rendered
    both at once — `.brand-logo-dark { display: none }` and
@@ -973,8 +983,8 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 }
 
 /* Signed out: large, on the navy panel. */
-.auth-aside-lockup { --logo-h: clamp(56px, 5vw, 76px); margin-bottom: 36px; }
-.auth-aside-tagline { font-size: 13px; color: #fff; }
+.brand-lockup.auth-aside-lockup { --logo-h: clamp(56px, 5vw, 76px); margin-bottom: 36px; }
+.brand-lockup-tagline.auth-aside-tagline { font-size: 13px; color: #fff; }
 
 /* h1-h4 carry `color: var(--text)` globally, which is near-black and beat the
    panel's inherited white — the headline was rendering dark on dark navy.
@@ -1075,8 +1085,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
    ~848px, which still overflows a 900px-tall window. */
 @media (min-width: 901px) and (max-height: 1000px) {
   .auth-aside { padding-block: 30px; }
-  .auth-aside-lockup { --logo-h: 64px; }
-  .auth-aside-lockup { margin-bottom: 22px; }
+  .brand-lockup.auth-aside-lockup { --logo-h: 64px; margin-bottom: 22px; }
   .auth-headline { font-size: clamp(24px, 2.2vw, 29px); margin-bottom: 10px; }
   .auth-sub { font-size: 14px; line-height: 1.55; margin-bottom: 20px; }
   .auth-points { gap: 13px; margin-bottom: 22px; }
@@ -1260,9 +1269,8 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
     position: static; height: auto; overflow: hidden;
   }
   .auth-form-brand { display: inline-flex; align-self: center; margin-bottom: 6px; }
-  .auth-aside-lockup { --logo-h: 52px; }
-  .auth-aside-lockup { margin-bottom: 24px; }
-  .auth-aside-tagline { font-size: 12px; }
+  .brand-lockup.auth-aside-lockup { --logo-h: 52px; margin-bottom: 24px; }
+  .brand-lockup-tagline.auth-aside-tagline { font-size: 12px; }
   .auth-points { margin-bottom: 26px; }
 }
 
