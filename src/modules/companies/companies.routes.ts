@@ -239,6 +239,19 @@ companiesRouter.get(
   }),
 );
 
+/**
+ * Whether this user may invite into this company, and which roles they may
+ * grant. The invite form asks rather than deciding for itself, so it cannot
+ * offer a role the server will refuse.
+ */
+companiesRouter.get(
+  '/:id/invite-permission',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await service.invitePermission(auth(req), req.params.id!));
+  }),
+);
+
 /** What a permanent delete would destroy, so the confirmation is informed. */
 companiesRouter.get(
   '/:id/deletion-impact',

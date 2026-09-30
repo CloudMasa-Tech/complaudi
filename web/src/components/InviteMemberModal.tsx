@@ -1,13 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCompanies } from '../auth/CompanyContext';
 import { ApiError, post } from '../api/client';
+import { useResource } from '../api/useResource';
 import { Drawer, ErrorNote, Spinner } from './ui';
 import type { CompanyMember, UserRole } from '../api/types';
 
-const INVITE_ROLES: { value: UserRole; label: string }[] = [
-  { value: 'CA', label: 'Chartered accountant' },
-  { value: 'ADMIN', label: 'Admin' },
-];
+/** Labels only. Which of these may actually be granted is the server's answer,
+ *  not this file's — see invitePermission. */
+const ROLE_LABELS: Record<string, { label: string; hint: string }> = {
+  ADMIN: {
+    label: 'Admin',
+    hint: 'Runs this company: works the filings and can invite and remove people.',
+  },
+  CA: {
+    label: 'Chartered accountant',
+    hint: "Works this company's tasks and filings, and can bring in other practitioners.",
+  },
+  VIEWER: {
+    label: 'Viewer (read only)',
+    hint: 'Can see the calendar, tasks and evidence, and change nothing.',
+  },
+};
+
+interface InvitePermission {
+  canInvite: boolean;
+  roles: UserRole[];
+  reason: string;
+  inviterRole: UserRole | null;
+}
 
 interface InviteResult {
   user: { id: string; name: string; email: string; role: string };
@@ -28,7 +48,17 @@ export function InviteMemberModal({ companyId, onInvited, onClose }: {
   const company = companies.find((c) => c.id === companyId);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>('CA');
+  const [role, setRole] = useState<UserRole | ''>('');
+  /* What this user may actually grant here. Asked rather than assumed: a
+     practitioner cannot grant Admin, and a dropdown that offers it produces a
+     403 from a choice that should never have been on screen. */
+  const { data: permission } = useResource<InvitePermission>(`/companies/${companyId}/invite-permission`, [companyId]);
+  const grantable = permission?.roles ?? [];
+
+  // Default to the first role they can grant, once we know what that is.
+  useEffect(() => {
+    if (!role && grantable.length) setRole(grantable[0]!);
+  }, [grantable, role]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneEmail, setDoneEmail] = useState<string | null>(null);
@@ -56,7 +86,7 @@ export function InviteMemberModal({ companyId, onInvited, onClose }: {
     <Drawer onClose={onClose}>
       <header className="drawer-head">
         <div className="stack" style={{ flex: 1, gap: 4 }}>
-          <h2 style={{ fontSize: 16 }}>Invite CA / Admin</h2>
+          <h2 style={{ fontSize: 16 }}>Invite a team member</h2>
           <span className="tiny dim">
             {company ? `To ${company.legalName}` : 'To this company'}
           </span>
@@ -94,17 +124,23 @@ export function InviteMemberModal({ companyId, onInvited, onClose }: {
             </div>
             <div className="field">
               <label>Role</label>
-              <select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-                {INVITE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} disabled={!grantable.length}>
+                {grantable.map((r) => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]?.label ?? r}</option>
+                ))}
               </select>
               <span className="field-hint">
-                They can work this company's pending tasks and filings, but cannot manage people or the account.
+                {role
+                  ? ROLE_LABELS[role]?.hint
+                  : permission
+                    ? permission.reason || 'No roles are available for you to grant here.'
+                    : 'Checking what you can grant…'}
               </span>
             </div>
             <div className="row">
               <button
                 className="btn-primary"
-                disabled={busy || name.trim().length < 2 || !email.includes('@')}
+                disabled={busy || !role || name.trim().length < 2 || !email.includes('@')}
                 onClick={submit}
               >
                 {busy ? <><Spinner /> Sending…</> : 'Send invite'}

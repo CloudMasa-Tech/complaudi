@@ -20,7 +20,7 @@ import { env } from '../../config/env';
 import { generateTemporaryPassword } from '../../lib/jwt';
 import { sendMail } from '../../lib/mailer';
 import { inviteHtml, inviteSubject, inviteText } from '../notifications/templates';
-import { canInviteAs, INVITER_ROLES } from './company-invite';
+import { canInviteAs, INVITER_ROLES, INVITE_TARGET_ROLES } from './company-invite';
 import { syncCompany } from '../../modules/compliance/compliance.service';
 import type { CreateCompanyInput, UpdateCompanyInput } from './companies.schemas';
 
@@ -239,6 +239,52 @@ export async function listSuperAdminCompanies(actor: Actor) {
  * reach the org-wide `users.manage` path — a COMPANY_OWNER added to a shared
  * organisation later will still only shape their own company's team.
  */
+/**
+ * Whether this actor may invite into this company, and which roles they may
+ * grant.
+ *
+ * One function so the button, the role picker and the invite itself cannot
+ * disagree. The UI used to decide for itself: it offered "Admin" to everyone,
+ * including practitioners who are not allowed to grant it, so choosing it
+ * produced a 403 from a dropdown that should never have contained it. It also
+ * never offered Viewer, which has always been allowed.
+ */
+export async function invitePermission(
+  actor: Actor,
+  companyId: string,
+): Promise<{ canInvite: boolean; roles: UserRole[]; reason: string; inviterRole: UserRole | null }> {
+  await getCompanyOrThrow(actor, companyId);
+
+  // Growing the team is a paid feature: a running self-service trial has no
+  // room for it, and this is checked before any user is created.
+  const organization = await prisma.organization.findUnique({
+    where: { id: actor.organizationId },
+    select: { trialEndsAt: true },
+  });
+  const trialEndsAt = organization?.trialEndsAt ?? null;
+  if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
+    return {
+      canInvite: false,
+      roles: [],
+      reason: 'Inviting team members is available after upgrading from the trial.',
+      inviterRole: null,
+    };
+  }
+
+  const inviterRole = await effectiveRole(actor, companyId);
+  if (!inviterRole || !INVITER_ROLES.includes(inviterRole)) {
+    return {
+      canInvite: false,
+      roles: [],
+      reason: 'You do not have permission to invite people into this company.',
+      inviterRole: inviterRole ?? null,
+    };
+  }
+
+  const roles = INVITE_TARGET_ROLES.filter((r) => canInviteAs(inviterRole, r));
+  return { canInvite: roles.length > 0, roles, reason: '', inviterRole };
+}
+
 export async function inviteToCompany(
   actor: Actor,
   companyId: string,
@@ -250,25 +296,11 @@ export async function inviteToCompany(
   // Resolves only a company the inviter can see — org + membership scoped.
   const company = await getCompanyOrThrow(actor, companyId);
 
-  // Inviting a team is a full-account feature. The organisation's trial status
-  // is authoritative — while a self-service trial is running there is no room
-  // to grow the team, so refuse before any user is created.
-  const organization = await prisma.organization.findUnique({
-    where: { id: actor.organizationId },
-    select: { trialEndsAt: true },
-  });
-  const trialEndsAt = organization?.trialEndsAt ?? null;
-  if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
-    throw new ForbiddenError('Inviting team members is available after upgrading from the trial.');
-  }
-
-  const inviterRole = await effectiveRole(actor, companyId);
-  if (!inviterRole || !INVITER_ROLES.includes(inviterRole)) {
-    throw new ForbiddenError('You do not have permission to invite people into this company.');
-  }
-  if (!canInviteAs(inviterRole, input.role)) {
+  const permitted = await invitePermission(actor, companyId);
+  if (!permitted.canInvite) throw new ForbiddenError(permitted.reason);
+  if (!permitted.roles.includes(input.role)) {
     throw new ForbiddenError(
-      `A ${inviterRole} cannot grant the ${input.role} role in this company.`,
+      `A ${permitted.inviterRole} cannot grant the ${input.role} role in this company.`,
     );
   }
 

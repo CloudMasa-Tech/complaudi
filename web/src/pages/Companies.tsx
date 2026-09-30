@@ -354,9 +354,16 @@ function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean 
   );
   const [inviting, setInviting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const { canOn } = useCompanies();
 
-  const mayInvite = canOn(company.id, 'work.write');
+  /* The same answer the invite form uses, rather than a second guess from
+     'work.write' plus a trial check of its own — which is how the button could
+     be enabled for someone the server would refuse, and disabled for a CA who
+     is in fact allowed to invite. */
+  const { data: invitePermission } = useResource<{ canInvite: boolean; roles: string[]; reason: string }>(
+    `/companies/${company.id}/invite-permission`,
+    [company.id],
+  );
+  const mayInvite = invitePermission?.canInvite ?? false;
 
   return (
     <div className="team">
@@ -364,14 +371,16 @@ function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean 
         <span className="team-title">Team</span>
         {notice && <span className="tiny dim team-notice">{notice}</span>}
         <span className="spacer" style={{ marginLeft: 'auto' }}>
-          {mayInvite && (
+          {invitePermission && (
             <button
               className="btn-sm btn-ghost"
-              disabled={onTrial}
-              title={onTrial ? 'Available after upgrade' : 'Invite a CA or admin to work this company'}
+              disabled={!mayInvite}
+              title={mayInvite
+                ? `Add someone to this company as ${invitePermission.roles.join(', ')}`
+                : invitePermission.reason}
               onClick={() => setInviting(true)}
             >
-              + Invite CA/Admin
+              + Add team member
             </button>
           )}
         </span>
@@ -426,8 +435,8 @@ function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean 
 }
 
 export function Companies() {
-  const { can, user } = useAuth();
   const { companies, loading, reload, select, canOn } = useCompanies();
+  const { can, user } = useAuth();
   const [showArchived, setShowArchived] = useState(false);
   const [deleting, setDeleting] = useState<Company | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
