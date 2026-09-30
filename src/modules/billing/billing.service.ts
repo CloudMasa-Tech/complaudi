@@ -17,7 +17,11 @@ import {
 import { DEFAULT_PLAN_KEY, PLANS, findPlan, inrLabel, planView } from './plans';
 import { webhookEventSchema } from './billing.schemas';
 
-const PURCHASER_ROLES = new Set(['COMPANY_OWNER', 'SUPER_ADMIN']);
+/** Everyone with a working login except VIEWER, which is read-only by
+ *  definition. The subscription belongs to the organisation, so any member who
+ *  can change anything can also pay for it. Kept in step with the same set in
+ *  supabase/functions/billing-api. */
+const PURCHASER_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'CA', 'COMPANY_OWNER']);
 
 
 // ---------------------------------------------------------- workspace view
@@ -132,7 +136,7 @@ export interface CreateOrderInput {
  *  the public key id ever leaves this function; the secret stays on the server. */
 export async function createOrder(actor: Actor, input: CreateOrderInput) {
   if (!PURCHASER_ROLES.has(actor.role)) {
-    throw new ForbiddenError('Only a company owner can upgrade the plan.');
+    throw new ForbiddenError('Read-only members cannot purchase a subscription.');
   }
   // The live-keys-in-test-mode guard. Its own comment said it was checked at
   // request time as well as at boot, but nothing had ever called it — the

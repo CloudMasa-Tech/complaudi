@@ -9,7 +9,10 @@ import { addDays, financialYearOf, monthName, utcDate } from '../_shared/dates.t
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
 
-const PURCHASER_ROLES = new Set(['COMPANY_OWNER', 'SUPER_ADMIN']);
+/** Everyone with a working login except VIEWER, which is read-only by
+ *  definition. The subscription belongs to the organisation, so any member who
+ *  can change anything can also pay for it. */
+const PURCHASER_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'CA', 'COMPANY_OWNER']);
 
 /** Prices come from ../_shared/plans.ts, a verbatim copy of the catalog the
  *  Express API charges from. tests/plans.test.ts fails if the two drift. */
@@ -49,8 +52,21 @@ Deno.serve(async (req) => {
     const client = getClientSupabase(req);
     const admin = getAdminSupabase();
 
-    // GET /billing-api/view or GET /billing-api
-    if (req.method === 'GET' && (path.endsWith('/billing-api') || path.endsWith('/view') || path.endsWith('/billing-api/view'))) {
+    // The workspace billing view.
+    //
+    // The client asks for "/billing", which resolveApiUrl turns into
+    // /functions/v1/billing-api/billing — and that matched none of the three
+    // patterns this once checked, so every load of the page fell through to the
+    // 404 at the bottom and rendered "Endpoint" in red. The page had never
+    // worked in SUPABASE mode. "/billing" is what the app actually sends, so it
+    // leads; the rest are kept for anything calling the function directly.
+    if (req.method === 'GET' && (
+      path === '' || path === '/' ||
+      path.endsWith('/billing') ||
+      path.endsWith('/billing-api') ||
+      path.endsWith('/view') ||
+      path.endsWith('/billing-api/view')
+    )) {
       const now = new Date();
 
       let org = null;
@@ -129,7 +145,7 @@ Deno.serve(async (req) => {
     // POST /billing-api/create-order
     if (req.method === 'POST' && path.endsWith('/create-order')) {
       if (!PURCHASER_ROLES.has(authCtx.role)) {
-        throw new ForbiddenError('Only a company owner can upgrade the plan.');
+        throw new ForbiddenError('Read-only members cannot purchase a subscription.');
       }
 
       const body = await req.json().catch(() => ({}));

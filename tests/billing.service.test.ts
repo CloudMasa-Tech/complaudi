@@ -88,15 +88,27 @@ afterEach(() => {
 });
 
 describe('createOrder — who may start a purchase', () => {
-  it('refuses anyone who is not the company owner or super admin', async () => {
+  it('refuses a read-only member', async () => {
+    // VIEWER is the only role that cannot buy. The subscription belongs to the
+    // organisation, so any member who can change something can also pay for it
+    // — a CA who runs a client's filings should not have to find an owner to
+    // click the button.
     mockOrdersCreate.mockResolvedValue({ id: 'order_test' });
     vi.resetModules();
     const { createOrder } = await import('../src/modules/billing/billing.service');
 
-    for (const role of ['ADMIN', 'CA', 'VIEWER'] as const) {
-      await expect(createOrder(actor(role), {})).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
-    }
+    await expect(createOrder(actor('VIEWER'), {})).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
     expect(mockOrdersCreate).not.toHaveBeenCalled();
+  });
+
+  it('lets every role that can change something buy', async () => {
+    mockOrdersCreate.mockResolvedValue({ id: 'order_test' });
+    vi.resetModules();
+    const { createOrder } = await import('../src/modules/billing/billing.service');
+
+    for (const role of ['SUPER_ADMIN', 'ADMIN', 'CA', 'COMPANY_OWNER'] as const) {
+      await expect(createOrder(actor(role), {})).resolves.toMatchObject({ orderId: 'order_test' });
+    }
   });
 
   it('creates the Razorpay order, records the CREATED row, and returns only the public key id', async () => {
