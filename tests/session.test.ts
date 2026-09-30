@@ -62,3 +62,47 @@ describe('naming the device that took over', () => {
     expect(describeDevice('curl/8.4.0')).toBeNull();
   });
 });
+
+/**
+ * Whether a sign-in counts as "another device".
+ *
+ * Mirrors the sameDevice test inside startSession. It is exercised here rather
+ * than through the database because the rule is the part that matters and the
+ * consequence — displace or keep — follows from it directly.
+ */
+const sameDevice = (
+  a: { userAgent: string | null; ip: string | null },
+  b: { userAgent: string | null; ip: string | null },
+): boolean => {
+  if (!a.userAgent || !b.userAgent) return false;
+  return a.userAgent === b.userAgent && a.ip === b.ip;
+};
+
+describe('what counts as another device', () => {
+  const laptop = { userAgent: 'Mozilla/5.0 (Macintosh) Chrome/141.0', ip: '106.200.16.35' };
+
+  it('treats the same browser at the same address as the same device', () => {
+    // Signing in again on your own laptop must not sign your own laptop out.
+    // Treating it as a displacement produced "signed in on another device" when
+    // there was no other device.
+    expect(sameDevice(laptop, { ...laptop })).toBe(true);
+  });
+
+  it('treats a different browser as another device', () => {
+    expect(sameDevice(laptop, { userAgent: 'Mozilla/5.0 (iPhone) Safari/604.1', ip: laptop.ip })).toBe(false);
+  });
+
+  it('treats the same browser from a different address as another device', () => {
+    // A stolen token replayed from elsewhere is the case worth catching, and it
+    // is worth more than sparing a roaming user one extra sign-in.
+    expect(sameDevice(laptop, { ...laptop, ip: '203.0.113.9' })).toBe(false);
+  });
+
+  it('never claims a match when the device is unknown', () => {
+    // No user-agent is not evidence of sameness. Defaulting to "same" would let
+    // a header-less client inherit somebody else's live session.
+    expect(sameDevice({ userAgent: null, ip: laptop.ip }, laptop)).toBe(false);
+    expect(sameDevice(laptop, { userAgent: null, ip: laptop.ip })).toBe(false);
+    expect(sameDevice({ userAgent: null, ip: null }, { userAgent: null, ip: null })).toBe(false);
+  });
+});

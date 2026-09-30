@@ -48,26 +48,67 @@ export interface SessionContext {
 }
 
 /**
+ * A device, as far as this rule is concerned: the browser and the address it
+ * came from. Not a fingerprint — just enough to tell "the same laptop signing
+ * in again" from "somebody else's phone".
+ */
+function sameDevice(
+  a: { userAgent: string | null; ip: string | null },
+  b: { userAgent: string | null; ip: string | null },
+): boolean {
+  if (!a.userAgent || !b.userAgent) return false;
+  return a.userAgent === b.userAgent && a.ip === b.ip;
+}
+
+/**
  * Claim the account's single session for this device.
  *
- * Every other refresh token is revoked in the same breath. Without that, a
- * displaced device could keep minting fresh access tokens from a refresh token
- * the displacement never touched — which is exactly how a single-session rule
- * gets quietly bypassed.
+ * Signing in again from the device that already holds the session keeps that
+ * session rather than replacing it. Replacing it is what produced "this account
+ * was signed in on another device" when no other device was involved — a second
+ * sign-in from the same laptop displaced the first, and the message was both
+ * alarming and untrue. The rule people want is the one it claims to be: you are
+ * signed out when somebody signs in *elsewhere*.
+ *
+ * When the device is genuinely different, every other refresh token is revoked
+ * in the same breath. Without that, a displaced device could keep minting fresh
+ * access tokens from a refresh token the displacement never touched — which is
+ * how a single-session rule gets quietly bypassed.
  */
 export async function startSession(userId: string, ctx: SessionContext = {}): Promise<SessionStamp> {
+  const incoming = { userAgent: clip(ctx.userAgent, 256), ip: clip(ctx.ip, 64) };
+
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { activeSessionId: true, sessionStartedAt: true, sessionUserAgent: true, sessionIp: true },
+  });
+
+  // The same device re-authenticating: keep the session id, so anything it
+  // already holds stays valid and nothing anywhere reports a displacement.
+  const reuse = Boolean(
+    current?.activeSessionId &&
+      sameDevice({ userAgent: current.sessionUserAgent, ip: current.sessionIp }, incoming),
+  );
+
   const stamp: SessionStamp = {
-    sessionId: crypto.randomUUID(),
+    sessionId: reuse ? current!.activeSessionId! : crypto.randomUUID(),
     startedAt: new Date(),
-    userAgent: clip(ctx.userAgent, 256),
-    ip: clip(ctx.ip, 64),
+    userAgent: incoming.userAgent,
+    ip: incoming.ip,
   };
 
   await prisma.$transaction([
-    prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: stamp.startedAt },
-    }),
+    // Only a genuinely different device invalidates what the account already
+    // holds. Revoking on a same-device sign-in would sign the user's own other
+    // tab out, which is the complaint this exists to answer.
+    ...(reuse
+      ? []
+      : [
+          prisma.refreshToken.updateMany({
+            where: { userId, revokedAt: null },
+            data: { revokedAt: stamp.startedAt },
+          }),
+        ]),
     prisma.user.update({
       where: { id: userId },
       data: {

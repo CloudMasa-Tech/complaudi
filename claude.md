@@ -170,6 +170,11 @@ One codebase serves all three targets — there is no second frontend.
 - `npm run prisma:migrate`: Apply database schema changes.
 - `npm run prisma:deploy`: Apply migrations in production.
 - `npm test`: Run backend unit tests using Vitest (crucial for engine validations).
+- **Both probes below sign in, and signing in ends that account's session
+  everywhere else.** They require `PROBE_EMAIL`/`PROBE_PASSWORD` and refuse to
+  guess, because defaulting to a seeded login threw a person out of the browser
+  mid-session with a message blaming a device that did not exist. Point them at
+  an account nobody is using.
 - `npm run security:probe`: Black-box security probe against a **running** API —
   authentication, token forgery, single-session enforcement, tenant isolation and
   user enumeration. Not part of `npm test` (it needs a server, a database and a

@@ -32,8 +32,11 @@ import fs from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
 const WEB = process.env.WEB ?? 'http://localhost:5173';
-const EMAIL = process.env.PROBE_EMAIL ?? 'client@northwind.test';
-const PASSWORD = process.env.PROBE_PASSWORD ?? 'DemoPassword1';
+// Signing in ends that account's session elsewhere, so this refuses to guess
+// at an account. Signed-out pages are audited regardless; give it credentials
+// for a dedicated test account to include the signed-in ones.
+const EMAIL = process.env.PROBE_EMAIL;
+const PASSWORD = process.env.PROBE_PASSWORD;
 const WIDTHS = (process.env.WIDTHS ?? '360,390,430').split(',').map(Number);
 
 const CHROME = process.env.CHROME ?? [
@@ -122,6 +125,13 @@ for (const width of WIDTHS) {
     report(await measure(page, width), path);
   }
   await page.close();
+}
+
+if (!EMAIL || !PASSWORD) {
+  console.log('\nSigned-in pages skipped: set PROBE_EMAIL and PROBE_PASSWORD for a dedicated test account.');
+  console.log('(Signing in would end that account\'s session in the browser.)\n');
+  await browser.close();
+  process.exit(failures === 0 ? 0 : 1);
 }
 
 // Signed in: the drawer, the tables, and the pages that actually hold data.

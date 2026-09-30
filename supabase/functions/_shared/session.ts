@@ -39,25 +39,58 @@ function clientIp(req: Request): string | null {
 }
 
 /**
+ * A device, as far as this rule is concerned: the browser and the address it
+ * came from. Not a fingerprint — just enough to tell "the same laptop signing
+ * in again" from "somebody else's phone".
+ */
+function sameDevice(
+  a: { userAgent: string | null; ip: string | null },
+  b: { userAgent: string | null; ip: string | null },
+): boolean {
+  if (!a.userAgent || !b.userAgent) return false;
+  return a.userAgent === b.userAgent && a.ip === b.ip;
+}
+
+/**
  * Claim the account's single session for this sign-in.
  *
- * Revokes every outstanding refresh token first: without that, the displaced
- * device could quietly mint itself a fresh access token and carry on, which
- * would make the whole mechanism decorative.
+ * Signing in again from the device that already holds the session keeps that
+ * session rather than replacing it. Replacing it produced "this account was
+ * signed in on another device" when no other device was involved, which is both
+ * alarming and untrue. The rule is meant to be exactly what it says: you are
+ * signed out when somebody signs in elsewhere.
+ *
+ * A genuinely different device revokes every outstanding refresh token: without
+ * that, the displaced device could quietly mint itself a fresh access token and
+ * carry on, which would make the whole mechanism decorative.
  */
 export async function startSession(
   supabase: any,
   userId: string,
   req: Request,
 ): Promise<SessionStamp> {
+  const incoming = { userAgent: clip(req.headers.get('user-agent'), 256), ip: clientIp(req) };
+
+  const { data: current } = await supabase
+    .from('users')
+    .select('activeSessionId, sessionUserAgent, sessionIp')
+    .eq('id', userId)
+    .maybeSingle();
+
+  const reuse = Boolean(
+    current?.activeSessionId &&
+      sameDevice({ userAgent: current.sessionUserAgent ?? null, ip: current.sessionIp ?? null }, incoming),
+  );
+
   const stamp: SessionStamp = {
-    sessionId: crypto.randomUUID(),
+    sessionId: reuse ? current.activeSessionId : crypto.randomUUID(),
     startedAt: new Date().toISOString(),
-    userAgent: clip(req.headers.get('user-agent'), 256),
-    ip: clientIp(req),
+    userAgent: incoming.userAgent,
+    ip: incoming.ip,
   };
 
-  await supabase.from('refresh_tokens').delete().eq('userId', userId);
+  // Only a different device invalidates what the account already holds.
+  if (!reuse) await supabase.from('refresh_tokens').delete().eq('userId', userId);
 
   await supabase
     .from('users')

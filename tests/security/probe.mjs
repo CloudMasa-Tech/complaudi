@@ -20,8 +20,31 @@
 import crypto from 'node:crypto';
 
 const API = process.env.API ?? 'http://localhost:4000/api/v1';
-const EMAIL = process.env.PROBE_EMAIL ?? 'client@northwind.test';
-const PASSWORD = process.env.PROBE_PASSWORD ?? 'DemoPassword1';
+const EMAIL = process.env.PROBE_EMAIL;
+const PASSWORD = process.env.PROBE_PASSWORD;
+
+/**
+ * There is no default account, deliberately.
+ *
+ * This probe signs in repeatedly, and the single-session rule means every
+ * sign-in ends that account's session elsewhere. Pointed at an account a person
+ * is using, it signs them out — which is exactly what happened when it defaulted
+ * to a seeded login: someone working in the browser was thrown out mid-session
+ * by a test run, with a message blaming a device that did not exist.
+ *
+ * Give it an account that nobody is sitting in front of.
+ */
+if (!EMAIL || !PASSWORD) {
+  console.error(`
+  PROBE_EMAIL and PROBE_PASSWORD are required.
+
+  This signs in several times and will sign that account out everywhere else,
+  so point it at a dedicated test account — never one a person is using.
+
+      PROBE_EMAIL=probe@yourdomain.test PROBE_PASSWORD=… npm run security:probe
+`);
+  process.exit(2);
+}
 
 let failures = 0;
 const check = (ok, label, detail = '') => {
