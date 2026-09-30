@@ -178,6 +178,14 @@ One codebase serves all three targets — there is no second frontend.
   any failure. It exists because two real gaps — single-session missing from the
   Express API, and a displaced refresh token still working — typechecked and
   passed the unit suite while being wrong.
+- `npm run audit:mobile`: Renders the app at phone widths in real Chrome and
+  fails on horizontal overflow, naming the element that cannot shrink. Also
+  checks the navigation drawer (44px trigger, off-canvas, scrim). Needs the web
+  dev server running; `WEB=…` to point it elsewhere. Drives the installed
+  Chrome via puppeteer-core rather than downloading one — `CHROME=…` to
+  override. It exists because three real overflows shipped once, each hidden by
+  the `body { overflow-x: hidden }` guard, which clips overflow rather than
+  fixing it: they built, typechecked and passed every test while being wrong.
 - `npm run seed`: Seed demo organizations and companies.
 - `npm run supabase:bootstrap`: Create the Supabase storage bucket.
 - `npm run migrate:prod` / `migrate:prod:check`: Production migration helpers.
