@@ -42,9 +42,22 @@ export function createApp(): Express {
           frameSrc: ['https://api.razorpay.com', 'https://checkout.razorpay.com'],
           imgSrc: ["'self'", 'data:', 'https:'],
           styleSrc: ["'self'", "'unsafe-inline'"],
-          connectSrc: ["'self'"],
+          // 'self' alone breaks the app whenever this server also serves the
+          // built frontend (SERVE_WEB). The browser runs in SUPABASE mode by
+          // default, so every API call goes to the Supabase functions origin —
+          // connect-src 'self' blocks all of them, and a CSP failure is silent
+          // in the UI. Razorpay is here because checkout calls its own API.
+          connectSrc: [
+            "'self'",
+            ...(env.SUPABASE_URL ? [env.SUPABASE_URL] : []),
+            'https://api.razorpay.com',
+            'https://lumberjack.razorpay.com',
+          ],
         },
       },
+      // Not one of helmet's defaults. Denies this origin the device APIs it
+      // never uses, so an injected script cannot reach for them either.
+      permittedCrossDomainPolicies: { permittedPolicies: 'none' },
     }),
   );
   app.use(
