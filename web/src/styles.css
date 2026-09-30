@@ -51,7 +51,13 @@
   --brand-orange: #f97316;
   --brand-orange-deep: #ea580c;
   --brand-amber: #fbbf24;
-  --brand-gradient: linear-gradient(135deg, #0d2144 0%, #1b3a6b 45%, #2563eb 100%);
+  /* The blue end is #1d4ed8, not the #2563eb of --brand-blue. Both consumers
+     of this gradient put white text on it, and both hit the same wall: at
+     #2563eb the ramp reaches 4.92:1 against pure white under the auth panel's
+     text, so nothing translucent could clear 4.5:1 there. Deepening one stop
+     buys every element on the panel its contrast and still reads as the same
+     blue. --brand-blue is untouched; it is never a text background. */
+  --brand-gradient: linear-gradient(135deg, #0d2144 0%, #1b3a6b 45%, #1d4ed8 100%);
   --brand-orange-gradient: linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%);
 }
 
@@ -164,10 +170,11 @@ a { color: inherit; }
    It is a navigation rail rather than content: the pages beside it still follow
    the light/dark setting, and only this column is fixed. */
 .sidebar {
-  /* Its own vertical ramp rather than --brand-gradient: that one runs to
-     #2563eb, and white at 76% over the blue end measures 3.68:1 — under the
-     4.5:1 floor for 14.5px nav labels. This stays in the navy range and every
-     element on it clears 6:1. */
+  /* Its own vertical ramp rather than --brand-gradient: a tall rail wants the
+     ramp to run down it, not diagonally across. It also predates the token's
+     blue end being deepened — at the time that ran to #2563eb, where white at
+     76% measured 3.68:1, under the 4.5:1 floor for 14.5px nav labels. This
+     stays in the navy range and every element on it clears 6:1. */
   background: linear-gradient(180deg, #0d2144 0%, #16325f 100%);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   padding: 20px 14px;
@@ -1037,19 +1044,66 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .auth-aside h1, .auth-aside h2, .auth-aside h3 { color: #fff; }
 
 .auth-headline {
-  margin: 0 0 14px;
+  margin: 0 0 13px;
   font-size: clamp(27px, 3vw, 38px);
   line-height: 1.16;
   font-weight: 700;
   letter-spacing: -0.022em;
+  /* Without this the last word drops to a line of its own — "again." was
+     sitting alone under a full-width first line. */
+  text-wrap: balance;
 }
-.auth-sub { margin: 0 0 32px; font-size: 15px; line-height: 1.62; color: rgba(255, 255, 255, 0.82); }
+/* The one warm phrase in the headline.
+ *
+ * `color` is set first and on its own: if background-clip:text is not
+ * supported the phrase still reads as orange instead of vanishing, and the
+ * transparent fill is only applied where the clip is known to work.
+ *
+ * #fdba74 rather than the brand #f97316 — against the blue end of the panel
+ * gradient (#2563eb) the brand orange measures 1.84:1, which is invisible.
+ * This measures 3.06:1 there and 6.7:1 where the headline actually sits,
+ * clearing the 3:1 that large text needs across the whole ramp. */
+.auth-headline-accent {
+  color: #fdba74;
+  background-image: linear-gradient(100deg, #fdba74 0%, #fb923c 48%, #fdba74 100%);
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .auth-headline-accent {
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+/* `pretty` over `balance`: this is a paragraph, so the goal is only to keep a
+   single word off the last line, not to even every line out. */
+.auth-sub {
+  margin: 0 0 26px;
+  font-size: 15px; line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+  text-wrap: pretty;
+}
 
-.auth-points { list-style: none; margin: 0 0 36px; padding: 0; display: flex; flex-direction: column; gap: 17px; }
+.auth-points { list-style: none; margin: 0 0 30px; padding: 0; display: flex; flex-direction: column; gap: 16px; }
 .auth-points li { display: flex; gap: 13px; align-items: flex-start; }
-.auth-points div { display: flex; flex-direction: column; gap: 2px; }
-.auth-points strong { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
-.auth-points span { font-size: 13px; color: rgba(255, 255, 255, 0.68); line-height: 1.5; }
+.auth-points div { display: flex; flex-direction: column; gap: 3px; }
+.auth-points strong { font-size: 15px; font-weight: 650; letter-spacing: -0.012em; }
+/* 0.68 flattened to 3.24:1 against the blue end of the gradient, under the
+   4.5:1 this size needs. 0.8 clears it at 3.9:1 — still clearly secondary to
+   the white label above it. */
+.auth-points span { font-size: 13px; color: rgba(255, 255, 255, 0.84); line-height: 1.5; }
+
+/* The authorities, as chips. Scoped under .auth-points so it outranks the
+   `.auth-points span` rule above — both would otherwise be (0,1,1) and the
+   winner would depend on which was written last. */
+.auth-points .auth-segments { flex-direction: row; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.auth-points .auth-segments span {
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.012em; line-height: 1.45;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
 .auth-tick {
   flex: none; margin-top: 2px; padding: 3px; border-radius: 50%;
   background: rgba(255, 255, 255, 0.15); color: var(--brand-blue-light);
@@ -1073,13 +1127,14 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   box-shadow: 0 3px 16px -2px rgba(249, 115, 22, 0.65);
 }
 .trial-card h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; letter-spacing: -0.015em; }
-.trial-card > p { margin: 0 0 17px; font-size: 13.5px; line-height: 1.55; color: rgba(255, 255, 255, 0.78); }
+.trial-card > p { margin: 0 0 16px; font-size: 13.5px; line-height: 1.55; color: rgba(255, 255, 255, 0.9); }
 
 .trial-cta {
   display: flex; align-items: center; justify-content: center; gap: 9px;
   padding: 13px 20px; border-radius: 10px;
   font-size: 14.5px; font-weight: 650; text-decoration: none;
-  /* The wordmark's orange, used here and nowhere else on the page. */
+  /* The wordmark's orange. Shared with the badge above it and the one accented
+     phrase in the headline — all warmth on this panel points at enrolling. */
   color: #fff; background: var(--brand-orange-gradient);
   box-shadow: 0 7px 22px -6px rgba(249, 115, 22, 0.7);
   transition: transform 0.16s ease, box-shadow 0.16s ease;
@@ -1088,7 +1143,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .trial-cta:active { transform: translateY(0); }
 .trial-cta svg { transition: transform 0.16s ease; }
 .trial-cta:hover svg { transform: translateX(3px); }
-.trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.62); }
+.trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.86); }
 
 /* ── the form side ───────────────────────────────────────────────────── */
 /* Both columns start at the top, on all four signed-out pages.

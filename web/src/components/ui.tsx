@@ -170,9 +170,6 @@ export const COVERED_SEGMENTS = [
   'MCA', 'GST', 'Income Tax', 'MSME', 'PF', 'ESI', 'Labour', 'DPIIT',
 ] as const;
 
-/** Interpunct-separated, for the quiet strapline under a logo. */
-export const SEGMENTS_LINE = COVERED_SEGMENTS.join(' · ');
-
 /** "a, b, c and d", for running prose. */
 export const SEGMENTS_PROSE = `${COVERED_SEGMENTS.slice(0, -1).join(', ')} and ${COVERED_SEGMENTS.at(-1)}`;
 

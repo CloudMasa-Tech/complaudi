@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { BRAND_TAGLINE } from './Layout';
-import { SEGMENTS_LINE } from './ui';
+import { COVERED_SEGMENTS } from './ui';
 
 /**
  * The split screen every signed-out page sits in.
@@ -42,33 +42,41 @@ export function AuthShell({
             <p className="brand-lockup-tagline auth-aside-tagline">{BRAND_TAGLINE}</p>
           </div>
 
-          <h1 className="auth-headline">Never miss a statutory deadline again.</h1>
+          {/* The accent is on the two words that carry the promise. Kept to one
+              phrase: a headline with several highlights has no emphasis at all. */}
+          <h1 className="auth-headline">
+            Never miss a <span className="auth-headline-accent">statutory deadline</span> again.
+          </h1>
           <p className="auth-sub">
-            Complaudi builds your compliance calendar from your company's own facts —
-            entity type, turnover, headcount, registrations — and keeps it current as
-            the law moves.
+            Built from your own facts — entity type, turnover, headcount,
+            registrations — and kept current as the law changes.
           </p>
 
           <ul className="auth-points">
             <li>
               <Tick />
               <div>
-                <strong>100+ statutory rules across every segment</strong>
-                <span>{SEGMENTS_LINE} — each continuously watched</span>
+                <strong>100+ statutory rules, continuously watched</strong>
+                {/* Chips rather than an interpunct run-on: eight names in a row
+                    read as one grey sentence, and the question someone actually
+                    has is whether *their* authority is in the list. */}
+                <div className="auth-segments">
+                  {COVERED_SEGMENTS.map((s) => <span key={s}>{s}</span>)}
+                </div>
               </div>
             </li>
             <li>
               <Tick />
               <div>
-                <strong>Every obligation is explainable</strong>
-                <span>See exactly which fact made a filing apply to you</span>
+                <strong>Know exactly why each filing applies</strong>
+                <span>Trace any obligation back to the fact that triggered it</span>
               </div>
             </li>
             <li>
               <Tick />
               <div>
-                <strong>Evidence-backed completion</strong>
-                <span>Nothing is marked done without the challan to prove it</span>
+                <strong>Nothing closes without proof</strong>
+                <span>A filing is only done once the challan is attached</span>
               </div>
             </li>
             <li>
@@ -78,7 +86,7 @@ export function AuthShell({
                     returns: the cited rule, whether it reaches this company,
                     its next due date and the penalty for missing it. */}
                 <strong>Ask the AI copilot anything</strong>
-                <span>What applies to you, when it's due, and what it costs to miss</span>
+                <span>What applies, when it's due, what it costs to miss</span>
               </div>
             </li>
           </ul>
