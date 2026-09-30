@@ -14,8 +14,29 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#1b3a6b" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Static, so it cannot read BRAND_TAGLINE from Layout.tsx — keep the two in step by hand. -->
-    <title>Complaudi — An AI Platform for compliance Audit</title>
+
+    <!-- ── SEO ──────────────────────────────────────────────────────────────
+         The default here is the marketing page's metadata, because `/` is the
+         public entry point for a signed-out visitor. useDocumentMeta() in
+         App.tsx re-applies the title and robots per route, and sets
+         `noindex, nofollow` for everything behind the session gate.
+
+         The description is deliberately declared twice — here for a crawler
+         that never executes JS, and in App.tsx for the runtime — so the two
+         must stay byte-identical. -->
+    <title>Complaudi | Business Compliance &amp; Verification Platform</title>
+    <meta name="description" content="Complaudi helps Indian businesses manage registrations, verification, documents and compliance from one simple platform." />
+    <!-- Production domain. og:url and twitter:url carry the same value, since a
+         card or a share preview that resolves against a different host than the
+         canonical is how duplicate-content issues start. -->
+    <link rel="canonical" href="https://complaudi.in/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://complaudi.in/" />
+    <meta property="og:site_name" content="Complaudi" />
+    <meta property="og:title" content="Complaudi | Business Compliance &amp; Verification Platform" />
+    <meta property="og:description" content="Verify your business, manage registrations, track compliance, and keep business information organized — from one platform built for Indian businesses." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://complaudi.in/" />
   </head>
   <body>
     <div id="root"></div>

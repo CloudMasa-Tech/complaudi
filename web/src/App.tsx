@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { CompanyProvider } from './auth/CompanyContext';
@@ -11,6 +12,7 @@ import { Copilot } from './pages/Copilot';
 import { Dashboard } from './pages/Dashboard';
 import { Documents } from './pages/Documents';
 import { ForgotPassword } from './pages/ForgotPassword';
+import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Profile } from './pages/Profile';
 import { Register } from './pages/Register';
@@ -20,6 +22,39 @@ import { Billing } from './pages/Billing';
 import { Analytics } from './pages/Analytics';
 import { Tasks } from './pages/Tasks';
 import { Team } from './pages/Team';
+
+const APP_TITLE = 'Complaudi — An AI Platform for compliance Audit';
+const LANDING_TITLE = 'Complaudi | Business Compliance & Verification Platform';
+const LANDING_DESCRIPTION =
+  'Complaudi helps Indian businesses manage registrations, verification, documents and compliance from one simple platform.';
+
+function setMeta(name: string, content: string) {
+  let el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+  if (!el) {
+    el = document.createElement('meta');
+    el.name = name;
+    document.head.appendChild(el);
+  }
+  el.content = content;
+}
+
+/**
+ * Title and robots for the public marketing page, and `noindex` for everything
+ * behind the session gate.
+ *
+ * This lives here rather than inside Landing, because a component that sets the
+ * title on mount can only restore the old one on unmount — which does nothing
+ * for a hard load straight into /login, and the SPA would then serve the
+ * marketing title on a private page. Keying it to the route is the only version
+ * that is correct on the first paint.
+ */
+function useDocumentMeta(isLanding: boolean) {
+  useEffect(() => {
+    document.title = isLanding ? LANDING_TITLE : APP_TITLE;
+    setMeta('description', LANDING_DESCRIPTION);
+    setMeta('robots', isLanding ? 'index, follow' : 'noindex, nofollow');
+  }, [isLanding]);
+}
 
 function TrialEnded({ endedAt, organization, onSignOut }: {
   endedAt: string; organization: string; onSignOut: () => void;
@@ -56,6 +91,22 @@ export default function App() {
   const { user, ready, logout } = useAuth();
   const { pathname } = useLocation();
 
+  // Signed out, the marketing page is the front door and the two account pages
+  // sit behind it. Login used to be the catch-all, which meant a shared link
+  // landed on a sign-in form; now an unknown path gets the landing page and the
+  // CTAs on it resolve to /register.
+  const ACCOUNT_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
+  // The landing page is the catch-all, so a hard load of any *other* unknown
+  // path is the indexable page. `ready` is included because the session probe
+  // has not answered yet on first paint, and the marketing page is what that
+  // paint will show.
+  const isLanding = !user && !ACCOUNT_ROUTES.includes(pathname);
+
+  // Unconditional and above every early return: this has to run on the first
+  // paint of a hard load into any route, which a hook placed inside a branch
+  // below would miss.
+  useDocumentMeta(isLanding);
+
   // Password reset lives outside the session gate: a signed-in user who clicked
   // the emailed link must still land here, and a refresh must not flash login.
   if (pathname === '/forgot-password') return <ForgotPassword />;
@@ -64,12 +115,12 @@ export default function App() {
   // Wait for the session-restore probe so a refresh does not flash the login screen.
   if (!ready) return <Loading label="Starting" />;
 
-  // Signed out, the only two destinations are signing in and signing up.
   if (!user) {
     return (
       <Routes>
+        <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="*" element={<Login />} />
+        <Route path="*" element={<Landing />} />
       </Routes>
     );
   }

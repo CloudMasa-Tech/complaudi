@@ -8,6 +8,10 @@ import { ThemeProvider } from './auth/ThemeContext';
 // request. The variable build is one file for every weight we use.
 import '@fontsource-variable/inter';
 import './styles.css';
+// After styles.css, and deliberately so: the marketing sheet re-declares type and
+// control rules that styles.css also sets on bare elements, and it wins those
+// on source order rather than on specificity alone.
+import './landing/landing.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
