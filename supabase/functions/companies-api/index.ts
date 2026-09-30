@@ -4,6 +4,21 @@ import { assertCan, getAuthContext, isSuperAdmin, requireCapability, seesEveryCo
 import { getSupabaseAdminClient, serialiseBigInt } from '../_shared/database.ts';
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../_shared/errors.ts';
 import { canInviteAs, grantableRoles, type InviteRole } from '../_shared/company-invite.ts';
+// @ts-ignore — same pinned build auth-api verifies passwords with.
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
+
+/**
+ * A temporary password worth generating.
+ *
+ * The previous one was `Temp@` plus eight hex characters of a UUID — a fixed
+ * prefix and 32 bits of entropy, in a known format. This is 12 characters from
+ * a 62-character alphabet drawn from the CSPRNG.
+ */
+function generateTemporaryPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(14));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+}
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
 import { resyncAfterProfileChange } from '../_shared/sync.ts';
@@ -438,29 +453,31 @@ Deno.serve(async (req: Request) => {
         .eq('email', body.email)
         .maybeSingle();
 
+      // Returned to the inviter when this call creates the account, so they
+      // have something to pass on. Null when the person already existed.
+      let temporaryPassword: string | null = null;
+
       if (!targetUser) {
-        const tempPassword = `Temp@${crypto.randomUUID().slice(0, 8)}`;
-        const { data: newAuthUser, error: authErr } = await supabase.auth.admin.createUser({
-          email: body.email,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: { name: body.name },
-        });
+        temporaryPassword = generateTemporaryPassword();
 
-        if (authErr || !newAuthUser.user) {
-          throw new AppError(`User invitation failed: ${authErr?.message || 'User creation error'}`, 400);
-        }
-
+        // A real bcrypt hash. This wrote the literal string
+        // 'SUPABASE_AUTH_MANAGED' and created a Supabase Auth user instead —
+        // but sign-in runs bcrypt.compareSync against this column, so every
+        // account invited through this function could never sign in at all.
         const { data: newUser, error: dbErr } = await supabase
           .from('users')
           .insert({
-            id: newAuthUser.user.id,
+            id: crypto.randomUUID(),
             organizationId: authCtx.organizationId,
             email: body.email,
-            passwordHash: 'SUPABASE_AUTH_MANAGED',
+            passwordHash: bcrypt.hashSync(temporaryPassword, 12),
             name: body.name,
             role: body.role,
             isActive: true,
+            // Somebody else chose this password, so it may do one thing: be
+            // replaced. Every route but /me, /logout and /change-password is
+            // refused until it is.
+            mustChangePassword: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           })
@@ -487,7 +504,20 @@ Deno.serve(async (req: Request) => {
 
       if (memErr) throw new AppError(memErr.message, 400);
 
+      // The same shape the Express API returns. These had diverged completely —
+      // Express answers { user, companies, temporaryPassword } and this answered
+      // a member record, so the form read result.user.role off undefined and
+      // died with a TypeError on a request that had in fact succeeded.
       const result = {
+        user: {
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          role: body.role,
+        },
+        companies: [companyId],
+        temporaryPassword,
+        // Kept so anything already reading the member shape still works.
         role: body.role,
         since: membership.createdAt || new Date().toISOString(),
         member: {
@@ -496,10 +526,7 @@ Deno.serve(async (req: Request) => {
           email: targetUser.email,
           isActive: targetUser.isActive,
         },
-        invitedBy: {
-          id: authCtx.userId,
-          name: authCtx.name,
-        },
+        invitedBy: { id: authCtx.userId, name: authCtx.name },
         invitationStatus: targetUser.isActive ? 'ACTIVE' : 'PENDING',
       };
 
