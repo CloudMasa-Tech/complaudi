@@ -42,3 +42,23 @@ describe('who may invite, and as what', () => {
     }
   });
 });
+
+describe('the Node and edge copies agree', () => {
+  it('apply the same matrix', async () => {
+    // Two runtimes authorise the same invitations and deploy separately. They
+    // had already drifted once: the edge authorised on a capability instead of
+    // this matrix and accepted COMPANY_OWNER as a target, which would have
+    // created a second owner of a company.
+    const edge = await import('../supabase/functions/_shared/company-invite');
+    expect(edge.INVITE_TARGET_ROLES).toEqual(INVITE_TARGET_ROLES);
+    expect(edge.INVITER_ROLES).toEqual(INVITER_ROLES);
+
+    const ALL = ['SUPER_ADMIN', 'ADMIN', 'CA', 'COMPANY_OWNER', 'VIEWER'] as const;
+    for (const inviter of ALL) {
+      for (const target of ALL) {
+        expect(edge.canInviteAs(inviter, target)).toBe(canInviteAs(inviter, target));
+      }
+      expect(edge.grantableRoles(inviter)).toEqual(offered(inviter));
+    }
+  });
+});

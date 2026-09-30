@@ -1,8 +1,9 @@
 // supabase/functions/companies-api/index.ts
 import { handleCors } from '../_shared/cors.ts';
-import { assertCan, getAuthContext, requireCapability, seesEveryCompany } from '../_shared/auth.ts';
+import { assertCan, getAuthContext, isSuperAdmin, requireCapability, seesEveryCompany } from '../_shared/auth.ts';
 import { getSupabaseAdminClient, serialiseBigInt } from '../_shared/database.ts';
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../_shared/errors.ts';
+import { canInviteAs, grantableRoles, type InviteRole } from '../_shared/company-invite.ts';
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
 import { resyncAfterProfileChange } from '../_shared/sync.ts';
@@ -374,18 +375,63 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(rows);
     }
 
+    // GET /companies/:id/invite-permission
+    const permMatch = path.match(/^\/([a-f0-9-]+)\/invite-permission$/);
+    if (req.method === 'GET' && permMatch) {
+      const companyId = permMatch[1];
+      // Resolves only a company this actor holds — the 404 is the tenant check.
+      const { data: company } = await client.from('companies').select('id').eq('id', companyId).maybeSingle();
+      if (!company) throw new NotFoundError('Company');
+
+      const { data: org } = await admin
+        .from('organizations').select('trialEndsAt').eq('id', authCtx.organizationId).maybeSingle();
+      const trialEndsAt = org?.trialEndsAt ? new Date(org.trialEndsAt) : null;
+      if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
+        return jsonResponse({
+          canInvite: false, roles: [], inviterRole: null,
+          reason: 'Inviting team members is available after upgrading from the trial.',
+        });
+      }
+
+      const { data: membership } = await admin
+        .from('company_memberships').select('role')
+        .eq('companyId', companyId).eq('userId', authCtx.userId).maybeSingle();
+      // An organisation-wide role stands in for a per-company grant.
+      const inviterRole = (membership?.role ?? (isSuperAdmin(authCtx.role) ? 'SUPER_ADMIN' : null)) as InviteRole | null;
+      const roles = grantableRoles(inviterRole);
+
+      return jsonResponse({
+        canInvite: roles.length > 0,
+        roles,
+        inviterRole,
+        reason: roles.length ? '' : 'You do not have permission to invite people into this company.',
+      });
+    }
+
     // POST /companies/:id/invite
     const inviteMatch = path.match(/^\/([a-f0-9-]+)\/invite$/);
     if (req.method === 'POST' && inviteMatch) {
       const companyId = inviteMatch[1];
       await assertCan(authCtx, companyId, 'company.edit');
 
+      // COMPANY_OWNER is deliberately absent: no role may grant a second owner
+      // of a company. It was accepted here and refused by the Express API.
       const schema = z.object({
         name: z.string().min(2).max(120),
         email: z.string().email().toLowerCase(),
-        role: z.enum(['ADMIN', 'CA', 'COMPANY_OWNER', 'VIEWER']).default('CA'),
+        role: z.enum(['ADMIN', 'CA', 'VIEWER']).default('CA'),
       });
       const body = await parseJsonBody(req, schema);
+
+      // Authorise on the same matrix the Express API uses, rather than on the
+      // 'company.edit' capability alone — which let a practitioner grant ADMIN.
+      const { data: inviterMembership } = await admin
+        .from('company_memberships').select('role')
+        .eq('companyId', companyId).eq('userId', authCtx.userId).maybeSingle();
+      const inviterRole = (inviterMembership?.role ?? (isSuperAdmin(authCtx.role) ? 'SUPER_ADMIN' : null)) as InviteRole | null;
+      if (!inviterRole || !canInviteAs(inviterRole, body.role as InviteRole)) {
+        throw new ForbiddenError(`A ${inviterRole ?? 'user'} cannot grant the ${body.role} role in this company.`);
+      }
 
       let { data: targetUser } = await supabase
         .from('users')

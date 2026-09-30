@@ -4,6 +4,67 @@ import { useTheme } from '../auth/ThemeContext';
 import { ApiError, post, tokens } from '../api/client';
 import { Card, Drawer, ErrorNote, Field, Spinner, initials, Badge } from '../components/ui';
 import { ROLE_LABEL } from '../api/types';
+import { useCompanies } from '../auth/CompanyContext';
+import { useResource } from '../api/useResource';
+import { InviteMemberModal } from '../components/InviteMemberModal';
+
+/**
+ * Adding people, from the page where somebody looks for their account settings.
+ *
+ * The invite already lived on each company's team block, which is the right
+ * place to manage one company's people — but not where anyone looks to add a
+ * colleague. This is the same endpoint and the same modal, scoped to whichever
+ * company is selected in the switcher, so there is one rule and one form.
+ */
+function TeamCard() {
+  const { companies, selectedId } = useCompanies();
+  const company = companies.find((c) => c.id === selectedId) ?? companies[0];
+  const [inviting, setInviting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const { data: permission, error } = useResource<{ canInvite: boolean; roles: string[]; reason: string }>(
+    company ? `/companies/${company.id}/invite-permission` : '',
+    [company?.id],
+  );
+
+  if (!company) return null;
+
+  // An older API without that endpoint must not make the card disappear; the
+  // server checks the invite itself regardless.
+  const unavailable = Boolean(error);
+  const mayInvite = permission ? permission.canInvite : unavailable;
+
+  return (
+    <>
+      <Card title="Team">
+        <div className="card-body">
+          <div className="stack" style={{ gap: 4, marginBottom: 12 }}>
+            <span style={{ fontWeight: 500, fontSize: 14 }}>Add someone to {company.legalName}</span>
+            <span className="dim tiny">
+              {permission && !permission.canInvite
+                ? permission.reason
+                : permission?.roles.length
+                  ? `You can add them as ${permission.roles.map((r) => ROLE_LABEL[r as keyof typeof ROLE_LABEL] ?? r).join(', ')}.`
+                  : 'Invite a colleague and choose what they may do.'}
+            </span>
+          </div>
+          {notice && <div className="alert alert-info" style={{ marginBottom: 10 }}>{notice}</div>}
+          <button className="btn-primary btn-sm" disabled={!mayInvite} onClick={() => setInviting(true)}>
+            + Invite a team member
+          </button>
+        </div>
+      </Card>
+
+      {inviting && (
+        <InviteMemberModal
+          companyId={company.id}
+          onInvited={(m) => setNotice(`Invite sent to ${m.member.email}.`)}
+          onClose={() => setInviting(false)}
+        />
+      )}
+    </>
+  );
+}
 
 /** Anyone can change their own password, which is what a temporary one is for. */
 function ChangePasswordDrawer({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
@@ -159,6 +220,8 @@ export function Profile() {
               </div>
             </Card>
           )}
+
+          <TeamCard />
 
           {/* Settings Card */}
           <Card title="Settings & Security">

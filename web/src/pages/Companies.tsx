@@ -354,16 +354,28 @@ function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean 
   );
   const [inviting, setInviting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Only for the fallback below, when the server cannot answer for itself.
+  const { canOn } = useCompanies();
 
   /* The same answer the invite form uses, rather than a second guess from
      'work.write' plus a trial check of its own — which is how the button could
      be enabled for someone the server would refuse, and disabled for a CA who
      is in fact allowed to invite. */
-  const { data: invitePermission } = useResource<{ canInvite: boolean; roles: string[]; reason: string }>(
-    `/companies/${company.id}/invite-permission`,
-    [company.id],
-  );
-  const mayInvite = invitePermission?.canInvite ?? false;
+  const { data: invitePermission, error: invitePermissionError } = useResource<
+    { canInvite: boolean; roles: string[]; reason: string }
+  >(`/companies/${company.id}/invite-permission`, [company.id]);
+
+  /* If that endpoint is unavailable — an API that predates it, which is every
+     deployment until companies-api ships — fall back to the old client-side
+     test rather than hiding the button. Gating the *render* on the response is
+     what made this disappear entirely: a feature must not vanish because a new
+     endpoint 404s. The server checks the invite itself either way. */
+  const permissionUnavailable = Boolean(invitePermissionError);
+  const mayInvite = invitePermission
+    ? invitePermission.canInvite
+    : permissionUnavailable && canOn(company.id, 'work.write') && !onTrial;
+  const inviteReason = invitePermission?.reason
+    || (onTrial ? 'Inviting team members is available after upgrading from the trial.' : '');
 
   return (
     <div className="team">
@@ -371,13 +383,15 @@ function TeamSection({ company, onTrial }: { company: Company; onTrial: boolean 
         <span className="team-title">Team</span>
         {notice && <span className="tiny dim team-notice">{notice}</span>}
         <span className="spacer" style={{ marginLeft: 'auto' }}>
-          {invitePermission && (
+          {(invitePermission || permissionUnavailable) && (
             <button
               className="btn-sm btn-ghost"
               disabled={!mayInvite}
               title={mayInvite
-                ? `Add someone to this company as ${invitePermission.roles.join(', ')}`
-                : invitePermission.reason}
+                ? (invitePermission
+                    ? `Add someone to this company as ${invitePermission.roles.join(', ')}`
+                    : 'Add someone to this company')
+                : inviteReason}
               onClick={() => setInviting(true)}
             >
               + Add team member

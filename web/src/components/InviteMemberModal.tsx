@@ -52,8 +52,16 @@ export function InviteMemberModal({ companyId, onInvited, onClose }: {
   /* What this user may actually grant here. Asked rather than assumed: a
      practitioner cannot grant Admin, and a dropdown that offers it produces a
      403 from a choice that should never have been on screen. */
-  const { data: permission } = useResource<InvitePermission>(`/companies/${companyId}/invite-permission`, [companyId]);
-  const grantable = permission?.roles ?? [];
+  const { data: permission, error: permissionError } = useResource<InvitePermission>(
+    `/companies/${companyId}/invite-permission`,
+    [companyId],
+  );
+  /* Against an API without that endpoint, fall back to the roles every inviter
+     is allowed to grant. Narrower than an owner is entitled to — Admin is
+     missing — but the alternative is offering a role the server may refuse,
+     which is the fault this replaced. The full list returns once companies-api
+     ships the endpoint. */
+  const grantable: UserRole[] = permission?.roles ?? (permissionError ? ['CA', 'VIEWER'] : []);
 
   // Default to the first role they can grant, once we know what that is.
   useEffect(() => {
@@ -134,7 +142,9 @@ export function InviteMemberModal({ companyId, onInvited, onClose }: {
                   ? ROLE_LABELS[role]?.hint
                   : permission
                     ? permission.reason || 'No roles are available for you to grant here.'
-                    : 'Checking what you can grant…'}
+                    : permissionError
+                      ? 'Showing the roles anyone may grant; this server cannot confirm the full list.'
+                      : 'Checking what you can grant…'}
               </span>
             </div>
             <div className="row">
