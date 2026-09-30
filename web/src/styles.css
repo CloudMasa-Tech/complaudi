@@ -1655,3 +1655,30 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   .content > .row { flex-wrap: wrap; row-gap: 10px; }
   .content > .row > * { flex: 1 1 100%; min-width: 0; }
 }
+
+/* ── company documents: one card, one row per document ───────────────────
+ * Each document slot used to be a Card of its own, with its own heading and
+ * the same "Persistent document management" subtitle repeated underneath. A
+ * company page carrying seven of them read as the same block over and over and
+ * ran to a screen and a half for what is a short list.
+ */
+.doc-slots { display: flex; flex-direction: column; gap: 0; }
+.doc-slot + .doc-slot { border-top: 1px solid var(--border); }
+.doc-slot { padding: 12px 0; }
+.doc-slot:first-child { padding-top: 0; }
+.doc-slot:last-child { padding-bottom: 0; }
+
+.doc-slot-head {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 8px;
+}
+.doc-slot-title { font-size: 13.5px; font-weight: 650; letter-spacing: -0.005em; }
+.doc-slot-body { display: flex; flex-direction: column; gap: 10px; }
+
+/* The empty state is the common one, so it stays quiet: a line of text and the
+   control, not a bordered panel competing with the rows around it. */
+.doc-slot-body > div:last-of-type { min-width: 0; }
+
+@media (max-width: 560px) {
+  .doc-slot-head { gap: 6px; }
+}

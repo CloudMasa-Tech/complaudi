@@ -184,8 +184,13 @@ function DocumentSlotCard({ companyId, docType, title, note, documents, onReload
   }
 
   return (
-    <Card title={title} note={note || `Persistent document management`}>
-      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="doc-slot">
+      <div className="doc-slot-head">
+        <span className="doc-slot-title">{title}</span>
+        {note && <span className="tiny dim">{note}</span>}
+        {existingDoc && <span className="badge badge-COMPLETED">Filed</span>}
+      </div>
+      <div className="doc-slot-body">
         {err && <ErrorNote error={err} />}
 
         {selectedFile ? (
@@ -234,7 +239,9 @@ function DocumentSlotCard({ companyId, docType, title, note, documents, onReload
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 6, border: '1px solid var(--border)' }}>
-            <span className="tiny dim">No document uploaded yet for {title}.</span>
+            {/* The row heading names the document; repeating it here just made
+                every empty row read as a paragraph. */}
+            <span className="tiny dim">Not uploaded yet.</span>
             <button type="button" className="btn-sm" onClick={() => fileInputRef.current?.click()}>
               Choose File
             </button>
@@ -252,7 +259,7 @@ function DocumentSlotCard({ companyId, docType, title, note, documents, onReload
           }}
         />
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -276,19 +283,41 @@ function CompanyDocumentSlotsManager({ companyId, filterType }: { companyId: str
     ? slots.filter((s) => s.docType === filterType)
     : slots;
 
+  /*
+   * One card, one row per document — not a card each.
+   *
+   * Every slot used to be a full Card with its own heading and the same
+   * "Persistent document management" subtitle, so a company page showed the
+   * identical upload block three to seven times over. Nothing was duplicated
+   * by then; it simply read as repetition, and made a short list of documents
+   * take a screen and a half.
+   */
+  // The same match the rows use — a slot is filled when a document carries its
+  // docType as a label. Counting it any other way would let the summary and the
+  // rows disagree.
+  const filed = filteredSlots.filter((s) =>
+    docs.some((d) => (d.label || '').toLowerCase() === s.docType.toLowerCase()),
+  ).length;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {filteredSlots.map((s) => (
-        <DocumentSlotCard
-          key={s.docType}
-          companyId={companyId}
-          docType={s.docType}
-          title={s.title}
-          documents={docs}
-          onReload={reload}
-        />
-      ))}
-    </div>
+    <Card
+      title={filterType ? filteredSlots[0]?.title ?? 'Document' : 'Documents'}
+      note={filteredSlots.length > 1 ? `${filed} of ${filteredSlots.length} filed` : undefined}
+    >
+      <div className="card-body doc-slots">
+        {filteredSlots.map((s) => (
+          <DocumentSlotCard
+            key={s.docType}
+            companyId={companyId}
+            docType={s.docType}
+            // A single-slot card already names the document in its heading.
+            title={s.title}
+            documents={docs}
+            onReload={reload}
+          />
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -965,7 +994,7 @@ export function CompanyEdit() {
         )}
       </form>
 
-      {showTab('incometax') && (
+      {tab === 'incometax' && (
         <CompanyDocumentSlotsManager companyId={company.id} filterType="pan" />
       )}
 
@@ -973,22 +1002,22 @@ export function CompanyEdit() {
       {showTab('gst') && (
         <>
           <Registrations company={company} busy={busy} errors={errors} run={run} showOnly="gst" />
-          <CompanyDocumentSlotsManager companyId={company.id} filterType="gst" />
+          {tab === 'gst' && <CompanyDocumentSlotsManager companyId={company.id} filterType="gst" />}
         </>
       )}
 
       {showTab('msme') && (
         <>
           <Registrations company={company} busy={busy} errors={errors} run={run} showOnly="msme" />
-          <CompanyDocumentSlotsManager companyId={company.id} filterType="msme" />
+          {tab === 'msme' && <CompanyDocumentSlotsManager companyId={company.id} filterType="msme" />}
         </>
       )}
 
-      {showTab('dpiit') && (
+      {tab === 'dpiit' && (
         <CompanyDocumentSlotsManager companyId={company.id} filterType="dpiit" />
       )}
 
-      {showTab('dsc') && (
+      {tab === 'dsc' && (
         <CompanyDocumentSlotsManager companyId={company.id} filterType="dsc" />
       )}
 
@@ -1003,12 +1032,17 @@ export function CompanyEdit() {
         * registration they evidence, which is the more useful placement, so
         * they are the ones kept.
         */}
-      {tab === 'documents' && (
-        <Card title="Company Documents Management">
-          <div className="card-body">
-            <CompanyDocumentSlotsManager companyId={company.id} />
-          </div>
-        </Card>
+      {/*
+        * In the combined view every document lives in this one card.
+        *
+        * The per-tab cards above are scoped to their own tab now. Left showing
+        * in 'all' as well, they produced seven separate upload cards down the
+        * page — PAN, GST, MSME, Startup, DSC, Master Data, MCA Report — each
+        * with its own heading and the same empty state, which reads as the same
+        * thing asked over and over. One card, one row each.
+        */}
+      {(tab === 'documents' || tab === 'all') && (
+        <CompanyDocumentSlotsManager companyId={company.id} />
       )}
 
       {showTab('directors') && (
@@ -1019,7 +1053,7 @@ export function CompanyEdit() {
         <McaImport company={company} busy={busy} run={run} />
       )}
 
-      {showTab('import') && (
+      {tab === 'import' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
           <CompanyDocumentSlotsManager companyId={company.id} filterType="master_data" />
           <CompanyDocumentSlotsManager companyId={company.id} filterType="mca_report" />
