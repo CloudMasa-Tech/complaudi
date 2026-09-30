@@ -183,24 +183,16 @@ a { color: inherit; }
 
 .brand { display: flex; flex-direction: column; gap: 9px; padding: 0 4px; }
 
-/* Signed in: the same lockup, sized for the sidebar and coloured for a light
-   surface. The light artwork has navy letters for white, the dark one white
-   letters for when the surface goes near-black; CSS picks, since an <img src>
-   cannot follow a theme on its own. */
-/* Compounded with .brand-lockup deliberately. As a bare `.sidebar-lockup` this
-   tied with the base rule at (0,1,0) and lost on declaration order — the base
-   sits ~740 lines further down — so --wordmark-p stayed at 0.448 and indented
-   the strapline 56px into the wordmark. Fourth time this stylesheet has decided
-   a conflict by line number this session. */
+/* Signed in: the same lockup, at the sidebar's size. It differs from the panel
+   in nothing but --logo-h and the type size — the indent is shared.
+
+   Compounded with .brand-lockup deliberately. As a bare `.sidebar-lockup` it
+   tied with the base at (0,1,0) and lost on declaration order, the base sitting
+   ~800 lines further down. */
 .brand-lockup.sidebar-lockup {
   /* 62px of 76 — 225px of artwork against 244px usable, leaving real margin
      rather than the few pixels two earlier attempts here were wrong by. */
   --logo-h: 62px;
-  /* The strapline starts where the "C" ends rather than under the "p".
-     Measured off the artwork: swoosh colour runs out at x=200 of 941, so the
-     lettering begins 21.3% across. The auth panel's 44.8% ("p") would put the
-     indent at 101px here and push the line out of the column. */
-  --wordmark-p: 0.213;
 }
 /* Also compounded. The base declares `text-wrap: balance`, and `balance` sets
    text-wrap-mode back to `wrap` — so a bare `.sidebar-tagline { white-space:
@@ -494,6 +486,39 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--accent-soft); }
 .table-wrap { overflow-x: auto; }
+
+/* ── the calendar's month groups ─────────────────────────────────────────
+ * .month, .month-head and .month-name were being used in Calendar.tsx with no
+ * rules behind them at all. The two spans in the header therefore sat inline
+ * with nothing between them — "Mar 20263 items" — and the block had no padding,
+ * so the month sat flush against the card's edge while the rows inside it were
+ * inset by the table's own cell padding.
+ */
+.month { display: flex; flex-direction: column; }
+.month-group + .month-group { border-top: 1px solid var(--navy-border); }
+
+.month-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--navy-border);
+  /* The month stays put while its own rows scroll past it. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.month-name {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent);
+}
+.month-count { font-size: 12px; color: var(--text-3); }
+
+/* A group's rows carry the separator between them, but the last one would
+   otherwise double up with the group border below it. */
+.month-group tr:last-child td { border-bottom: 0; }
 
 .sticky-head th {
   position: sticky;
@@ -971,9 +996,11 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
      width here lets the tagline's offset track the size instead of being
      pinned to one of them. */
   --logo-w: calc(var(--logo-h) * 3.633);
-  /* Where the "p" of "Complaudi" begins, measured off the artwork: the glyph
-     runs x=422..525 of 941, so its left edge is 44.8% across the wordmark. */
-  --wordmark-p: 0.448;
+  /* Where the lettering begins, measured off the artwork: swoosh colour runs
+     out at x=200 of 941, so the "C" ends 21.3% across the wordmark and the
+     strapline hangs from the "o". One value for both contexts — the panel and
+     the sidebar indent by the same fraction and differ only in size. */
+  --wordmark-p: 0.213;
 
   display: inline-flex;
   flex-direction: column;
