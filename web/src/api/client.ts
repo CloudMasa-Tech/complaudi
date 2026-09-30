@@ -182,18 +182,39 @@ async function send(path: string, opts: RequestOptions, isRetry = false): Promis
     redirect: 'follow',
   });
 
-  if (res.status === 401 && !isRetry) {
-    // Read the body without consuming it: the caller still needs to parse it.
-    const reason = await displacementReason(res.clone());
-    if (reason) {
-      // A displaced session cannot be refreshed back into life — the refresh
-      // token was revoked with it. Retrying would only burn a round trip.
-      tokens.clear();
-      onSessionLost(reason);
-      return res;
-    }
-    if (tokens.refresh()) {
-      if (await refreshSession()) return send(path, opts, true);
+  if (res.status === 401) {
+    // A 401 from the endpoints that establish a session is an answer, not a
+    // lost session: signing in with the wrong password, or a stale reset link.
+    // Clearing state there would report "you were signed out" to somebody who
+    // was never signed in.
+    const isCredentialEndpoint = /^\/auth\/(login|register|refresh|forgot-password|reset-password|two-factor|change-password)/.test(path);
+
+    if (!isCredentialEndpoint) {
+      // Read the body without consuming it: the caller still needs to parse it.
+      const reason = await displacementReason(res.clone());
+      if (reason) {
+        // A displaced session cannot be refreshed back into life — the refresh
+        // token was revoked with it. Retrying would only burn a round trip.
+        tokens.clear();
+        onSessionLost(reason);
+        return res;
+      }
+
+      if (!isRetry && tokens.refresh() && (await refreshSession())) {
+        return send(path, opts, true);
+      }
+
+      /**
+       * Nothing left to try, so end the session rather than leaving it half
+       * alive.
+       *
+       * This used to do nothing at all when there was no refresh token to
+       * spend — which is precisely what a displacement or a sign-out leaves
+       * behind. The app kept its in-memory profile, rendered the whole shell,
+       * and put "Missing or invalid Authorization header" in every panel: a
+       * signed-out session that still looked signed in, with no way out but a
+       * manual reload.
+       */
       tokens.clear();
       onSessionLost();
     }
