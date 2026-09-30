@@ -943,7 +943,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   background: var(--brand-gradient);
   color: #fff;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 56px clamp(32px, 5vw, 72px);
 }
 /* Two soft light sources, so the flat gradient gains some depth without
@@ -1091,16 +1091,23 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.62); }
 
 /* ── the form side ───────────────────────────────────────────────────── */
-.auth-main { display: grid; place-items: center; padding: 48px 24px; background: var(--surface); }
-/* A form taller than the viewport should begin at the top and scroll, not sit
-   centred with its heading pushed off the top edge. */
-.auth-split.wide .auth-main { align-items: start; padding-block: var(--auth-top) 48px; }
-/* On enrolment the form begins at the top of its column, so the panel does too.
-   Left centred, the wordmark floated in the vertical middle while the page
-   heading sat level with the top of the screen — a ~100px mismatch across the
-   split at 1440px. The short pages keep `safe center`: their forms are centred,
-   so a centred panel is what lines up with them. */
-.auth-split.wide .auth-aside { align-items: flex-start; }
+/* Both columns start at the top, on all four signed-out pages.
+ *
+ * Centring each one independently drifts them apart: a column centres its own
+ * content in its own height, and the two columns never hold the same amount,
+ * so the wordmark lands at one height and the form's heading at another. Top
+ * alignment is the only rule under which they agree — and it is also what a
+ * form taller than the viewport needs, so it scrolls rather than sitting
+ * centred with its heading pushed off the top edge.
+ *
+ * Horizontal centring is kept: it is the vertical axis that has to match. */
+.auth-main {
+  display: grid;
+  justify-items: center;
+  align-items: start;
+  padding: var(--auth-top) 24px 48px;
+  background: var(--surface);
+}
 /* The panel is identical on all four signed-out pages — same width, same
  * sticky behaviour — so moving between sign-in and enrolment never resizes it.
  * It pins so a long form scrolls past rather than dragging it away.
@@ -1112,10 +1119,10 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
  *   overflow-y: auto  — the panel scrolls instead of clipping. `overflow-x`
  *                       stays hidden so the decorative radials are still
  *                       cropped to the panel.
- *   align-items: safe center — plain `center` pushes overflowing content above
- *                       the scroll origin, where it can never be reached.
- *                       `safe` falls back to start alignment the moment it
- *                       would overflow.
+ *   align-items: flex-start — content starts at the scroll origin, so nothing
+ *                       can end up above it and out of reach. This replaced
+ *                       `safe center`, which only fell back to start once the
+ *                       content already overflowed.
  */
 .auth-aside {
   position: sticky;
@@ -1124,7 +1131,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
-  align-items: safe center;
+  align-items: flex-start;
   padding-block: var(--auth-top);
   scrollbar-width: none;
 }
