@@ -131,7 +131,12 @@ function WorkspaceBilling() {
     return <Loading label="Loading billing" />;
   }
 
-  const { plans, subscription, payments, canPurchase } = data;
+  const { subscription, payments, canPurchase } = data;
+  // Two API implementations serve this page and they deploy separately, so a
+  // browser can be talking to one that predates plan tiers and answers with the
+  // old single `plan` object. Reading `.map` off that blanks the page, which is
+  // a failure mode this app has already shipped once. Degrade to a message.
+  const plans = Array.isArray(data.plans) ? data.plans : [];
   const onTrial = subscription.status === 'TRIAL';
   const trialDaysLeft = subscription.trialDaysLeft;
 
@@ -182,6 +187,9 @@ function WorkspaceBilling() {
                   : 'Paying again extends from your current end date — no days are lost.'}
               </p>
 
+              {plans.length === 0 ? (
+                <ErrorNote error="This server is still running an older billing API that does not offer plan tiers. Deploy the billing-api function to enable upgrades." />
+              ) : (
               <div className="plan-grid">
                 {plans.map((plan) => (
                   <PlanCard
@@ -194,6 +202,7 @@ function WorkspaceBilling() {
                   />
                 ))}
               </div>
+              )}
 
               {payError && <ErrorNote error={payError} />}
               <p className="dim tiny plan-foot">
