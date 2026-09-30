@@ -47,5 +47,6 @@ jobs:
           port: 21
           protocol: ftp
           local-dir: ./web/dist/
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          server-dir: ./
           dangerous-clean-slate: false
+          log-level: verbose
