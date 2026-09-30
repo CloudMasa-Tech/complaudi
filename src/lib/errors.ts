@@ -53,6 +53,17 @@ export class UnprocessableError extends AppError {
  * Distinct from a plain 403 so the front end can show an upgrade screen rather
  * than a permissions error — the account is valid, its window has closed.
  */
+/**
+ * The account holds a password somebody else chose and must replace it before
+ * it can do anything. Its own code, so the front end can route to the change
+ * screen instead of showing a dead end.
+ */
+export class PasswordChangeRequiredError extends AppError {
+  constructor(message = 'Set your own password before continuing.') {
+    super(message, 403, 'PASSWORD_CHANGE_REQUIRED');
+  }
+}
+
 export class TrialExpiredError extends AppError {
   constructor(endedAt: Date) {
     super(

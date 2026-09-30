@@ -548,6 +548,7 @@ export async function getProfile(userId: string) {
       lastLoginAt: true,
       organization: { select: { id: true, name: true, slug: true, trialEndsAt: true } },
       _count: { select: { memberships: true } },
+      mustChangePassword: true,
     },
   });
   if (!user) return null;
@@ -562,6 +563,8 @@ export async function getProfile(userId: string) {
     capabilities: capabilitiesOf(user.role),
     seesEveryCompany: seesEveryCompany(user.role),
     companyCount: user._count.memberships,
+    /** The app routes straight to the change-password screen when this is set. */
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
@@ -600,7 +603,11 @@ export async function resetPassword(actor: Actor, userId: string, chosen?: strin
   const changedAt = new Date();
 
   await prisma.$transaction([
-    prisma.user.update({ where: { id: userId }, data: { passwordHash, passwordChangedAt: changedAt } }),
+    prisma.user.update({
+      where: { id: userId },
+      // Choosing your own password is exactly what clears the requirement.
+      data: { passwordHash, passwordChangedAt: changedAt, mustChangePassword: false },
+    }),
     prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: changedAt } }),
   ]);
 
@@ -619,7 +626,11 @@ export async function changeOwnPassword(userId: string, currentPassword: string,
   const passwordHash = await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS);
 
   await prisma.$transaction([
-    prisma.user.update({ where: { id: userId }, data: { passwordHash, passwordChangedAt: changedAt } }),
+    prisma.user.update({
+      where: { id: userId },
+      // Choosing your own password is exactly what clears the requirement.
+      data: { passwordHash, passwordChangedAt: changedAt, mustChangePassword: false },
+    }),
     // Other devices are signed out; this one gets a fresh pair below.
     prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: changedAt } }),
   ]);
