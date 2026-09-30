@@ -923,6 +923,9 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
  * still leads with the trial offer without pushing sign-in off the screen.
  */
 .auth-split {
+  /* The distance both columns start from the top. Shared, so the wordmark and
+     the page heading cannot drift apart when one side's padding is tuned. */
+  --auth-top: 40px;
   min-height: 100vh;
   display: grid;
   /* One ratio for sign-in, enrolment, forgotten password and reset. Moving
@@ -1091,7 +1094,13 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .auth-main { display: grid; place-items: center; padding: 48px 24px; background: var(--surface); }
 /* A form taller than the viewport should begin at the top and scroll, not sit
    centred with its heading pushed off the top edge. */
-.auth-split.wide .auth-main { align-items: start; padding-block: 40px 48px; }
+.auth-split.wide .auth-main { align-items: start; padding-block: var(--auth-top) 48px; }
+/* On enrolment the form begins at the top of its column, so the panel does too.
+   Left centred, the wordmark floated in the vertical middle while the page
+   heading sat level with the top of the screen — a ~100px mismatch across the
+   split at 1440px. The short pages keep `safe center`: their forms are centred,
+   so a centred panel is what lines up with them. */
+.auth-split.wide .auth-aside { align-items: flex-start; }
 /* The panel is identical on all four signed-out pages — same width, same
  * sticky behaviour — so moving between sign-in and enrolment never resizes it.
  * It pins so a long form scrolls past rather than dragging it away.
@@ -1116,7 +1125,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   overflow-x: hidden;
   overflow-y: auto;
   align-items: safe center;
-  padding-block: 40px;
+  padding-block: var(--auth-top);
   scrollbar-width: none;
 }
 .auth-aside::-webkit-scrollbar { width: 0; }
@@ -1126,7 +1135,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
    rather than 900: with the fourth value point the untightened panel runs
    ~848px, which still overflows a 900px-tall window. */
 @media (min-width: 901px) and (max-height: 1000px) {
-  .auth-aside { padding-block: 30px; }
+  .auth-split { --auth-top: 30px; }
   .brand-lockup.auth-aside-lockup { --logo-h: 64px; margin-bottom: 22px; }
   .auth-headline { font-size: clamp(24px, 2.2vw, 29px); margin-bottom: 10px; }
   .auth-sub { font-size: 14px; line-height: 1.55; margin-bottom: 20px; }
