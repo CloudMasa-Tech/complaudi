@@ -11,6 +11,12 @@ import {
   verifyRefreshToken,
 } from '../../lib/jwt';
 import { prisma } from '../../lib/prisma';
+import {
+  SessionDisplacedError,
+  checkSession,
+  startSession,
+  type SessionContext,
+} from '../../lib/session';
 import { addDays, parseDate } from '../../lib/dates';
 import { decodeCin, normalisePhone } from '../../lib/india';
 import { syncCompany } from '../compliance/compliance.service';
@@ -40,15 +46,25 @@ async function uniqueSlug(base: string): Promise<string> {
   return `${root}-${Date.now()}`;
 }
 
-async function issueTokens(user: User): Promise<AuthResult> {
+/**
+ * Mint a token pair bound to one session.
+ *
+ * The session id is a parameter rather than minted here because the two
+ * callers need opposite things: signing in claims a *new* session (displacing
+ * any other device), while refreshing must stay on the one it already has.
+ * Minting inside would make every refresh silently displace the user's own
+ * other tab.
+ */
+async function issueTokens(user: User, sessionId: string): Promise<AuthResult> {
   const accessToken = signAccessToken({
     sub: user.id,
     org: user.organizationId,
     email: user.email,
     name: user.name,
     role: user.role,
+    sid: sessionId,
   });
-  const refreshToken = signRefreshToken(user.id);
+  const refreshToken = signRefreshToken(user.id, sessionId);
   const decoded = verifyRefreshToken(refreshToken);
 
   await prisma.refreshToken.create({
@@ -73,7 +89,7 @@ async function issueTokens(user: User): Promise<AuthResult> {
 }
 
 /** Creates the organization and its first user, who becomes the OWNER. */
-export async function register(input: RegisterInput): Promise<AuthResult> {
+export async function register(input: RegisterInput, ctx: SessionContext = {}): Promise<AuthResult> {
   const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
   if (existing) throw new ConflictError('An account with this email already exists');
 
@@ -94,7 +110,9 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     });
   });
 
-  return issueTokens(user);
+  // Signing in claims the account's single session, ending it elsewhere.
+  const stamp = await startSession(user.id, ctx);
+  return issueTokens(user, stamp.sessionId);
 }
 
 /** How long a self-service trial lasts. */
@@ -114,7 +132,10 @@ export const TRIAL_DAYS = 14;
 import { validateCompanyMasterData } from '../../lib/companyValidation';
 import { getCompanyVerificationProvider } from '../../lib/verifications';
 
-export async function registerTrial(input: TrialSignupInput): Promise<AuthResult & { trialEndsAt: Date }> {
+export async function registerTrial(
+  input: TrialSignupInput,
+  ctx: SessionContext = {},
+): Promise<AuthResult & { trialEndsAt: Date }> {
   const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
   if (existing) throw new ConflictError('An account with this email already exists');
 
@@ -218,10 +239,11 @@ export async function registerTrial(input: TrialSignupInput): Promise<AuthResult
   // them rather than as a borrowed super admin.
   await syncCompany({ userId: user.id, organizationId: user.organizationId, role: user.role }, companyId);
 
-  return { ...(await issueTokens(user)), trialEndsAt };
+  const stamp = await startSession(user.id, ctx);
+  return { ...(await issueTokens(user, stamp.sessionId)), trialEndsAt };
 }
 
-export async function login(input: LoginInput): Promise<AuthResult> {
+export async function login(input: LoginInput, ctx: SessionContext = {}): Promise<AuthResult> {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
 
   // Compare against a dummy hash when the user is unknown so response timing
@@ -233,7 +255,9 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   if (!user.isActive) throw new UnauthorizedError('This account has been deactivated');
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-  return issueTokens(user);
+  // Signing in here ends the session on every other device.
+  const stamp = await startSession(user.id, ctx);
+  return issueTokens(user, stamp.sessionId);
 }
 
 /** Rotates the refresh token: the presented one is revoked as the new pair is issued. */
@@ -248,15 +272,41 @@ export async function refresh(token: string): Promise<AuthResult> {
   const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
   if (!user || !user.isActive) throw new UnauthorizedError('Account is unavailable');
 
+  // The session must still be the account's live one. Without this, a device
+  // that was displaced could go on minting fresh access tokens from the
+  // refresh token it still held, and the rule would mean nothing.
+  const check = checkSession(user, decoded.sid);
+  if (!check.ok) throw new SessionDisplacedError(check.message);
+
   await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
-  return issueTokens(user);
+  return issueTokens(user, decoded.sid as string);
 }
 
 export async function logout(token: string): Promise<void> {
-  await prisma.refreshToken.updateMany({
+  const revoked = await prisma.refreshToken.updateMany({
     where: { tokenHash: hashToken(token), revokedAt: null },
     data: { revokedAt: new Date() },
   });
+
+  // Release the account's session too, so the next sign-in is an ordinary one
+  // rather than being reported to the user as having displaced a device they
+  // had already signed out of themselves.
+  if (revoked.count > 0) {
+    try {
+      const { sub, sid } = verifyRefreshToken(token);
+      if (sid) {
+        await prisma.user.updateMany({
+          // Scoped to this session id: a device that was already displaced must
+          // not be able to sign the *current* session out on its way past.
+          where: { id: sub, activeSessionId: sid },
+          data: { activeSessionId: null, sessionStartedAt: null, sessionUserAgent: null, sessionIp: null },
+        });
+      }
+    } catch {
+      // An unverifiable token still had its refresh row revoked above; there is
+      // nothing further to release.
+    }
+  }
 }
 
 export async function logoutEverywhere(userId: string): Promise<void> {
@@ -575,5 +625,6 @@ export async function changeOwnPassword(userId: string, currentPassword: string,
   ]);
 
   const fresh = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  return issueTokens(fresh);
+  const stamp = await startSession(userId);
+  return issueTokens(fresh, stamp.sessionId);
 }

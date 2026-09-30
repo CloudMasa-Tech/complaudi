@@ -17,6 +17,14 @@ const authLimiter = rateLimit({
   message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again in a few minutes.' } },
 });
 
+/** The device claiming the session, for the message the displaced one is
+ *  shown. req.ip is already the real client behind a proxy — app.ts sets
+ *  trust proxy. */
+const deviceOf = (req: { header(n: string): string | undefined; ip?: string }) => ({
+  userAgent: req.header('user-agent') ?? null,
+  ip: req.ip ?? null,
+});
+
 export const authRouter = Router();
 
 authRouter.post(
@@ -24,7 +32,7 @@ authRouter.post(
   authLimiter,
   validateBody(registerSchema),
   asyncHandler(async (req, res) => {
-    const result = await service.register(req.body);
+    const result = await service.register(req.body, deviceOf(req));
     await recordAudit({
       organizationId: result.user.organizationId,
       actorId: result.user.id,
@@ -44,7 +52,7 @@ authRouter.post(
   authLimiter,
   validateBody(trialSignupSchema),
   asyncHandler(async (req, res) => {
-    const result = await service.registerTrial(req.body);
+    const result = await service.registerTrial(req.body, deviceOf(req));
     await recordAudit({
       organizationId: result.user.organizationId,
       actorId: result.user.id,
@@ -64,7 +72,7 @@ authRouter.post(
   authLimiter,
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
-    const result = await service.login(req.body);
+    const result = await service.login(req.body, deviceOf(req));
     await recordAudit({
       organizationId: result.user.organizationId,
       actorId: result.user.id,
