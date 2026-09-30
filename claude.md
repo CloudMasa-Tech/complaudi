@@ -170,6 +170,14 @@ One codebase serves all three targets — there is no second frontend.
 - `npm run prisma:migrate`: Apply database schema changes.
 - `npm run prisma:deploy`: Apply migrations in production.
 - `npm test`: Run backend unit tests using Vitest (crucial for engine validations).
+- `npm run security:probe`: Black-box security probe against a **running** API —
+  authentication, token forgery, single-session enforcement, tenant isolation and
+  user enumeration. Not part of `npm test` (it needs a server, a database and a
+  seeded login) and it signs in as a real user, so run it against dev or staging.
+  `API=… PROBE_EMAIL=… PROBE_PASSWORD=…` to point it elsewhere; exits non-zero on
+  any failure. It exists because two real gaps — single-session missing from the
+  Express API, and a displaced refresh token still working — typechecked and
+  passed the unit suite while being wrong.
 - `npm run seed`: Seed demo organizations and companies.
 - `npm run supabase:bootstrap`: Create the Supabase storage bucket.
 - `npm run migrate:prod` / `migrate:prod:check`: Production migration helpers.
