@@ -7,13 +7,12 @@ export const corsHeaders: Record<string, string> = {
   'Access-Control-Max-Age': '86400',
 };
 
-const ALLOWED_ORIGINS = ['http://localhost:5173', 'https://complaudi.regibiz.in'];
+const ALLOWED_ORIGINS = ['http://localhost:5173', 'https://complaudi.regibiz.in', 'https://complaudi.in', 'https://www.complaudi.in'];
 
 export function getCorsHeaders(reqOrigin: string | null): Record<string, string> {
-  const origin = (reqOrigin && ALLOWED_ORIGINS.includes(reqOrigin)) ? reqOrigin : ALLOWED_ORIGINS[0];
   return {
     ...corsHeaders,
-    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Origin': reqOrigin || '*',
     'Vary': 'Origin',
   };
 }

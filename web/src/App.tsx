@@ -12,7 +12,6 @@ import { Copilot } from './pages/Copilot';
 import { Dashboard } from './pages/Dashboard';
 import { Documents } from './pages/Documents';
 import { ForgotPassword } from './pages/ForgotPassword';
-import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Profile } from './pages/Profile';
 import { Register } from './pages/Register';
