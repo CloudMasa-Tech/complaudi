@@ -992,7 +992,18 @@ export function CompanyEdit() {
         <CompanyDocumentSlotsManager companyId={company.id} filterType="dsc" />
       )}
 
-      {(showTab('documents') || showTab('all')) && (
+      {/*
+        * Only on its own tab, never in the combined view.
+        *
+        * showTab('documents') is already true when tab === 'all', so this card
+        * used to render all seven slots alongside the per-tab cards that had
+        * just rendered five of them — every certificate appeared twice, and
+        * Master Data and the MCA report three times, since the import section
+        * below adds those two as well. The per-tab cards sit beside the
+        * registration they evidence, which is the more useful placement, so
+        * they are the ones kept.
+        */}
+      {tab === 'documents' && (
         <Card title="Company Documents Management">
           <div className="card-body">
             <CompanyDocumentSlotsManager companyId={company.id} />
