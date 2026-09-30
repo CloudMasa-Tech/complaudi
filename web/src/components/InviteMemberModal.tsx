@@ -12,6 +12,10 @@ const ROLE_LABELS: Record<string, { label: string; hint: string }> = {
     label: 'Admin',
     hint: 'Runs this company: works the filings and can invite and remove people.',
   },
+  COMPANY_OWNER: {
+    label: 'Business owner',
+    hint: "The client's own login — full control of this company, including its people.",
+  },
   CA: {
     label: 'Chartered accountant',
     hint: "Works this company's tasks and filings, and can bring in other practitioners.",
@@ -61,7 +65,7 @@ export function InviteMemberModal({ companyId, onInvited, onClose }: {
      missing — but the alternative is offering a role the server may refuse,
      which is the fault this replaced. The full list returns once companies-api
      ships the endpoint. */
-  const grantable: UserRole[] = permission?.roles ?? (permissionError ? ['CA', 'VIEWER'] : []);
+  const grantable: UserRole[] = permission?.roles ?? (permissionError ? ['COMPANY_OWNER', 'CA', 'VIEWER'] : []);
 
   // Default to the first role they can grant, once we know what that is.
   useEffect(() => {

@@ -414,12 +414,11 @@ Deno.serve(async (req: Request) => {
       const companyId = inviteMatch[1];
       await assertCan(authCtx, companyId, 'company.edit');
 
-      // COMPANY_OWNER is deliberately absent: no role may grant a second owner
-      // of a company. It was accepted here and refused by the Express API.
+      // SUPER_ADMIN is absent: it is organisation-wide, not a company grant.
       const schema = z.object({
         name: z.string().min(2).max(120),
         email: z.string().email().toLowerCase(),
-        role: z.enum(['ADMIN', 'CA', 'VIEWER']).default('CA'),
+        role: z.enum(['ADMIN', 'COMPANY_OWNER', 'CA', 'VIEWER']).default('CA'),
       });
       const body = await parseJsonBody(req, schema);
 

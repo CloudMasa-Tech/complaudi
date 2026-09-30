@@ -207,7 +207,7 @@ companiesRouter.post(
     z.object({
       email: z.string().email().toLowerCase(),
       name: z.string().min(2).max(120),
-      role: z.enum(['ADMIN', 'CA', 'VIEWER']).default('CA'),
+      role: z.enum(['ADMIN', 'COMPANY_OWNER', 'CA', 'VIEWER']).default('CA'),
     }),
   ),
   asyncHandler(async (req, res) => {

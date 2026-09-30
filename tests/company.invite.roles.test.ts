@@ -7,14 +7,14 @@ const offered = (inviter: UserRole) => INVITE_TARGET_ROLES.filter((r) => canInvi
 
 describe('who may invite, and as what', () => {
   it('lets a company owner build the team, administrators included', () => {
-    expect(offered('COMPANY_OWNER')).toEqual(['ADMIN', 'CA', 'VIEWER']);
+    expect(offered('COMPANY_OWNER')).toEqual(['ADMIN', 'COMPANY_OWNER', 'CA', 'VIEWER']);
   });
 
-  it('lets a practitioner bring in peers and viewers, but not an administrator', () => {
-    // A CA runs the filings; handing out control of the company is not theirs
-    // to do. The form offers only what the server will accept, so this is also
-    // what the dropdown contains.
-    expect(offered('CA')).toEqual(['CA', 'VIEWER']);
+  it('lets a practitioner onboard a client, a peer or a viewer — but not an admin', () => {
+    // Handing a client their own login is the ordinary way a practice onboards
+    // one, so a CA may grant COMPANY_OWNER. ADMIN is a standing above their
+    // own and stays out of reach.
+    expect(offered('CA')).toEqual(['COMPANY_OWNER', 'CA', 'VIEWER']);
     expect(canInviteAs('CA', 'ADMIN')).toBe(false);
   });
 
@@ -23,13 +23,17 @@ describe('who may invite, and as what', () => {
     expect(offered('VIEWER')).toEqual([]);
   });
 
-  it('never grants the organisation-wide role or a second owner', () => {
-    // SUPER_ADMIN spans the whole organisation and COMPANY_OWNER is the entity
-    // itself — neither is a company-scoped grant, whoever is asking.
+  it('never grants the organisation-wide role', () => {
+    // SUPER_ADMIN spans the whole organisation, not one company, so it is not
+    // a company-scoped grant whoever is asking.
     for (const inviter of INVITER_ROLES) {
       expect(canInviteAs(inviter, 'SUPER_ADMIN')).toBe(false);
-      expect(canInviteAs(inviter, 'COMPANY_OWNER')).toBe(false);
     }
+  });
+
+  it('offers exactly the three roles the invite form shows a practitioner', () => {
+    // What the screenshot asked for: CA, Viewer and Business owner.
+    expect(offered('CA').sort()).toEqual(['CA', 'COMPANY_OWNER', 'VIEWER']);
   });
 
   it('offers nothing that the invite itself would then refuse', () => {
