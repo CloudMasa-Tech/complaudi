@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CTA, NAV_LINKS } from '../data';
-import { Icon } from '../icons';
 
 /**
  * The bar is transparent over the dark hero and opaque once the page has
@@ -56,15 +55,10 @@ export function Navbar() {
 
   return (
     <>
-      <header className={`lp-nav${stuck ? ' is-stuck' : ''}`}>
+      <header className={`lp-nav-premium${stuck ? ' is-stuck' : ''}`}>
         <div className="lp-container is-wide lp-nav-inner">
-          <Link to="/" className="lp-logo" aria-label="Complaudi — home">
-            <span className="lp-logo-mark" aria-hidden="true">
-              <Icon name="shield-check" size={19} strokeWidth={2} />
-            </span>
-            <span className="lp-logo-word">
-              <b>Complaudi</b>
-            </span>
+          <Link to="/" className="lp-logo" aria-label="Complaudi — home" style={{ display: 'flex', alignItems: 'center' }}>
+            <img src="/logo.png" alt="Complaudi" className="lp-logo-img" style={{ height: 26 }} />
           </Link>
 
           <nav className="lp-nav-links" aria-label="Primary">
@@ -75,7 +69,7 @@ export function Navbar() {
 
           <div className="lp-nav-right">
             <Link to="/login" className="lp-nav-login">{CTA.login}</Link>
-            <Link to="/register" className="btn-lp btn-primary">{CTA.primary}</Link>
+            <Link to="/register" className="btn-lp btn-premium-primary">{CTA.primary}</Link>
             <button
               ref={burgerRef}
               type="button"
@@ -101,7 +95,7 @@ export function Navbar() {
             ))}
           </nav>
           <div className="lp-sheet-foot">
-            <Link to="/register" className="btn-lp btn-primary btn-lg btn-block" onClick={() => setOpen(false)}>
+            <Link to="/register" className="btn-lp btn-premium-primary btn-lg btn-block" onClick={() => setOpen(false)}>
               {CTA.primary}
             </Link>
             <Link to="/login" className="btn-lp btn-secondary btn-block" onClick={() => setOpen(false)}>

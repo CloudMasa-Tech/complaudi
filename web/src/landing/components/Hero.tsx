@@ -1,9 +1,8 @@
 import { Link } from 'react-router-dom';
-import {
-  DASH_FIELDS, DASH_REGISTRATIONS, DASH_STATS, DASH_TASKS, DEMO_CO, HERO,
-} from '../data';
+import { HERO } from '../data';
 import { Icon } from '../icons';
-import { DemoTag, Reveal, StatusPill } from './primitives';
+import { Reveal, StatusPill } from './primitives';
+import { RealDashboardPreview } from './RealDashboardPreview';
 
 /**
  * The hero's product surface. Every value in here is sample data, and the
@@ -36,173 +35,51 @@ function HealthRing({ value }: { value: number }) {
   );
 }
 
-export function DashboardPreview() {
-  return (
-    <div className="lp-appframe lp-ui">
-      <div className="lp-appframe-bar">
-        <span className="lp-dots" aria-hidden="true"><i /><i /><i /></span>
-        <span className="lp-appframe-url">app.complaudi.com / dashboard</span>
-        <DemoTag>{DEMO_CO.disclaimer}</DemoTag>
-      </div>
 
-      <div className="lp-appframe-body">
-        <div className="lp-dash-top">
-          <div className="lp-dash-co">
-            <span className="lp-dash-co-mark" aria-hidden="true">{DEMO_CO.initials}</span>
-            <span style={{ minWidth: 0 }}>
-              <span className="lp-dash-co-name">{DEMO_CO.name}</span>
-              <span className="lp-dash-co-meta">
-                <span style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '0.03em' }}>{DEMO_CO.cin}</span>
-                {' · '}{DEMO_CO.entityType}
-              </span>
-            </span>
-          </div>
-          <div className="lp-dash-top-right">
-            <StatusPill status={{ tone: 'good', label: 'Business Verified', glyph: '✓' }} />
-            <span className="lp-demo-tag">Demo workspace</span>
-          </div>
-        </div>
-
-        <div className="lp-dash-stats">
-          {DASH_STATS.map((s) => (
-            <div key={s.label} className={`lp-dash-stat is-${s.tone}`}>
-              <b>{s.value}</b>
-              <span>{s.label}</span>
-              <span style={{ opacity: 0.75 }}>{s.foot}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="lp-dash-cols">
-          <div className="lp-ui-card">
-            <div className="lp-ui-head">
-              <p className="lp-ui-panel-title">Registrations &amp; Verification</p>
-              <span className="lp-ui-label" style={{ marginLeft: 'auto' }}>{DASH_REGISTRATIONS.length} tracked</span>
-            </div>
-            {DASH_REGISTRATIONS.map((r) => (
-              <div key={r.title} className="lp-stat-row">
-                <span className={`lp-stat-row-icon is-${r.status.tone}`}>
-                  <Icon name={r.icon} size={15} />
-                </span>
-                <span className="lp-stat-row-text">
-                  <b>{r.title}</b>
-                  <span>{r.note}</span>
-                </span>
-                <StatusPill status={r.status} />
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-            <div className="lp-ui-card">
-              <div className="lp-ui-head"><p className="lp-ui-panel-title">Compliance Health</p></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <HealthRing value={92} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="lp-bar" role="img" aria-label="Compliance health: 92 percent">
-                    <i className="seg-good" style={{ width: '78%' }} />
-                    <i className="seg-warn" style={{ width: '14%' }} />
-                    <i className="seg-info" style={{ width: '8%' }} />
-                  </div>
-                  <p style={{ fontSize: 11.5, color: 'var(--lp-text-3)', marginTop: 8, lineHeight: 1.45 }}>
-                    11 of 14 obligations complete. 1 needs attention.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="lp-ui-card">
-              <div className="lp-ui-head">
-                <p className="lp-ui-panel-title">Upcoming Tasks</p>
-                <span className="lp-ui-label" style={{ marginLeft: 'auto' }}>Next 30 days</span>
-              </div>
-              {DASH_TASKS.map((t) => (
-                <div key={t.title} className="lp-task">
-                  <span className={`lp-task-box${t.done ? ' is-done' : ''}`} aria-hidden="true">
-                    {t.done && <Icon name="check" size={11} strokeWidth={3} />}
-                  </span>
-                  <span className="lp-task-text">
-                    <b>{t.title}</b>
-                    <span>{t.due}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="lp-ui-card" style={{ marginTop: 14 }}>
-          <div className="lp-ui-head">
-            <p className="lp-ui-panel-title">Business Information</p>
-            <span className="lp-demo-tag" style={{ marginLeft: 'auto' }}>Sample data</span>
-          </div>
-          <dl className="lp-verify-fields">
-            {DASH_FIELDS.map((f) => (
-              <div key={f.label} className={`lp-verify-field-cell${f.full ? ' is-full' : ''}`}>
-                <dt>{f.label}</dt>
-                <dd className={f.mono ? 'mono' : undefined}>{f.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function Hero() {
   const [lead, emphasis] = HERO.headlineParts;
 
   return (
-    <section className="lp-hero" aria-labelledby="lp-hero-h1">
+    <section className="lp-hero-premium" aria-labelledby="lp-hero-h1">
       <div className="lp-container is-wide">
-        <div className="lp-hero-grid">
-          <div>
-            <Reveal>
-              <span className="lp-eyebrow">
-                <span className="lp-eyebrow-dot" aria-hidden="true" />
-                {HERO.eyebrow}
-              </span>
-              <h1 id="lp-hero-h1">
-                {lead.text}
-                <em>{emphasis.text}</em>
-              </h1>
-              <p className="lp-hero-copy">{HERO.copy}</p>
+        <div className="lp-hero-premium-content lp">
+          <Reveal>
+            <span className="lp-hero-premium-eyebrow">
+              <i aria-hidden="true" />
+              {HERO.eyebrow}
+            </span>
+            <h1 id="lp-hero-h1">
+              {lead.text}
+              <em>{emphasis.text}</em>
+            </h1>
+            <p className="lp-hero-premium-copy">{HERO.copy}</p>
 
-              <div className="lp-hero-cta">
-                <Link to="/register" className="btn-lp btn-primary btn-lg">Get Started</Link>
-                <a href="#solutions" className="btn-lp btn-secondary btn-lg">Explore Complaudi</a>
-              </div>
+            <div className="lp-hero-premium-actions">
+              <Link to="/register" className="btn-lp btn-premium-primary btn-lg">Get Started</Link>
+              <a href="#solutions" className="btn-lp btn-premium-secondary btn-lg">Explore Complaudi</a>
+            </div>
 
-              <p className="lp-hero-trust">
-                <span className="tick" aria-hidden="true"><Icon name="check" size={15} strokeWidth={2.6} /></span>
-                {HERO.trust}
-              </p>
-            </Reveal>
-          </div>
-
-          <Reveal delay={2}>
-            <ul className="lp-hero-facts" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
-              {HERO.facts.map((f) => (
-                <li key={f} className="lp-hero-fact">
-                  <Icon name="check" size={15} strokeWidth={2.4} />
-                  {f}
-                </li>
-              ))}
-            </ul>
+            <p className="lp-hero-trust" style={{ marginTop: 24, color: 'var(--lp-text-3)' }}>
+              <span className="tick" aria-hidden="true" style={{ color: 'var(--lp-premium-blue)' }}><Icon name="check" size={15} strokeWidth={2.6} /></span>
+              {HERO.trust}
+            </p>
           </Reveal>
         </div>
-      </div>
 
-      {/* Overlaps the hero's lower edge. A dashboard that breaks its container
-          boundary reads as the product; one that sits inside a rounded card
-          reads as a picture of it. */}
-      <div className="lp-container is-wide lp-hero-frame">
-        <Reveal delay={3}>
-          <div className="lp-float">
-            <DashboardPreview />
+        <div className="lp-hero-visual-wrapper">
+          <div className="lp-hero-visual-main">
+            <RealDashboardPreview />
           </div>
-        </Reveal>
+          
+          <div className="lp-hero-visual-float-1 lp">
+            <StatusPill status={{ tone: 'good', label: 'Business Verified', glyph: '✓' }} />
+          </div>
+          
+          <div className="lp-hero-visual-float-2 lp">
+            <HealthRing value={92} />
+          </div>
+        </div>
       </div>
     </section>
   );

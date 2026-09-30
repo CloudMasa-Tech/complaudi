@@ -314,7 +314,7 @@ export function Register() {
             <div className="grid grid-2">
               <Field label={isIndividual ? 'Business / shop name' : 'Company name'} error={errors.companyName}>
                 <input required value={form.companyName}
-                       placeholder={isIndividual ? 'Sri Balaji Tea Stall' : 'CloudMaSa Innovation Lab Pvt Ltd'}
+                       placeholder={isIndividual ? 'Sri Balaji Tea Stall' : 'Acme Industries Pvt Ltd'}
                        onChange={(e) => set('companyName', e.target.value.toUpperCase())} />
               </Field>
               <Field label={isIndividual ? 'Started on' : 'Date of incorporation'}

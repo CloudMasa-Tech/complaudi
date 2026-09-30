@@ -86,16 +86,16 @@ export interface FieldRow {
 }
 
 export const DEMO_CO = {
-  name: 'CloudMasa Innovation Lab Pvt. Ltd.',
-  legalName: 'CloudMasa Innovation Lab Private Limited',
-  initials: 'CM',
-  cin: 'P62099PY2026PTC009629',
+  name: 'Acme Industries Pvt. Ltd.',
+  legalName: 'Acme Industries Private Limited',
+  initials: 'AI',
+  cin: 'U72900KA2023PTC172034',
   entityType: 'Private Limited Company',
   status: 'Active',
-  incorporationDate: '17 Feb 2026',
-  state: 'Puducherry',
-  roc: 'Puducherry',
-  pan: 'AAJCC4821P',
+  incorporationDate: '17 Feb 2023',
+  state: 'Karnataka',
+  roc: 'Bangalore',
+  pan: 'AAACA4821P',
   /** The disclosure that makes the rest of the page honest. */
   disclaimer: 'Sample company — demo data',
 } as const;

@@ -147,29 +147,41 @@ export function VerificationDemo() {
 
                 <button
                   type="button"
-                  className="btn-lp btn-primary btn-block"
+                  className="btn-lp btn-premium-primary btn-block"
                   onClick={run}
                   disabled={searching}
                 >
                   {searching ? 'Verifying…' : 'Verify Company'}
                 </button>
 
-                {/* Status line. aria-live so the state change is announced, and
-                    the result is a live region too rather than appearing
-                    silently below a button. */}
-                <div aria-live="polite" aria-atomic="true">
+                {/* AI Verification Animation Area */}
+                <div aria-live="polite" aria-atomic="true" style={{ position: 'relative', marginTop: 16 }}>
                   {searching && (
-                    <p className="lp-verify-status" style={{ marginTop: 15 }}>
-                      <span className="lp-spinner" aria-hidden="true" />
-                      Checking company record…
-                    </p>
+                    <div className="lp-verify-ai-sequence">
+                      <div className="lp-ai-glow-pulse"></div>
+                      <div className="lp-ai-scan-line"></div>
+                      <p className="lp-verify-status" style={{ color: 'var(--lp-premium-blue)' }}>
+                        <span className="lp-spinner is-blue" aria-hidden="true" />
+                        <strong>AI Verification Processing…</strong>
+                      </p>
+                      <p className="lp-verify-status" style={{ color: 'var(--lp-premium-orange)', marginTop: 8 }}>
+                        <span className="lp-spinner is-orange" aria-hidden="true" />
+                        <strong>Data Validation in progress…</strong>
+                      </p>
+                    </div>
                   )}
 
                   {done && (
-                    <p className="lp-verify-status is-good" style={{ marginTop: 15 }}>
-                      <Icon name="check" size={15} strokeWidth={2.8} />
-                      Company Found
-                    </p>
+                    <div className="lp-verify-ai-sequence is-done">
+                      <p className="lp-verify-status is-good" style={{ color: 'var(--lp-premium-blue)' }}>
+                        <Icon name="check" size={16} strokeWidth={3} />
+                        <strong>Verified</strong>
+                      </p>
+                      <p className="lp-verify-status is-good" style={{ color: 'var(--lp-good)', marginTop: 8 }}>
+                        <Icon name="check-shield" size={16} strokeWidth={3} />
+                        <strong>Compliance Status Generated</strong>
+                      </p>
+                    </div>
                   )}
                 </div>
 

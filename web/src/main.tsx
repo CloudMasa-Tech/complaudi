@@ -12,6 +12,7 @@ import './styles.css';
 // control rules that styles.css also sets on bare elements, and it wins those
 // on source order rather than on specificity alone.
 import './landing/landing.css';
+import './landing/premium-landing.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

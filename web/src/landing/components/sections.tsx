@@ -12,8 +12,8 @@ import { IconPlate, Reveal, SectionHead } from './primitives';
  */
 export function ProblemSection() {
   return (
-    <section className="lp-section lp-band-light" id="problem" aria-labelledby="lp-problem-h">
-      <div className="lp-container">
+    <section className="lp-section-premium" id="problem" aria-labelledby="lp-problem-h">
+      <div className="lp-container is-wide">
         <SectionHead
           eyebrow={PROBLEM.eyebrow}
           headline={PROBLEM.headline}
@@ -21,17 +21,21 @@ export function ProblemSection() {
           centered
           id="lp-problem-h"
         />
-        <div className="lp-grid lp-grid-4">
-          {PROBLEM.items.map((p, i) => (
-            <Reveal key={p.title} as="article" delay={i} className="lp-card is-lift">
-              <IconPlate name={p.icon} />
-              <h3 className="lp-card-title">{p.title}</h3>
-              <p className="lp-card-body">{p.body}</p>
-            </Reveal>
-          ))}
+        <div className="lp-bento-grid">
+          {PROBLEM.items.map((p, i) => {
+            // Asymmetric bento sizing
+            const cols = i === 0 ? 'lp-bento-col-8' : i === 1 ? 'lp-bento-col-4' : i === 2 ? 'lp-bento-col-4' : 'lp-bento-col-8';
+            return (
+              <Reveal key={p.title} as="article" delay={i} className={`lp-bento-item ${cols}`}>
+                <IconPlate name={p.icon} />
+                <h3 className="lp-card-title">{p.title}</h3>
+                <p className="lp-card-body" style={{ marginTop: 12 }}>{p.body}</p>
+              </Reveal>
+            );
+          })}
         </div>
         <Reveal delay={1}>
-          <p className="lp-problem-note">{PROBLEM.note}</p>
+          <p className="lp-problem-note" style={{ textAlign: 'center', marginTop: 40, color: 'var(--lp-text-3)' }}>{PROBLEM.note}</p>
         </Reveal>
       </div>
     </section>
@@ -45,8 +49,8 @@ export function ProblemSection() {
  */
 export function SolutionWorkflow() {
   return (
-    <section className="lp-section lp-band-white" id="solutions" aria-labelledby="lp-solution-h">
-      <div className="lp-container is-wide">
+    <section className="lp-section-premium" style={{ background: 'var(--lp-premium-light-blue)' }} id="solutions" aria-labelledby="lp-solution-h">
+      <div className="lp-container is-wide" style={{ position: 'relative' }}>
         <SectionHead
           eyebrow={SOLUTION.eyebrow}
           headline={SOLUTION.headline}
@@ -55,23 +59,28 @@ export function SolutionWorkflow() {
           wide
           id="lp-solution-h"
         />
-        <ol className="lp-flow">
-          {SOLUTION.steps.map((s, i) => (
-            <Reveal
-              as="li"
-              key={s.title}
-              delay={i}
-              className={`lp-flow-step${s.focus ? ' is-focus' : ''}`}
-            >
-              <span className="lp-flow-num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
-              <span className="lp-flow-icon">
-                <Icon name={s.icon} size={20} />
-              </span>
-              <b>{s.title}</b>
-              <p>{s.body}</p>
-            </Reveal>
-          ))}
-        </ol>
+        
+        <div className="lp-flow-container" style={{ position: 'relative', marginTop: 40 }}>
+          <div className="lp-flow-glow-line" />
+          <ol className="lp-flow">
+            {SOLUTION.steps.map((s, i) => (
+              <Reveal
+                as="li"
+                key={s.title}
+                delay={i}
+                className={`lp-flow-step${s.focus ? ' is-focus' : ''} lp-premium-flow-step`}
+              >
+                <div className="lp-flow-node-glow" aria-hidden="true" />
+                <span className="lp-flow-num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+                <span className="lp-flow-icon">
+                  <Icon name={s.icon} size={20} />
+                </span>
+                <b>{s.title}</b>
+                <p>{s.body}</p>
+              </Reveal>
+            ))}
+          </ol>
+        </div>
       </div>
     </section>
   );
@@ -84,7 +93,7 @@ export function SolutionWorkflow() {
  */
 export function HowItWorks() {
   return (
-    <section className="lp-section lp-band-white" id="how-it-works" aria-labelledby="lp-steps-h">
+    <section className="lp-section-premium" style={{ background: 'var(--lp-premium-deep-blue)', color: 'white' }} id="how-it-works" aria-labelledby="lp-steps-h">
       <div className="lp-container is-wide">
         <SectionHead
           eyebrow={STEPS.eyebrow}
@@ -94,16 +103,16 @@ export function HowItWorks() {
           wide
           id="lp-steps-h"
         />
-        <ol className="lp-steps">
+        <div className="lp-steps" style={{ position: 'relative', marginTop: 40 }}>
           {STEPS.items.map((s, i) => (
-            <Reveal as="li" key={s.title} delay={i} className="lp-step">
-              <span className="lp-step-dot" aria-hidden="true">{i + 1}</span>
-              <span className="lp-step-num" aria-hidden="true">STEP {String(i + 1).padStart(2, '0')}</span>
-              <h3>{s.title}</h3>
-              <p>{s.body}</p>
+            <Reveal as="article" key={s.title} delay={i} className="lp-step lp-premium-step-card">
+              <span className="lp-step-dot" aria-hidden="true" style={{ background: 'var(--lp-premium-orange)', borderColor: 'rgba(234, 88, 12, 0.5)', boxShadow: '0 0 15px rgba(234, 88, 12, 0.4)' }}>{i + 1}</span>
+              <span className="lp-step-num" aria-hidden="true" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>STEP {String(i + 1).padStart(2, '0')}</span>
+              <h3 style={{ color: 'white' }}>{s.title}</h3>
+              <p style={{ color: 'rgba(255, 255, 255, 0.8)' }}>{s.body}</p>
             </Reveal>
           ))}
-        </ol>
+        </div>
       </div>
     </section>
   );
@@ -115,7 +124,7 @@ export function HowItWorks() {
  */
 export function WhyComplaudi() {
   return (
-    <section className="lp-section lp-band-dark lp-on-dark" id="why" aria-labelledby="lp-why-h">
+    <section className="lp-section-premium is-dark" id="why" aria-labelledby="lp-why-h">
       <div className="lp-container is-wide">
         <SectionHead
           eyebrow={WHY.eyebrow}
@@ -125,14 +134,14 @@ export function WhyComplaudi() {
           wide
           id="lp-why-h"
         />
-        <div className="lp-why-grid">
+        <div className="lp-bento-grid">
           {WHY.items.map((w, i) => (
-            <Reveal as="article" key={w.title} delay={i % 3} className="lp-why-card">
-              <span className="lp-why-icon" aria-hidden="true">
-                <Icon name={w.icon} size={20} />
+            <Reveal as="article" key={w.title} delay={i % 3} className="lp-bento-item lp-bento-col-4" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }}>
+              <span className="lp-why-icon" aria-hidden="true" style={{ color: '#fff', marginBottom: 16, display: 'block' }}>
+                <Icon name={w.icon} size={24} />
               </span>
-              <b>{w.title}</b>
-              <p>{w.body}</p>
+              <b style={{ color: '#fff', fontSize: '1.1rem' }}>{w.title}</b>
+              <p style={{ color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>{w.body}</p>
             </Reveal>
           ))}
         </div>
@@ -147,7 +156,7 @@ export function WhyComplaudi() {
  */
 export function UseCases() {
   return (
-    <section className="lp-section lp-band-light" id="use-cases" aria-labelledby="lp-uc-h">
+    <section className="lp-section-premium" style={{ background: 'var(--lp-premium-light-blue)' }} id="use-cases" aria-labelledby="lp-uc-h">
       <div className="lp-container is-wide">
         <SectionHead
           eyebrow={USE_CASES.eyebrow}
@@ -157,16 +166,18 @@ export function UseCases() {
           wide
           id="lp-uc-h"
         />
-        <div className="lp-uc-grid">
+        <div className="lp-bento-grid" style={{ marginTop: 40 }}>
           {USE_CASES.items.map((u, i) => (
-            <Reveal as="article" key={u.title} delay={i} className="lp-uc">
-              <span className="lp-uc-tag">{u.tag}</span>
-              <h3>{u.title}</h3>
-              <p>{u.body}</p>
-              <ul className="lp-uc-points">
+            <Reveal as="article" key={u.title} delay={i} className="lp-bento-item lp-bento-col-4">
+              <span className="lp-uc-tag" style={{ background: 'rgba(37, 99, 235, 0.1)', color: 'var(--lp-premium-blue)' }}>{u.tag}</span>
+              <h3 className="lp-card-title">{u.title}</h3>
+              <p className="lp-card-body">{u.body}</p>
+              <ul className="lp-uc-points" style={{ marginTop: 24, listStyle: 'none', padding: 0 }}>
                 {u.points.map((p) => (
-                  <li key={p} className="lp-uc-point">
-                    <Icon name="check" size={13} strokeWidth={2.6} />
+                  <li key={p} className="lp-uc-point" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: 'var(--lp-text-2)' }}>
+                    <span style={{ color: 'var(--lp-premium-orange)' }}>
+                      <Icon name="check" size={16} strokeWidth={3} />
+                    </span>
                     {p}
                   </li>
                 ))}
@@ -187,7 +198,7 @@ export function UseCases() {
  */
 export function SecuritySection() {
   return (
-    <section className="lp-section lp-band-white" id="security" aria-labelledby="lp-sec-h">
+    <section className="lp-section-premium" style={{ background: 'white' }} id="security" aria-labelledby="lp-sec-h">
       <div className="lp-container is-wide">
         <SectionHead
           eyebrow={SECURITY.eyebrow}
@@ -196,14 +207,16 @@ export function SecuritySection() {
           wide
           id="lp-sec-h"
         />
-        <div className="lp-sec">
+        <div className="lp-sec" style={{ marginTop: 40 }}>
           <Reveal>
-            <div className="lp-claim-boundary">
-              <h3>{SECURITY.boundaryTitle}</h3>
+            <div className="lp-claim-boundary" style={{ background: 'var(--lp-premium-light-blue)', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+              <h3 style={{ color: 'var(--lp-premium-deep-blue)' }}>{SECURITY.boundaryTitle}</h3>
               <ul>
                 {SECURITY.boundary.map((b) => (
-                  <li key={b}>
-                    <Icon name="minus" size={15} strokeWidth={2.2} />
+                  <li key={b} style={{ color: 'var(--lp-text-2)' }}>
+                    <span style={{ color: 'var(--lp-premium-blue)' }}>
+                      <Icon name="minus" size={15} strokeWidth={2.5} />
+                    </span>
                     <span>{b}</span>
                   </li>
                 ))}
@@ -211,15 +224,15 @@ export function SecuritySection() {
             </div>
           </Reveal>
 
-          <div className="lp-sec-grid">
+          <div className="lp-bento-grid" style={{ gridTemplateColumns: '1fr', gap: 16 }}>
             {SECURITY.items.map((s, i) => (
-              <Reveal as="article" key={s.title} delay={i % 2} className="lp-sec-item">
-                <span className="lp-sec-icon" aria-hidden="true">
-                  <Icon name={s.icon} size={16} />
+              <Reveal as="article" key={s.title} delay={i % 2} className="lp-bento-item" style={{ display: 'flex', gap: 20, alignItems: 'flex-start', padding: 24 }}>
+                <span className="lp-sec-icon" aria-hidden="true" style={{ background: 'var(--lp-premium-blue)', color: 'white', padding: 12, borderRadius: 12 }}>
+                  <Icon name={s.icon} size={20} />
                 </span>
                 <span>
-                  <b>{s.title}</b>
-                  <p>{s.body}</p>
+                  <b style={{ fontSize: '1.1rem', color: 'var(--lp-premium-deep-blue)' }}>{s.title}</b>
+                  <p style={{ marginTop: 8, color: 'var(--lp-text-2)' }}>{s.body}</p>
                 </span>
               </Reveal>
             ))}
@@ -233,29 +246,29 @@ export function SecuritySection() {
 /* ── closing cta ───────────────────────────────────────────────────────── */
 export function CTASection() {
   return (
-    <section className="lp-section lp-cta lp-on-dark" aria-labelledby="lp-cta-h">
-      <div className="lp-container">
-        <div className="lp-cta-inner">
-          <Reveal>
-            <span className="lp-eyebrow">{CTA_SECTION.eyebrow}</span>
-            <h2 id="lp-cta-h" style={{ marginTop: 18 }}>{CTA_SECTION.headline}</h2>
-            <p>{CTA_SECTION.copy}</p>
+    <section className="lp-cta-premium" aria-labelledby="lp-cta-h">
+      <div className="lp-cta-premium-inner">
+        <Reveal>
+          <span className="lp-hero-premium-eyebrow" style={{ background: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}>
+            {CTA_SECTION.eyebrow}
+          </span>
+          <h2 id="lp-cta-h">{CTA_SECTION.headline}</h2>
+          <p>{CTA_SECTION.copy}</p>
 
-            <div className="lp-cta-actions">
-              <Link to="/register" className="btn-lp btn-primary btn-lg">{CTA.primary}</Link>
-              <a href="#contact" className="btn-lp btn-secondary btn-lg">{CTA.talk}</a>
-            </div>
+          <div className="lp-hero-premium-actions">
+            <Link to="/register" className="btn-lp btn-premium-primary btn-lg">{CTA.primary}</Link>
+            <a href="#contact" className="btn-lp btn-premium-secondary btn-lg">{CTA.talk}</a>
+          </div>
 
-            <ul className="lp-cta-fine">
-              {CTA_SECTION.fine.map((f) => (
-                <li key={f} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                  <Icon name="check" size={14} strokeWidth={2.4} />
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </Reveal>
-        </div>
+          <ul style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 24, marginTop: 40, listStyle: 'none', padding: 0 }}>
+            {CTA_SECTION.fine.map((f) => (
+              <li key={f} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 14, color: 'rgba(255,255,255,0.8)' }}>
+                <Icon name="check" size={14} strokeWidth={2.4} />
+                {f}
+              </li>
+            ))}
+          </ul>
+        </Reveal>
       </div>
     </section>
   );

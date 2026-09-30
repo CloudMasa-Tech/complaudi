@@ -22,25 +22,31 @@ export function Landing() {
   // which misses a hard page load straight into /login or /register. See
   // useDocumentMeta() in App.tsx.
   return (
-    <div className="lp">
-      <a className="lp-skip" href="#main">Skip to content</a>
-      <Navbar />
+    <div className="lp-landing-root">
+      <div className="lp">
+        <a className="lp-skip" href="#main">Skip to content</a>
+        <Navbar />
+      </div>
 
       <main id="main">
         <Hero />
-        <ProblemSection />
-        <SolutionWorkflow />
-        <VerificationDemo />
-        <ComplianceOverview />
-        <DocumentManagement />
-        <HowItWorks />
-        <WhyComplaudi />
-        <UseCases />
-        <SecuritySection />
-        <CTASection />
+        <div className="lp">
+          <ProblemSection />
+          <SolutionWorkflow />
+          <VerificationDemo />
+          <ComplianceOverview />
+          <DocumentManagement />
+          <HowItWorks />
+          <WhyComplaudi />
+          <UseCases />
+          <SecuritySection />
+          <CTASection />
+        </div>
       </main>
 
-      <Footer />
+      <div className="lp">
+        <Footer />
+      </div>
     </div>
   );
 }
