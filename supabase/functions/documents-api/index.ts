@@ -1,5 +1,6 @@
 // supabase/functions/documents-api/index.ts
 import { handleCors } from '../_shared/cors.ts';
+import { computeCoverage } from '../_shared/coverage.ts';
 import { assertCan, getAuthContext, seesEveryCompany } from '../_shared/auth.ts';
 import { getSupabaseAdminClient } from '../_shared/database.ts';
 import { AppError, BadRequestError, NotFoundError } from '../_shared/errors.ts';
@@ -124,27 +125,36 @@ Deno.serve(async (req: Request) => {
       const companyId = coverageMatch[1];
       await assertCan(authCtx, companyId, 'documents.view');
 
+      /**
+       * Coverage is documents actually filed against obligations that ask for
+       * one — the Udyam certificate, the GST return acknowledgement, the DIR-3
+       * KYC receipt and so on.
+       *
+       * This counted neither. It divided by every obligation, and it read
+       * "this rule requires evidence" as "this obligation has evidence", which
+       * is the opposite of what it means — so a company with no documents at
+       * all reported 60%, and the ten obligations it listed as missing evidence
+       * were the ten that need none. Rewritten to match the Express
+       * implementation in src/modules/documents/documents.service.ts.
+       */
       const { data: items } = await supabase
         .from('compliance_items')
-        .select('id, title, ruleCode, status, dueDate, evidenceLevel, attestationText')
-        .eq('companyId', companyId);
+        .select('id, title, ruleCode, status, dueDate, evidenceRequired')
+        .eq('companyId', companyId)
+        .order('dueDate', { ascending: true });
 
-      const itemsList = items || [];
-      const itemsRequiringEvidence = itemsList.length;
-      const itemsWithEvidence = itemsList.filter((i) => i.evidenceLevel !== 'NONE' || i.attestationText).length;
-      const coveragePct = itemsRequiringEvidence > 0 ? Math.round((itemsWithEvidence / itemsRequiringEvidence) * 100) : 100;
-      const missing = itemsList
-        .filter((i) => i.evidenceLevel === 'NONE' && !i.attestationText)
-        .slice(0, 10)
-        .map((i) => ({ id: i.id, title: i.title, ruleCode: i.ruleCode, status: i.status, dueDate: i.dueDate, expected: ['Proof document'] }));
+      // Which obligations actually have a file attached. Counted from the
+      // documents themselves rather than inferred from the rule.
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('complianceItemId')
+        .eq('companyId', companyId)
+        .not('complianceItemId', 'is', null);
 
-      return jsonResponse({
-        totalItems: itemsList.length,
-        itemsRequiringEvidence,
-        itemsWithEvidence,
-        coveragePct,
-        missing,
-      });
+      const documented = new Set(
+        (docs || []).map((d: { complianceItemId: string }) => d.complianceItemId),
+      );
+      return jsonResponse(computeCoverage((items || []) as any, documented));
     }
 
     // GET /documents/:id/download -> Returns 5-minute Signed Download URL

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { computeCoverage } from './coverage';
 import { BadRequestError, NotFoundError, UnprocessableError } from '../../lib/errors';
 import { inspectUpload } from '../../lib/fileInspection';
 import { prisma } from '../../lib/prisma';
@@ -183,16 +184,6 @@ export async function evidenceCoverage(actor: Actor, companyId: string) {
     orderBy: { dueDate: 'asc' },
   });
 
-  const withRequirements = items.filter((i) => i.evidenceRequired.length > 0);
-  const complete = withRequirements.filter((i) => i._count.documents > 0);
-
-  return {
-    totalItems: items.length,
-    itemsRequiringEvidence: withRequirements.length,
-    itemsWithEvidence: complete.length,
-    coveragePct: withRequirements.length === 0 ? 100 : Math.round((complete.length / withRequirements.length) * 100),
-    missing: withRequirements
-      .filter((i) => i._count.documents === 0 && (i.status === 'COMPLETED' || i.status === 'OVERDUE'))
-      .map((i) => ({ id: i.id, title: i.title, ruleCode: i.ruleCode, status: i.status, dueDate: i.dueDate, expected: i.evidenceRequired })),
-  };
+  const documented = new Set(items.filter((i) => i._count.documents > 0).map((i) => i.id));
+  return computeCoverage(items, documented);
 }
