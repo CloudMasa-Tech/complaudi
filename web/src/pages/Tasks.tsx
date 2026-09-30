@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError, patch, qs } from '../api/client';
 import { useResource } from '../api/useResource';
@@ -9,7 +9,7 @@ import { ItemDrawer } from '../components/ItemDrawer';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import {
   AuthorityTag, Card, Empty, ErrorNote, Loading, SeverityDot,
-  Spinner, fmtDate, relativeDue, titleise,
+  Spinner, fmtDate, fmtMonth, relativeDue, titleise,
 } from '../components/ui';
 
 const STATUSES: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCELLED'];
@@ -56,9 +56,42 @@ export function Tasks() {
   })}`;
 
   const { data, error, initial, loading, reload } = useResource<Paged<Task>>(path, [selectedId]);
+
+  // Grouped by due month, the same way the calendar groups obligations — these
+  // are two views of the same dated work, and a flat dump on one of them while
+  // the other is banded reads as two different products.
+  const months = useMemo(() => {
+    const out = new Map<string, Task[]>();
+    for (const task of data?.rows ?? []) {
+      const key = task.dueDate.slice(0, 7);
+      out.set(key, [...(out.get(key) ?? []), task]);
+    }
+    return [...out.entries()];
+  }, [data]);
   const { data: workload, reload: reloadWorkload } = useResource<
     { assignee: { id: string; name: string } | null; counts: Record<string, number>; total: number }[]
   >(`/tasks/workload${qs({ companyId: selectedId ?? undefined })}`, [selectedId]);
+
+  /**
+   * Open work per owner, for the Owner options.
+   *
+   * This used to be a card of its own above the filters — a row of buttons that
+   * set exactly the state the Owner select sets. Two controls for one filter is
+   * one too many, so the counts moved into the control that was already there
+   * and the card went. A select also holds its shape as a team grows, where a
+   * row of chips does not.
+   */
+  const openCounts = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const w of workload ?? []) out.set(w.assignee?.id ?? 'none', w.total);
+    return out;
+  }, [workload]);
+
+  /** " (3)", or nothing at all for an owner with no open work. */
+  const openBy = (id: string) => {
+    const n = openCounts.get(id);
+    return n ? ` (${n})` : '';
+  };
 
   async function change(task: Task, body: Record<string, unknown>) {
     setSavingId(task.id);
@@ -97,23 +130,6 @@ export function Tasks() {
 
   return (
     <>
-      {workload && workload.length > 0 && (
-        <Card title="Open work by owner">
-          <div className="card-body row row-wrap" style={{ gap: 10 }}>
-            {workload.map((w) => (
-              <button
-                key={w.assignee?.id ?? 'none'}
-                className={assignee === (w.assignee?.id ?? 'none') ? 'btn-primary' : ''}
-                onClick={() => setAssignee(assignee === (w.assignee?.id ?? 'none') ? '' : (w.assignee?.id ?? 'none'))}
-              >
-                {w.assignee?.name ?? 'Unassigned'}
-                <span className="nav-count" style={{ marginLeft: 2 }}>{w.total}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      )}
-
       <div className="card">
         <div className="card-body filters">
           <div className="field grow">
@@ -130,11 +146,17 @@ export function Tasks() {
             </select>
           </div>
           <div className="field">
-            <label>Owner</label>
+            {/* The counts are open work, which is not always what the list below
+                shows — Status can be set to All. The label says so, because the
+                card these came from said it in its title and a bare number in a
+                dropdown would otherwise read as "how many rows you will get". */}
+            <label>Owner <span className="dim">· open</span></label>
             <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
               <option value="">Anyone</option>
-              <option value="none">Unassigned</option>
-              {(people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="none">Unassigned{openBy('none')}</option>
+              {(people ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}{openBy(p.id)}</option>
+              ))}
             </select>
           </div>
           <div className="field" style={{ justifyContent: 'flex-end' }}>
@@ -175,89 +197,92 @@ export function Tasks() {
           {data.rows.length === 0 ? (
             <Empty>No tasks match these filters.</Empty>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Due</th><th>Task</th><th>Authority</th><th>Owner</th><th>Progress</th><th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((t) => {
-                    const done = t.checklist.filter((c) => c.done).length;
-                    const overdue = t.status !== 'DONE' && t.status !== 'CANCELLED' && new Date(t.dueDate) < new Date();
-                    return (
-                      <tr key={t.id}>
-                        <td style={{ width: 120, whiteSpace: 'nowrap' }}>
-                          <div className="stack">
-                            <span style={{ fontWeight: 550 }}>{fmtDate(t.dueDate)}</span>
-                            <span className="tiny" style={{ color: overdue ? 'var(--critical)' : 'var(--text-3)' }}>
-                              {relativeDue(t.dueDate)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="clickable" onClick={() => setOpenItemId(t.complianceItem.id)}>
-                          <div className="row" style={{ gap: 7 }}>
-                            <SeverityDot value={t.complianceItem.severity} />
-                            <div className="stack" style={{ minWidth: 0 }}>
-                              <span style={{ fontWeight: 500 }}>{t.title}</span>
-                              <span className="tiny dim">
-                                {t.complianceItem.periodLabel}
-                                {t.complianceItem.form ? ` · ${t.complianceItem.form}` : ''}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ width: 96 }}><AuthorityTag value={t.complianceItem.authority} /></td>
-                        <td style={{ width: 160 }}>
-                          <select
-                            value={t.assignee?.id ?? ''}
-                            disabled={savingId === t.id || !canOn(t.companyId, 'work.write')}
-                            onChange={(e) => {
-                              if (e.target.value === 'invite') {
-                                setInvite({ companyId: t.companyId, task: t });
-                              } else {
-                                change(t, { assigneeId: e.target.value || null });
-                              }
-                            }}
-                          >
-                            <option value="">Unassigned</option>
-                            {(people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            <option value="invite" disabled={onTrial} title={onTrial ? 'Available after upgrade' : 'Invite a CA or admin to work this company'}>
-                              + Invite CA/Admin
-                            </option>
-                          </select>
-                        </td>
-                        <td style={{ width: 108 }} className="tiny muted">
-                          {t.checklist.length > 0 ? `${done}/${t.checklist.length}` : '—'}
-                          {t._count?.documents ? <span className="dim"> · ❐{t._count.documents}</span> : null}
-                          {!t._count?.documents && t.complianceItem.evidenceLevel !== 'NONE' && (
-                            <span
-                              className="dim"
-                              title={
-                                t.complianceItem.evidenceLevel === 'REQUIRED'
-                                  ? 'A document must be attached before this can be completed'
-                                  : 'Needs a document or a recorded declaration'
-                              }
-                            >
-                              {' '}· {t.complianceItem.evidenceLevel === 'REQUIRED' ? '🔒' : '✎'}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ width: 148 }}>
-                          <select
-                            value={t.status}
-                            disabled={savingId === t.id || !canOn(t.companyId, 'work.write')}
-                            onChange={(e) => change(t, { status: e.target.value })}
-                          >
-                            {STATUSES.map((s) => <option key={s} value={s}>{titleise(s)}</option>)}
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="table-wrap month">
+              {months.map(([month, rows]) => (
+                <div key={month} className="month-group">
+                  <div className="month-head">
+                    <span className="month-name">{fmtMonth(month)}</span>
+                    <span className="month-count">{rows.length} task{rows.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <table>
+                    <tbody>
+                      {rows.map((t) => {
+                        const done = t.checklist.filter((c) => c.done).length;
+                        const overdue = t.status !== 'DONE' && t.status !== 'CANCELLED' && new Date(t.dueDate) < new Date();
+                        return (
+                          <tr key={t.id}>
+                            <td style={{ width: 120, whiteSpace: 'nowrap' }}>
+                              <div className="stack">
+                                <span style={{ fontWeight: 550 }}>{fmtDate(t.dueDate)}</span>
+                                <span className="tiny" style={{ color: overdue ? 'var(--critical)' : 'var(--text-3)' }}>
+                                  {relativeDue(t.dueDate)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="clickable" onClick={() => setOpenItemId(t.complianceItem.id)}>
+                              <div className="row" style={{ gap: 7 }}>
+                                <SeverityDot value={t.complianceItem.severity} />
+                                <div className="stack" style={{ minWidth: 0 }}>
+                                  <span style={{ fontWeight: 500 }}>{t.title}</span>
+                                  <span className="tiny dim">
+                                    {t.complianceItem.periodLabel}
+                                    {t.complianceItem.form ? ` · ${t.complianceItem.form}` : ''}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ width: 96 }}><AuthorityTag value={t.complianceItem.authority} /></td>
+                            <td style={{ width: 160 }}>
+                              <select
+                                value={t.assignee?.id ?? ''}
+                                disabled={savingId === t.id || !canOn(t.companyId, 'work.write')}
+                                onChange={(e) => {
+                                  if (e.target.value === 'invite') {
+                                    setInvite({ companyId: t.companyId, task: t });
+                                  } else {
+                                    change(t, { assigneeId: e.target.value || null });
+                                  }
+                                }}
+                              >
+                                <option value="">Unassigned</option>
+                                {(people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                <option value="invite" disabled={onTrial} title={onTrial ? 'Available after upgrade' : 'Invite a CA or admin to work this company'}>
+                                  + Invite CA/Admin
+                                </option>
+                              </select>
+                            </td>
+                            <td style={{ width: 108 }} className="tiny muted">
+                              {t.checklist.length > 0 ? `${done}/${t.checklist.length}` : '—'}
+                              {t._count?.documents ? <span className="dim"> · ❐{t._count.documents}</span> : null}
+                              {!t._count?.documents && t.complianceItem.evidenceLevel !== 'NONE' && (
+                                <span
+                                  className="dim"
+                                  title={
+                                    t.complianceItem.evidenceLevel === 'REQUIRED'
+                                      ? 'A document must be attached before this can be completed'
+                                      : 'Needs a document or a recorded declaration'
+                                  }
+                                >
+                                  {' '}· {t.complianceItem.evidenceLevel === 'REQUIRED' ? '🔒' : '✎'}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ width: 148 }}>
+                              <select
+                                value={t.status}
+                                disabled={savingId === t.id || !canOn(t.companyId, 'work.write')}
+                                onChange={(e) => change(t, { status: e.target.value })}
+                              >
+                                {STATUSES.map((s) => <option key={s} value={s}>{titleise(s)}</option>)}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
           )}
         </Card>

@@ -255,10 +255,19 @@ export interface BillingPaymentRow {
   id: string;
   company: string | null;
   rzxOrderId: string;
+  /** Inclusive of GST — what the card was actually debited. */
   amountPaise: number;
   amountLabel: string;
+  /** The invoice split, as charged. Payments taken before plan tiers shipped
+   *  carry a zero tax line, because no tax was separately charged on them. */
+  baseAmountPaise: number;
+  baseLabel: string;
+  taxPercent: number;
+  taxAmountPaise: number;
+  taxLabel: string;
   currency: string;
   planName: string;
+  planKey: string;
   status: PaymentStatus;
   method: string | null;
   paidAt: string | null;
@@ -267,13 +276,34 @@ export interface BillingPaymentRow {
 }
 
 /** GET /billing — the whole Company Owner billing page in one call. */
+/** One purchasable term. Every figure is computed server-side from the plan
+ *  catalog — the page prints these and never derives a price of its own. */
+export interface PlanOption {
+  key: 'ANNUAL' | 'TRIENNIAL';
+  name: string;
+  periodLabel: string;
+  periodDays: number;
+  recommended: boolean;
+  baseAmountPaise: number;
+  baseLabel: string;
+  taxPercent: number;
+  taxAmountPaise: number;
+  taxLabel: string;
+  amountPaise: number;
+  amountLabel: string;
+  perYearLabel: string;
+}
+
 export interface BillingView {
-  plan: { name: string; amountPaise: number; currency: string; periodDays: number; periodLabel: string; amountLabel: string };
+  plans: PlanOption[];
+  currency: string;
   subscription: {
     status: 'TRIAL' | 'PAID';
     trialEndsAt: string | null;
     trialDaysLeft: number | null;
     validUntil: string | null;
+    currentPlanKey: string | null;
+    currentPlanName: string | null;
     paymentCount: number;
   };
   payments: BillingPaymentRow[];

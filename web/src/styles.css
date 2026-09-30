@@ -51,7 +51,13 @@
   --brand-orange: #f97316;
   --brand-orange-deep: #ea580c;
   --brand-amber: #fbbf24;
-  --brand-gradient: linear-gradient(135deg, #0d2144 0%, #1b3a6b 45%, #2563eb 100%);
+  /* The blue end is #1d4ed8, not the #2563eb of --brand-blue. Both consumers
+     of this gradient put white text on it, and both hit the same wall: at
+     #2563eb the ramp reaches 4.92:1 against pure white under the auth panel's
+     text, so nothing translucent could clear 4.5:1 there. Deepening one stop
+     buys every element on the panel its contrast and still reads as the same
+     blue. --brand-blue is untouched; it is never a text background. */
+  --brand-gradient: linear-gradient(135deg, #0d2144 0%, #1b3a6b 45%, #1d4ed8 100%);
   --brand-orange-gradient: linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%);
 }
 
@@ -152,11 +158,25 @@ p { margin: 0; }
 a { color: inherit; }
 
 /* ── app shell ─────────────────────────────────────────────────────────── */
-.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+/* 320px. Three things have to sit on one line inside it: a 62px mark (225px of
+   artwork), the 48px indent that starts the strapline after the "C", and the
+   ~223px strapline itself. 48 + 223 needs 271px of usable width, and the rail
+   carries 36px of padding — so anything under ~307px pushes the strapline out
+   of the column. This leaves 13px of margin rather than the last pixel. */
+.shell { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
 
+/* The sidebar is dark in both themes, matching the panel on the signed-out
+   pages, so the brand does not change ground at the moment somebody logs in.
+   It is a navigation rail rather than content: the pages beside it still follow
+   the light/dark setting, and only this column is fixed. */
 .sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--navy-border);
+  /* Its own vertical ramp rather than --brand-gradient: a tall rail wants the
+     ramp to run down it, not diagonally across. It also predates the token's
+     blue end being deepened — at the time that ran to #2563eb, where white at
+     76% measured 3.68:1, under the 4.5:1 floor for 14.5px nav labels. This
+     stays in the navy range and every element on it clears 6:1. */
+  background: linear-gradient(180deg, #0d2144 0%, #16325f 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   padding: 20px 14px;
   display: flex;
   flex-direction: column;
@@ -165,10 +185,44 @@ a { color: inherit; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  box-shadow: 2px 0 12px rgba(30, 58, 138, 0.04);
+  box-shadow: 2px 0 14px rgba(13, 33, 68, 0.18);
 }
 
 .brand { display: flex; flex-direction: column; gap: 9px; padding: 0 4px; }
+
+/* Signed in: the same lockup, at the sidebar's size. It differs from the panel
+   in nothing but --logo-h and the type size — the indent is shared.
+
+   Compounded with .brand-lockup deliberately. As a bare `.sidebar-lockup` it
+   tied with the base at (0,1,0) and lost on declaration order, the base sitting
+   ~800 lines further down. */
+.brand-lockup.sidebar-lockup {
+  /* 62px of 76 — 225px of artwork against 244px usable, leaving real margin
+     rather than the few pixels two earlier attempts here were wrong by. */
+  --logo-h: 62px;
+}
+/* Also compounded. The base declares `text-wrap: balance`, and `balance` sets
+   text-wrap-mode back to `wrap` — so a bare `.sidebar-tagline { white-space:
+   nowrap }` was being undone by a later rule that never mentions white-space.
+   Both properties are set here so neither depends on order. */
+.brand-lockup-tagline.sidebar-tagline {
+  /* 11px now the column is wider — a ~223px line in 244px, still held on one
+     line by nowrap rather than by trusting the measurement, since two earlier
+     estimates here were wrong in the other direction. */
+  font-size: 11px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-wrap: nowrap;
+  color: rgba(255, 255, 255, 0.55);
+}
+/* The two phrases that say what the product is, at full strength; the words
+   joining them recede. */
+.brand-lockup-tagline.sidebar-tagline strong { font-weight: 800; color: #fff; }
+/* No theme swap and no pair of images: the sidebar ground is fixed, so the
+   white-lettered artwork is always correct. The pair that was here rendered
+   both at once — `.brand-logo-dark { display: none }` and
+   `.brand-lockup-logo { display: block }` are both (0,1,0), and the latter sits
+   700 lines further down, so it won on order alone. */
 .brand-row { display: flex; align-items: center; gap: 10px; }
 .brand-mark {
   width: 32px; height: 32px; border-radius: 8px; flex: none;
@@ -202,26 +256,62 @@ a { color: inherit; }
 .nav a {
   display: flex; align-items: center; gap: 9px;
   padding: 9px 12px; border-radius: 8px;
-  color: var(--text-2); text-decoration: none; font-weight: 500; font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.76); text-decoration: none; font-weight: 500; font-size: 14.5px;
   transition: all 0.15s ease;
 }
-.nav a:hover { background: var(--surface-2); color: var(--accent); }
+.nav a:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
 .nav a.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
   font-weight: 700;
-  border-left: 3px solid var(--accent);
+  /* The swoosh blue, so the active rail is lit by the mark above it. */
+  border-left: 3px solid var(--brand-blue-light);
 }
-.nav-icon { width: 16px; text-align: center; opacity: 0.85; font-size: 14px; }
+/* The icon is an SVG now, not a glyph, so text-align and font-size no longer
+   apply to it. A fixed box keeps every label starting at the same x whatever
+   the icon's own bounds are. */
+.nav-icon {
+  width: 17px; height: 17px; flex: none;
+  display: grid; place-items: center;
+  opacity: 0.82;
+  transition: opacity 0.15s ease;
+}
+.nav a:hover .nav-icon, .nav a.active .nav-icon { opacity: 1; }
 .nav-count {
   margin-left: auto; font-size: 11.5px; font-weight: 700;
-  background: var(--surface-2); color: var(--text-2);
+  background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.88);
   padding: 1px 7px; border-radius: 20px;
 }
-.nav a.active .nav-count { background: var(--accent); color: #fff; }
+.nav a.active .nav-count { background: var(--brand-blue-light); color: #06233f; }
 
-.sidebar-foot { margin-top: auto; border-top: 1px solid var(--navy-border); padding-top: 14px; }
-.who { display: flex; align-items: center; gap: 9px; padding: 4px 8px; }
+.sidebar-foot { margin-top: auto; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 14px; }
+.who { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; }
+.who:hover { background: rgba(255, 255, 255, 0.08); }
+.who.active { background: rgba(255, 255, 255, 0.14); }
+.who .tiny { color: rgba(255, 255, 255, 0.92); }
+.who .tiny.dim { color: rgba(255, 255, 255, 0.6); }
+.who .avatar { background: var(--brand-blue-light); color: #06233f; }
+
+/* Sits under the profile block it acts on. Quiet by default — signing out is
+   not the thing anyone came to the sidebar to do — and only turns red on
+   approach, which is also the confirmation that it is the destructive one. */
+.sign-out {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; margin-top: 8px; padding: 8px 12px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: rgba(255, 255, 255, 0.62);
+  font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.sign-out:hover {
+  /* On a dark ground the soft red wash reads as a smudge, so the warning is
+     carried by the text and a faint tint instead. */
+  background: rgba(239, 68, 68, 0.16);
+  border-color: transparent;
+  color: #fca5a5;
+}
+.sign-out:focus-visible { outline: 2px solid var(--critical); outline-offset: 1px; }
+.sign-out svg { flex: none; }
 .avatar {
   width: 30px; height: 30px; border-radius: 50%; flex: none;
   background: var(--accent); color: #ffffff;
@@ -403,6 +493,39 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--accent-soft); }
 .table-wrap { overflow-x: auto; }
+
+/* ── the calendar's month groups ─────────────────────────────────────────
+ * .month, .month-head and .month-name were being used in Calendar.tsx with no
+ * rules behind them at all. The two spans in the header therefore sat inline
+ * with nothing between them — "Mar 20263 items" — and the block had no padding,
+ * so the month sat flush against the card's edge while the rows inside it were
+ * inset by the table's own cell padding.
+ */
+.month { display: flex; flex-direction: column; }
+.month-group + .month-group { border-top: 1px solid var(--navy-border); }
+
+.month-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--navy-border);
+  /* The month stays put while its own rows scroll past it. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.month-name {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent);
+}
+.month-count { font-size: 12px; color: var(--text-3); }
+
+/* A group's rows carry the separator between them, but the last one would
+   otherwise double up with the group border below it. */
+.month-group tr:last-child td { border-bottom: 0; }
 
 .sticky-head th {
   position: sticky;
@@ -807,6 +930,9 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
  * still leads with the trial offer without pushing sign-in off the screen.
  */
 .auth-split {
+  /* The distance both columns start from the top. Shared, so the wordmark and
+     the page heading cannot drift apart when one side's padding is tuned. */
+  --auth-top: 40px;
   min-height: 100vh;
   display: grid;
   /* One ratio for sign-in, enrolment, forgotten password and reset. Moving
@@ -824,7 +950,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   background: var(--brand-gradient);
   color: #fff;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 56px clamp(32px, 5vw, 72px);
 }
 /* Two soft light sources, so the flat gradient gains some depth without
@@ -869,24 +995,30 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
    transparent padding below the mark, which at render size added ~9px of dead
    space that no margin could see or remove. With the box matching the ink, the
    margin below is exactly the gap you get. */
-.auth-aside-lockup {
+/* ── the brand lockup ────────────────────────────────────────────────────
+ * One definition, used signed-out on the auth panel and signed-in in the
+ * sidebar, so the mark does not change shape at the moment somebody logs in.
+ * Each context sets only --logo-h and the colour; the geometry is shared.
+ */
+.brand-lockup {
   /* The logo's height is the one dimension set in CSS; its width follows from
      the artwork's own aspect (941x259 after cropping to the ink). Deriving the
-     width here lets the tagline's offset track the clamp instead of being
-     pinned to one screen size. */
-  --logo-h: clamp(56px, 5vw, 76px);
+     width here lets the tagline's offset track the size instead of being
+     pinned to one of them. */
   --logo-w: calc(var(--logo-h) * 3.633);
-  /* Where the "p" of "Complaudi" begins, measured off the artwork: the glyph
-     runs x=422..525 of 941, so its left edge is 44.8% across the wordmark. */
-  --wordmark-p: 0.448;
+  /* Where the lettering begins, measured off the artwork: swoosh colour runs
+     out at x=200 of 941, so the "C" ends 21.3% across the wordmark and the
+     strapline hangs from the "o". One value for both contexts — the panel and
+     the sidebar indent by the same fraction and differ only in size. */
+  --wordmark-p: 0.213;
 
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
   max-width: 100%;
-  margin-bottom: 36px;
 }
-.auth-aside-tagline {
+.brand-lockup-logo { display: block; height: var(--logo-h); object-fit: contain; max-width: 100%; }
+.brand-lockup-tagline {
   /* Hard against the mark, and starting under the wordmark's "p" rather than
      centred — the strapline hangs off a letter of the logo instead of floating
      beneath it. The artwork is cropped to its ink, so a zero top margin is a
@@ -894,15 +1026,17 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
      line would otherwise reintroduce the gap it is meant to remove. */
   margin: 0 0 0 calc(var(--logo-w) * var(--wordmark-p));
   line-height: 1.25;
-  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.055em;
-  color: #fff;
   text-align: left;
   /* The mark ends in a lowercase "i"; sentence case under it reads as a
      strapline, where full caps would compete with the wordmark itself. */
   text-wrap: balance;
 }
+
+/* Signed out: large, on the navy panel. */
+.brand-lockup.auth-aside-lockup { --logo-h: clamp(56px, 5vw, 76px); margin-bottom: 36px; }
+.brand-lockup-tagline.auth-aside-tagline { font-size: 13px; color: #fff; }
 
 /* h1-h4 carry `color: var(--text)` globally, which is near-black and beat the
    panel's inherited white — the headline was rendering dark on dark navy.
@@ -910,19 +1044,66 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .auth-aside h1, .auth-aside h2, .auth-aside h3 { color: #fff; }
 
 .auth-headline {
-  margin: 0 0 14px;
+  margin: 0 0 13px;
   font-size: clamp(27px, 3vw, 38px);
   line-height: 1.16;
   font-weight: 700;
   letter-spacing: -0.022em;
+  /* Without this the last word drops to a line of its own — "again." was
+     sitting alone under a full-width first line. */
+  text-wrap: balance;
 }
-.auth-sub { margin: 0 0 32px; font-size: 15px; line-height: 1.62; color: rgba(255, 255, 255, 0.82); }
+/* The one warm phrase in the headline.
+ *
+ * `color` is set first and on its own: if background-clip:text is not
+ * supported the phrase still reads as orange instead of vanishing, and the
+ * transparent fill is only applied where the clip is known to work.
+ *
+ * #fdba74 rather than the brand #f97316 — against the blue end of the panel
+ * gradient (#2563eb) the brand orange measures 1.84:1, which is invisible.
+ * This measures 3.06:1 there and 6.7:1 where the headline actually sits,
+ * clearing the 3:1 that large text needs across the whole ramp. */
+.auth-headline-accent {
+  color: #fdba74;
+  background-image: linear-gradient(100deg, #fdba74 0%, #fb923c 48%, #fdba74 100%);
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .auth-headline-accent {
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+/* `pretty` over `balance`: this is a paragraph, so the goal is only to keep a
+   single word off the last line, not to even every line out. */
+.auth-sub {
+  margin: 0 0 26px;
+  font-size: 15px; line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+  text-wrap: pretty;
+}
 
-.auth-points { list-style: none; margin: 0 0 36px; padding: 0; display: flex; flex-direction: column; gap: 17px; }
+.auth-points { list-style: none; margin: 0 0 30px; padding: 0; display: flex; flex-direction: column; gap: 16px; }
 .auth-points li { display: flex; gap: 13px; align-items: flex-start; }
-.auth-points div { display: flex; flex-direction: column; gap: 2px; }
-.auth-points strong { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
-.auth-points span { font-size: 13px; color: rgba(255, 255, 255, 0.68); line-height: 1.5; }
+.auth-points div { display: flex; flex-direction: column; gap: 3px; }
+.auth-points strong { font-size: 15px; font-weight: 650; letter-spacing: -0.012em; }
+/* 0.68 flattened to 3.24:1 against the blue end of the gradient, under the
+   4.5:1 this size needs. 0.8 clears it at 3.9:1 — still clearly secondary to
+   the white label above it. */
+.auth-points span { font-size: 13px; color: rgba(255, 255, 255, 0.84); line-height: 1.5; }
+
+/* The authorities, as chips. Scoped under .auth-points so it outranks the
+   `.auth-points span` rule above — both would otherwise be (0,1,1) and the
+   winner would depend on which was written last. */
+.auth-points .auth-segments { flex-direction: row; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.auth-points .auth-segments span {
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.012em; line-height: 1.45;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
 .auth-tick {
   flex: none; margin-top: 2px; padding: 3px; border-radius: 50%;
   background: rgba(255, 255, 255, 0.15); color: var(--brand-blue-light);
@@ -946,13 +1127,14 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   box-shadow: 0 3px 16px -2px rgba(249, 115, 22, 0.65);
 }
 .trial-card h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; letter-spacing: -0.015em; }
-.trial-card > p { margin: 0 0 17px; font-size: 13.5px; line-height: 1.55; color: rgba(255, 255, 255, 0.78); }
+.trial-card > p { margin: 0 0 16px; font-size: 13.5px; line-height: 1.55; color: rgba(255, 255, 255, 0.9); }
 
 .trial-cta {
   display: flex; align-items: center; justify-content: center; gap: 9px;
   padding: 13px 20px; border-radius: 10px;
   font-size: 14.5px; font-weight: 650; text-decoration: none;
-  /* The wordmark's orange, used here and nowhere else on the page. */
+  /* The wordmark's orange. Shared with the badge above it and the one accented
+     phrase in the headline — all warmth on this panel points at enrolling. */
   color: #fff; background: var(--brand-orange-gradient);
   box-shadow: 0 7px 22px -6px rgba(249, 115, 22, 0.7);
   transition: transform 0.16s ease, box-shadow 0.16s ease;
@@ -961,13 +1143,26 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .trial-cta:active { transform: translateY(0); }
 .trial-cta svg { transition: transform 0.16s ease; }
 .trial-cta:hover svg { transform: translateX(3px); }
-.trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.62); }
+.trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.86); }
 
 /* ── the form side ───────────────────────────────────────────────────── */
-.auth-main { display: grid; place-items: center; padding: 48px 24px; background: var(--surface); }
-/* A form taller than the viewport should begin at the top and scroll, not sit
-   centred with its heading pushed off the top edge. */
-.auth-split.wide .auth-main { align-items: start; padding-block: 40px 48px; }
+/* Both columns start at the top, on all four signed-out pages.
+ *
+ * Centring each one independently drifts them apart: a column centres its own
+ * content in its own height, and the two columns never hold the same amount,
+ * so the wordmark lands at one height and the form's heading at another. Top
+ * alignment is the only rule under which they agree — and it is also what a
+ * form taller than the viewport needs, so it scrolls rather than sitting
+ * centred with its heading pushed off the top edge.
+ *
+ * Horizontal centring is kept: it is the vertical axis that has to match. */
+.auth-main {
+  display: grid;
+  justify-items: center;
+  align-items: start;
+  padding: var(--auth-top) 24px 48px;
+  background: var(--surface);
+}
 /* The panel is identical on all four signed-out pages — same width, same
  * sticky behaviour — so moving between sign-in and enrolment never resizes it.
  * It pins so a long form scrolls past rather than dragging it away.
@@ -979,10 +1174,10 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
  *   overflow-y: auto  — the panel scrolls instead of clipping. `overflow-x`
  *                       stays hidden so the decorative radials are still
  *                       cropped to the panel.
- *   align-items: safe center — plain `center` pushes overflowing content above
- *                       the scroll origin, where it can never be reached.
- *                       `safe` falls back to start alignment the moment it
- *                       would overflow.
+ *   align-items: flex-start — content starts at the scroll origin, so nothing
+ *                       can end up above it and out of reach. This replaced
+ *                       `safe center`, which only fell back to start once the
+ *                       content already overflowed.
  */
 .auth-aside {
   position: sticky;
@@ -991,8 +1186,8 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
-  align-items: safe center;
-  padding-block: 40px;
+  align-items: flex-start;
+  padding-block: var(--auth-top);
   scrollbar-width: none;
 }
 .auth-aside::-webkit-scrollbar { width: 0; }
@@ -1002,9 +1197,8 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
    rather than 900: with the fourth value point the untightened panel runs
    ~848px, which still overflows a 900px-tall window. */
 @media (min-width: 901px) and (max-height: 1000px) {
-  .auth-aside { padding-block: 30px; }
-  .auth-aside-lockup { --logo-h: 64px; }
-  .auth-aside-lockup { margin-bottom: 22px; }
+  .auth-split { --auth-top: 30px; }
+  .brand-lockup.auth-aside-lockup { --logo-h: 64px; margin-bottom: 22px; }
   .auth-headline { font-size: clamp(24px, 2.2vw, 29px); margin-bottom: 10px; }
   .auth-sub { font-size: 14px; line-height: 1.55; margin-bottom: 20px; }
   .auth-points { gap: 13px; margin-bottom: 22px; }
@@ -1188,9 +1382,8 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
     position: static; height: auto; overflow: hidden;
   }
   .auth-form-brand { display: inline-flex; align-self: center; margin-bottom: 6px; }
-  .auth-aside-lockup { --logo-h: 52px; }
-  .auth-aside-lockup { margin-bottom: 24px; }
-  .auth-aside-tagline { font-size: 12px; }
+  .brand-lockup.auth-aside-lockup { --logo-h: 52px; margin-bottom: 24px; }
+  .brand-lockup-tagline.auth-aside-tagline { font-size: 12px; }
   .auth-points { margin-bottom: 26px; }
 }
 
@@ -1226,3 +1419,62 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   border-radius: 12px; 
   padding: 4px;
 }
+
+/* ── billing: the plan picker ────────────────────────────────────────────
+ * Two terms side by side, each showing the listed price, the GST added to it
+ * and the total actually charged. All three arrive computed from the server's
+ * catalog; nothing here is derived in the browser, so what the buyer reads
+ * cannot disagree with what the Razorpay order was created for.
+ */
+.sub-state {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px;
+  font-size: 14px;
+  padding: 14px 16px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.sub-urgent { color: var(--critical); font-weight: 650; }
+
+.plan-pick-head { margin: 26px 0 3px; font-size: 16px; font-weight: 650; }
+.plan-pick-sub { margin: 0 0 16px; }
+
+.plan-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+}
+.plan-card {
+  position: relative;
+  display: flex; flex-direction: column;
+  padding: 20px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+/* The recommended term is marked by weight, not colour alone — the flag and
+   the filled button both say it, so it survives a greyscale print. */
+.plan-card.is-recommended { border-color: var(--brand-orange-deep); box-shadow: 0 6px 22px -14px rgba(234, 88, 12, 0.85); }
+.plan-flag {
+  position: absolute; top: -10px; left: 20px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: #fff; background: var(--brand-orange-gradient);
+}
+.plan-term { font-size: 13px; font-weight: 650; letter-spacing: 0.02em; color: var(--text-3); text-transform: uppercase; }
+.plan-price { display: flex; align-items: baseline; gap: 6px; margin: 6px 0 14px; }
+.plan-price-main { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.plan-price-unit { font-size: 13px; color: var(--text-3); }
+
+.plan-split { margin: 0 0 14px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.plan-split > div { display: flex; justify-content: space-between; gap: 12px; }
+.plan-split dt { color: var(--text-3); }
+.plan-split dd { margin: 0; font-variant-numeric: tabular-nums; }
+.plan-split .plan-total {
+  margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+.plan-split .plan-total dt { color: var(--text); }
+
+.plan-saving { margin: 0 0 14px; font-size: 12.5px; font-weight: 600; color: var(--good); }
+.plan-btn { margin-top: auto; width: 100%; justify-content: center; }
+.plan-current { margin: 9px 0 0; text-align: center; font-size: 12px; color: var(--text-3); }
+.plan-foot { margin-top: 14px; }
+
+/* The subscription cell in the SUPER_ADMIN table: state on top, action under. */
+.sub-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }

@@ -91,7 +91,10 @@ Deno.serve(async (req) => {
       const baseDate = currentSuccess?.validUntil && new Date(currentSuccess.validUntil).getTime() > now.getTime()
         ? new Date(currentSuccess.validUntil)
         : now;
-      const nextValidUntil = addDays(baseDate, env.RAZORPAY_PLAN_PERIOD_DAYS);
+      // The term comes from the payment row, which recorded it when the order
+      // was created. Reading it from config would credit a three-year purchase
+      // with one year, because config only ever held a single plan's length.
+      const nextValidUntil = addDays(baseDate, payment.periodDays ?? 365);
 
       await admin.from('payments').update({
         rzxPaymentId,

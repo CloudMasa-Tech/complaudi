@@ -463,10 +463,26 @@ model Payment {
   rzxPaymentId    String?       @unique
   rzxSignature    String?
   /// Actual charged amount in paise, from the order this server created.
+  /// Inclusive of tax: this is what the card was debited.
   amountPaise     Int
   currency        String        @default("INR")
   /// Plan name at purchase time, from config — audited here, displayed there.
   planName        String
+  /// Which catalog plan was bought. Held alongside planName so renaming a plan
+  /// later does not lose which one this payment actually was.
+  planKey         String        @default("ANNUAL")
+  /// Listed price before GST, in paise, and the tax charged on it. Both are
+  /// stored rather than derived: an invoice has to show the split, and
+  /// recovering it later by dividing a rounded total is how invoices stop
+  /// reconciling. baseAmountPaise + taxAmountPaise = amountPaise.
+  baseAmountPaise Int           @default(0)
+  taxPercent      Int           @default(0)
+  taxAmountPaise  Int           @default(0)
+  /// Entitlement length this payment bought, in days, copied from the plan at
+  /// purchase time. Crediting reads it from here rather than from config, so
+  /// changing a plan's term later cannot retroactively alter what somebody
+  /// already paid for.
+  periodDays      Int           @default(365)
   status          PaymentStatus @default(CREATED)
   /// "card" / "upi" / ... — from the Razorpay payment object, never a client claim.
   method          String?

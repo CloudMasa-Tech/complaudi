@@ -98,7 +98,36 @@ Rules governing this layer:
 - **DIRECT_URL**: Must use the direct connection/session pooler (port `5432`) specifically for Prisma migrations (`npx prisma migrate dev`).
 - **Active Supabase project ref:** `ciulqktarpydorkkfmqh` (region `ap-south-1`).
 - Always use `npm run prisma:migrate` for schema changes.
+- **Every new table needs `ENABLE ROW LEVEL SECURITY` in its own migration.**
+  Prisma creates tables with RLS off, and Supabase grants `anon` and
+  `authenticated` full DML on everything in `public`, so RLS is the only thing
+  between a new table and the internet — the anon key is published in the
+  browser bundle by design. The convention here is RLS on with *no* policies:
+  that denies every anon request, and the API reaches the data with the
+  service-role key, which bypasses RLS. Check with:
+  `SELECT relname, relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND NOT c.relrowsecurity;`
+  — it must return no rows. The regulatory-watch tables shipped without it.
 - `.env` is gitignored (holds the Supabase service_role key and JWT signing secrets); `.env.example` is the committed template.
+
+### Billing (Razorpay)
+- Two purchasable terms, defined in `src/modules/billing/plans.ts`: **1 year
+  ₹1,999** and **3 years ₹4,999**, each **+ 18% GST added on top** (₹2,358.82
+  and ₹5,898.82 charged). Prices live in code, not env, and the file is mirrored
+  verbatim into `supabase/functions/_shared/plans.ts`; `tests/plans.test.ts`
+  fails if the two drift.
+- **A payment is credited only by the server's own evidence.** With credentials
+  configured that means a valid HMAC over `order_id|payment_id` *and* Razorpay
+  reporting the payment `captured` against that same order. Nothing in the
+  request body may influence the decision — an earlier version treated the
+  client-supplied string `rzp_mock_signature` as proof of a simulated payment
+  and credited it, which handed out free subscriptions.
+- Simulated billing (no credentials) is server-gated and default-deny:
+  `!isProd && !razorpayEnabled` on Express, `ALLOW_SIMULATED_BILLING=true` on
+  the edge functions. Never infer it from a request.
+- The entitlement term is read from `Payment.periodDays`, recorded when the
+  order was created — never from config, or a 3-year purchase credits 1 year.
+- `Payment` stores the invoice split (`baseAmountPaise`, `taxPercent`,
+  `taxAmountPaise`) as charged. Do not re-derive it from a rounded total.
 
 ### Storage
 - Both `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` must be set to use Supabase Storage; if either is missing it falls back to local disk (`./storage`) with a boot warning.

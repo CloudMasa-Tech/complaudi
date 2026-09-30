@@ -6,6 +6,10 @@ export const createOrderSchema = z.object({
   /** The company the owner is upgrading. Optional: an owner may also upgrade
    *  without pinning it to one company. */
   companyId: z.string().uuid().optional(),
+  /** Which catalog plan to buy. Only the key travels — the price attached to
+   *  it is looked up server-side, so a tampered request can pick a different
+   *  plan but never a different amount for one. */
+  planKey: z.enum(['ANNUAL', 'TRIENNIAL']).optional(),
 });
 
 export const verifyPaymentSchema = z.object({

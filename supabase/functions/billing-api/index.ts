@@ -4,29 +4,18 @@ import { getAdminSupabase, getClientSupabase } from '../_shared/database.ts';
 import { env } from '../_shared/env.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../_shared/errors.ts';
+import { DEFAULT_PLAN_KEY, PLANS, findPlan, inrLabel, planView } from '../_shared/plans.ts';
 import { addDays, financialYearOf, monthName, utcDate } from '../_shared/dates.ts';
 // @ts-ignore
 import { z } from 'https://esm.sh/zod@3.23.8';
 
-const PURCHASER_ROLES = new Set(['COMPANY_OWNER', 'SUPER_ADMIN']);
+/** Everyone with a working login except VIEWER, which is read-only by
+ *  definition. The subscription belongs to the organisation, so any member who
+ *  can change anything can also pay for it. */
+const PURCHASER_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'CA', 'COMPANY_OWNER']);
 
-function inrLabel(paise: number): string {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(paise / 100);
-}
-
-function planConfig() {
-  return {
-    name: env.RAZORPAY_PLAN_NAME,
-    amountPaise: env.RAZORPAY_PLAN_AMOUNT_PAISE,
-    currency: env.RAZORPAY_CURRENCY,
-    periodDays: env.RAZORPAY_PLAN_PERIOD_DAYS,
-    periodLabel: 'Yearly',
-  };
-}
-
-function planLabel() {
-  return { amountLabel: inrLabel(env.RAZORPAY_PLAN_AMOUNT_PAISE), periodLabel: planConfig().periodLabel };
-}
+/** Prices come from ../_shared/plans.ts, a verbatim copy of the catalog the
+ *  Express API charges from. tests/plans.test.ts fails if the two drift. */
 
 async function createHmacSha256(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
@@ -63,8 +52,21 @@ Deno.serve(async (req) => {
     const client = getClientSupabase(req);
     const admin = getAdminSupabase();
 
-    // GET /billing-api/view or GET /billing-api
-    if (req.method === 'GET' && (path.endsWith('/billing-api') || path.endsWith('/view') || path.endsWith('/billing-api/view'))) {
+    // The workspace billing view.
+    //
+    // The client asks for "/billing", which resolveApiUrl turns into
+    // /functions/v1/billing-api/billing — and that matched none of the three
+    // patterns this once checked, so every load of the page fell through to the
+    // 404 at the bottom and rendered "Endpoint" in red. The page had never
+    // worked in SUPABASE mode. "/billing" is what the app actually sends, so it
+    // leads; the rest are kept for anything calling the function directly.
+    if (req.method === 'GET' && (
+      path === '' || path === '/' ||
+      path.endsWith('/billing') ||
+      path.endsWith('/billing-api') ||
+      path.endsWith('/view') ||
+      path.endsWith('/billing-api/view')
+    )) {
       const now = new Date();
 
       let org = null;
@@ -89,7 +91,7 @@ Deno.serve(async (req) => {
       if (authCtx.organizationId) {
         const { data: payData } = await client
           .from('payments')
-          .select('id, companyId, company:companies(legalName), rzxOrderId, rzxPaymentId, amountPaise, currency, planName, status, method, paidAt, validUntil, createdAt')
+          .select('id, companyId, company:companies(legalName), rzxOrderId, rzxPaymentId, amountPaise, baseAmountPaise, taxPercent, taxAmountPaise, periodDays, currency, planName, planKey, status, method, paidAt, validUntil, createdAt')
           .eq('organizationId', authCtx.organizationId)
           .order('createdAt', { ascending: false })
           .limit(100);
@@ -103,12 +105,15 @@ Deno.serve(async (req) => {
       const inTrial = trialEndsAt !== null && trialEndsAt.getTime() > now.getTime();
 
       return jsonResponse({
-        plan: { ...planConfig(), ...planLabel() },
+        plans: PLANS.map(planView),
+        currency: env.RAZORPAY_CURRENCY,
         subscription: {
           status: inTrial ? 'TRIAL' : 'PAID',
           trialEndsAt: org.trialEndsAt,
           trialDaysLeft: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt.getTime() - now.getTime()) / 86_400_000)) : null,
           validUntil: latestValid?.validUntil ?? null,
+          currentPlanKey: latestValid?.planKey ?? null,
+          currentPlanName: latestValid?.planName ?? null,
           paymentCount: (payments || []).filter((p: any) => p.status === 'SUCCESS').length,
         },
         payments: (payments || []).map((p: any) => ({
@@ -117,8 +122,16 @@ Deno.serve(async (req) => {
           rzxOrderId: p.rzxOrderId,
           amountPaise: p.amountPaise,
           amountLabel: inrLabel(p.amountPaise),
+          // Legacy rows predate the tax columns and carry a zero tax line,
+          // which is what was actually charged on them.
+          baseAmountPaise: p.baseAmountPaise ?? p.amountPaise,
+          baseLabel: inrLabel(p.baseAmountPaise ?? p.amountPaise),
+          taxPercent: p.taxPercent ?? 0,
+          taxAmountPaise: p.taxAmountPaise ?? 0,
+          taxLabel: inrLabel(p.taxAmountPaise ?? 0),
           currency: p.currency,
           planName: p.planName,
+          planKey: p.planKey ?? 'ANNUAL',
           status: p.status,
           method: p.method,
           paidAt: p.paidAt,
@@ -132,7 +145,7 @@ Deno.serve(async (req) => {
     // POST /billing-api/create-order
     if (req.method === 'POST' && path.endsWith('/create-order')) {
       if (!PURCHASER_ROLES.has(authCtx.role)) {
-        throw new ForbiddenError('Only a company owner can upgrade the plan.');
+        throw new ForbiddenError('Read-only members cannot purchase a subscription.');
       }
 
       const body = await req.json().catch(() => ({}));
@@ -143,45 +156,44 @@ Deno.serve(async (req) => {
         if (!comp) throw new NotFoundError('Company');
       }
 
-      const plan = planConfig();
-      let orderId = '';
+      const plan = findPlan(body.planKey ?? DEFAULT_PLAN_KEY);
+      if (!plan) throw new BadRequestError('Unknown plan.');
+      const currency = env.RAZORPAY_CURRENCY;
+
+      // Three outcomes and no path between them. Previously any Razorpay error
+      // fell through to a mock order, which verify then credited for free — so
+      // a few seconds of API trouble handed out a subscription.
+      let orderId: string;
       let isMockOrder = false;
 
-      const keyId = env.RAZORPAY_KEY_ID;
-      const keySecret = env.RAZORPAY_KEY_SECRET;
-
-      if (!keyId || !keySecret || keyId.startsWith('rzp_test_mock')) {
+      if (env.razorpayConfigured) {
+        const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + btoa(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`),
+          },
+          body: JSON.stringify({
+            amount: plan.amountPaise,
+            currency,
+            receipt: `org_${authCtx.organizationId}`.slice(0, 40),
+            notes: {
+              organizationId: authCtx.organizationId,
+              companyId: companyId ?? '',
+              planKey: plan.key,
+            },
+          }),
+        });
+        if (!rzpRes.ok) {
+          console.error('[billing] Razorpay order creation failed:', await rzpRes.text());
+          throw new BadRequestError('Could not reach the payment provider. Please try again.');
+        }
+        orderId = (await rzpRes.json()).id;
+      } else if (env.allowSimulatedBilling) {
         isMockOrder = true;
         orderId = `order_mock_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
       } else {
-        try {
-          const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Basic ' + btoa(`${keyId}:${keySecret}`),
-            },
-            body: JSON.stringify({
-              amount: plan.amountPaise,
-              currency: plan.currency,
-              receipt: `org_${authCtx.organizationId}`,
-              notes: { organizationId: authCtx.organizationId, companyId: companyId ?? '' },
-            }),
-          });
-
-          if (rzpRes.ok) {
-            const rzpOrder = await rzpRes.json();
-            orderId = rzpOrder.id;
-          } else {
-            console.warn('[Razorpay API warning]:', await rzpRes.text());
-            isMockOrder = true;
-            orderId = `order_mock_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
-          }
-        } catch (fetchErr) {
-          console.warn('[Razorpay API error]:', fetchErr);
-          isMockOrder = true;
-          orderId = `order_mock_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
-        }
+        throw new BadRequestError('Billing is not configured on this server.');
       }
 
       const { data: payment, error: pErr } = await admin
@@ -192,8 +204,13 @@ Deno.serve(async (req) => {
           createdByUserId: authCtx.userId,
           rzxOrderId: orderId,
           amountPaise: plan.amountPaise,
-          currency: plan.currency,
+          currency,
           planName: plan.name,
+          planKey: plan.key,
+          baseAmountPaise: plan.baseAmountPaise,
+          taxPercent: plan.taxPercent,
+          taxAmountPaise: plan.taxAmountPaise,
+          periodDays: plan.periodDays,
           status: 'CREATED',
         })
         .select('id')
@@ -202,12 +219,10 @@ Deno.serve(async (req) => {
 
       return jsonResponse({
         orderId,
-        amountPaise: plan.amountPaise,
-        currency: plan.currency,
+        ...planView(plan),
+        currency,
         planName: plan.name,
-        amountLabel: inrLabel(plan.amountPaise),
-        periodLabel: plan.periodLabel,
-        keyId: isMockOrder ? 'rzp_test_mockkey12345' : keyId,
+        keyId: isMockOrder ? null : env.RAZORPAY_KEY_ID,
         paymentId: payment.id,
         isMockOrder,
       });
@@ -230,33 +245,54 @@ Deno.serve(async (req) => {
         return jsonResponse({ status: 'SUCCESS', validUntil: payment.validUntil, planName: payment.planName, alreadyProcessed: true });
       }
 
-      const isMock = orderId.startsWith('order_mock_') || rzpPaymentId.startsWith('pay_mock_') || rzpSignature === 'rzp_mock_signature';
+      // Whether this payment counts is decided from this function's own
+      // configuration and Razorpay's answer. Nothing in the request steers it.
+      //
+      // What this replaced accepted `rzpSignature === 'rzp_mock_signature'` (or
+      // a "pay_mock_" id) as proof of a simulated payment, and — worse — fell
+      // through to crediting whenever `rzpSignature` was simply absent, since
+      // the verification sat inside `if (!isMock && rzpSignature)`. Either way
+      // a signed-in user could post against their own CREATED order and be
+      // credited a full subscription without paying.
+      let method: string | null = null;
 
-      if (!isMock && rzpSignature) {
+      if (env.razorpayConfigured) {
+        if (!rzpSignature) throw new BadRequestError('Payment signature is required.');
+
         const expectedHmac = await createHmacSha256(env.RAZORPAY_KEY_SECRET!, `${orderId}|${rzpPaymentId}`);
         if (!timingSafeEqualHex(expectedHmac, rzpSignature)) {
           throw new BadRequestError('Payment signature could not be verified.');
         }
 
-        if (env.RAZORPAY_KEY_ID && !env.RAZORPAY_KEY_ID.startsWith('rzp_test_mock')) {
-          try {
-            const rzpFetch = await fetch(`https://api.razorpay.com/v1/payments/${rzpPaymentId}`, {
-              headers: { 'Authorization': 'Basic ' + btoa(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`) },
-            });
-            if (rzpFetch.ok) {
-              const rzpPayment = await rzpFetch.json();
-              if (rzpPayment.status !== 'captured') {
-                await admin
-                  .from('payments')
-                  .update({ rzxPaymentId: rzpPayment.id, rzxSignature: rzpSignature, method: rzpPayment.method || null })
-                  .eq('id', payment.id);
-                throw new BadRequestError('The payment has not been captured yet. Please try again.');
-              }
-            }
-          } catch {
-            // Ignore API fetch error in mock fallback
-          }
+        // The signature proves the ids were paired by a holder of the key
+        // secret; it does not prove money moved. A failure here is an error,
+        // never a credit.
+        const rzpFetch = await fetch(`https://api.razorpay.com/v1/payments/${rzpPaymentId}`, {
+          headers: { 'Authorization': 'Basic ' + btoa(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`) },
+        });
+        if (!rzpFetch.ok) {
+          console.error('[billing] could not fetch payment from Razorpay:', await rzpFetch.text());
+          throw new BadRequestError('Could not confirm the payment with the provider. Please try again.');
         }
+
+        const rzpPayment = await rzpFetch.json();
+        if (rzpPayment.order_id !== orderId) {
+          throw new BadRequestError('That payment belongs to a different order.');
+        }
+        if (rzpPayment.status !== 'captured') {
+          await admin
+            .from('payments')
+            .update({ rzxPaymentId: rzpPayment.id, rzxSignature: rzpSignature, method: rzpPayment.method || null })
+            .eq('id', payment.id);
+          throw new BadRequestError('The payment has not been captured yet. Please try again.');
+        }
+        // Method comes from Razorpay's payment object, never from the request.
+        method = typeof rzpPayment.method === 'string' ? rzpPayment.method : null;
+      } else if (env.allowSimulatedBilling) {
+        console.warn('[billing] crediting a simulated payment — no Razorpay credentials and simulation is enabled', payment.id);
+        method = 'simulated';
+      } else {
+        throw new BadRequestError('Billing is not configured on this server.');
       }
 
       const now = new Date();
@@ -274,12 +310,14 @@ Deno.serve(async (req) => {
       const baseDate = currentSuccess?.validUntil && new Date(currentSuccess.validUntil).getTime() > now.getTime()
         ? new Date(currentSuccess.validUntil)
         : now;
-      const nextValidUntil = addDays(baseDate, env.RAZORPAY_PLAN_PERIOD_DAYS);
+      // The term comes from what was bought, not from config, so changing a
+      // plan's length later cannot alter an entitlement already paid for.
+      const nextValidUntil = addDays(baseDate, payment.periodDays ?? 365);
 
       await admin.from('payments').update({
-        rzxPaymentId: rzpPaymentId || `pay_mock_${Date.now()}`,
-        rzxSignature: rzpSignature || 'rzp_mock_signature',
-        method: body.method || 'card',
+        rzxPaymentId: method === 'simulated' ? `pay_sim_${payment.id}` : rzpPaymentId,
+        rzxSignature: rzpSignature ?? null,
+        method,
         status: 'SUCCESS',
         paidAt: now.toISOString(),
         validUntil: nextValidUntil.toISOString(),

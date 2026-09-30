@@ -31,6 +31,29 @@ export const env = {
   get RAZORPAY_WEBHOOK_SECRET(): string {
     return (typeof Deno !== 'undefined' ? Deno.env.get('RAZORPAY_WEBHOOK_SECRET') : '') || '';
   },
+  /**
+   * Whether this function holds usable Razorpay credentials.
+   *
+   * RAZORPAY_KEY_ID falls back to a mock literal above, so its mere presence
+   * proves nothing — this checks for a key that is not that placeholder.
+   */
+  get razorpayConfigured(): boolean {
+    const id = typeof Deno !== 'undefined' ? Deno.env.get('RAZORPAY_KEY_ID') : '';
+    const secret = typeof Deno !== 'undefined' ? Deno.env.get('RAZORPAY_KEY_SECRET') : '';
+    return Boolean(id && secret && !id.startsWith('rzp_test_mock'));
+  },
+  /**
+   * Whether this function may mark a payment paid without one being made.
+   *
+   * Opt-in and default-deny. A deployed edge function has no NODE_ENV to read,
+   * so "not production" cannot be inferred — it has to be stated, and stating
+   * it on a real deployment is then a visible act rather than an accident.
+   * Never derived from anything in a request.
+   */
+  get allowSimulatedBilling(): boolean {
+    if (this.razorpayConfigured) return false;
+    return (typeof Deno !== 'undefined' ? Deno.env.get('ALLOW_SIMULATED_BILLING') : '') === 'true';
+  },
   get RAZORPAY_TEST_MODE(): boolean {
     return typeof Deno !== 'undefined' ? Deno.env.get('RAZORPAY_TEST_MODE') === 'true' : false;
   },
