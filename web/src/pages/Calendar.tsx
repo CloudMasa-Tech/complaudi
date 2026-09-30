@@ -124,47 +124,45 @@ export function Calendar() {
           {data.rows.length === 0 ? (
             <Empty>No obligations match these filters.</Empty>
           ) : (
-            <div className="month">
+            <div className="table-wrap month">
               {months.map(([month, items]) => (
-                <div key={month}>
+                <div key={month} className="month-group">
                   <div className="month-head">
                     <span className="month-name">{fmtMonth(month)}</span>
-                    <span className="tiny dim">{items.length} item{items.length === 1 ? '' : 's'}</span>
+                    <span className="month-count">{items.length} item{items.length === 1 ? '' : 's'}</span>
                   </div>
-                  <div className="table-wrap">
-                    <table>
-                      <tbody>
-                        {items.map((i) => (
-                          <tr key={i.id} className="clickable" onClick={() => setOpenId(i.id)}>
-                            <td style={{ width: 116, whiteSpace: 'nowrap' }}>
-                              <div className="stack">
-                                <span style={{ fontWeight: 550 }}>{fmtDate(i.dueDate)}</span>
-                                <span className="tiny dim">{relativeDue(i.dueDate)}</span>
-                              </div>
-                            </td>
-                            <td style={{ width: 22 }}><SeverityDot value={i.severity} /></td>
-                            <td>
-                              <div className="stack">
-                                <span style={{ fontWeight: 500 }}>{i.title}</span>
-                                <span className="tiny dim">
-                                  {i.periodLabel} · {i.legalReference}
-                                </span>
-                              </div>
-                            </td>
-                            <td style={{ width: 96 }}><AuthorityTag value={i.authority} /></td>
-                            <td style={{ width: 106 }} className="tiny mono dim">{i.form ?? ''}</td>
+                  <table>
+                    <tbody>
+                      {items.map((i) => (
+                        <tr key={i.id} className="clickable" onClick={() => setOpenId(i.id)}>
+                          <td style={{ width: 116, whiteSpace: 'nowrap' }}>
+                            <div className="stack">
+                              <span style={{ fontWeight: 550 }}>{fmtDate(i.dueDate)}</span>
+                              <span className="tiny dim">{relativeDue(i.dueDate)}</span>
+                            </div>
+                          </td>
+                          <td style={{ width: 22 }}><SeverityDot value={i.severity} /></td>
+                          <td>
+                            <div className="stack">
+                              <span style={{ fontWeight: 500 }}>{i.title}</span>
+                              <span className="tiny dim">
+                                {i.periodLabel} · {i.legalReference}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ width: 96 }}><AuthorityTag value={i.authority} /></td>
+                          <td style={{ width: 92 }} className="tiny mono dim">{i.form ?? ''}</td>
                             {!selectedId && (
-                              <td className="tiny muted truncate" style={{ maxWidth: 160 }}>{i.company?.legalName}</td>
+                            <td className="tiny muted truncate" style={{ maxWidth: 140 }}>{i.company?.legalName}</td>
                             )}
-                            <td style={{ width: 66 }} className="tiny dim right">
-                              {i._count?.documents ? `❐ ${i._count.documents}` : ''}
-                            </td>
-                            <td style={{ width: 104 }}><Badge value={i.status} /></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                          <td style={{ width: 54 }} className="tiny dim right">
+                            {i._count?.documents ? `❐ ${i._count.documents}` : ''}
+                          </td>
+                          <td style={{ width: 104 }}><Badge value={i.status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ))}
             </div>
