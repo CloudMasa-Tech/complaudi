@@ -142,6 +142,26 @@ Rules governing this layer:
 ### AI Copilot
 The AI copilot relies on `retrieveRules()` to perform text search over the rule catalog and formulates answers deterministically based on whether a rule applies to the active company context.
 
+### Mobile, PWA and the native shells
+One codebase serves all three targets — there is no second frontend.
+
+- **Responsive**: below 820px the sidebar is an off-canvas drawer (`.sidebar.is-open`
+  + `.nav-scrim`), not a stacked block. Safe-area insets are honoured, which
+  needs `viewport-fit=cover` on the viewport meta or `env(safe-area-inset-*)`
+  resolves to 0. Inputs are 16px on mobile because anything smaller makes iOS
+  Safari zoom the page on focus and never zoom back.
+- **PWA**: `web/public/manifest.webmanifest` + `web/public/sw.js`, registered in
+  `main.tsx` in production only. **The service worker never caches API
+  responses** — a cache is per-origin, not per-user, so caching them would serve
+  one user's compliance data to the next person signing in on a shared device.
+  Only the shell is cached.
+- **Native**: Capacitor. `npm run android` / `npm run ios` build and open the
+  IDE; `npm run build:native` pins `VITE_API_MODE=SUPABASE` and syncs. That mode
+  matters: inside the shell the webview origin has no server behind it, so a
+  relative `/api/v1/...` resolves to nothing and only absolute URLs work.
+- `appId` is `in.cloudmasa.complaudi` and is permanent once published.
+- Building Android needs the Android SDK; iOS needs full Xcode.
+
 ## 5. Scripts Reference
 - `npm run dev`: Starts both backend (port 4000) and frontend (port 5173) with a startup banner showing both URLs. Uses `concurrently` for `dev:api` + `dev:web`.
 - `npm run dev:api`: Runs the API with `tsx watch src/index.ts`.

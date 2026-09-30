@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Complaudi</string>
+    <string name="title_activity_main">Complaudi</string>
+    <string name="package_name">in.cloudmasa.complaudi</string>
+    <string name="custom_url_scheme">in.cloudmasa.complaudi</string>
+</resources>

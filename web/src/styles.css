@@ -386,7 +386,7 @@ a { color: inherit; }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1180px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 820px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } }
+@media (max-width: 820px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } }
 
 .row { display: flex; align-items: center; gap: 9px; }
 .row-wrap { flex-wrap: wrap; }
@@ -1491,3 +1491,109 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 
 /* The subscription cell in the SUPER_ADMIN table: state on top, action under. */
 .sub-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+
+/* ── mobile: the navigation drawer ───────────────────────────────────────
+ * Above 820px none of this applies and the rail is an ordinary grid column.
+ * Below it the rail comes off the flow entirely: it used to become a
+ * full-width block stacked above the page, so reaching content on a phone
+ * meant scrolling past the brand, ten nav items, the profile and sign-out.
+ */
+.nav-toggle { display: none; }
+.nav-scrim { display: none; }
+
+@media (max-width: 820px) {
+  .nav-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    /* 44px: the minimum touch target both Apple and Google publish. Anything
+       smaller is a control people miss and tap twice. */
+    width: 44px; height: 44px; flex: none;
+    margin-left: -8px;
+    padding: 0; border: 0; border-radius: 10px;
+    background: transparent; color: var(--text);
+    cursor: pointer;
+  }
+  .nav-toggle:hover { background: var(--surface-2); }
+  .nav-toggle:active { transform: scale(0.94); }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(84vw, 320px);
+    height: 100dvh;           /* dvh, so the bar of mobile Safari cannot clip it */
+    transform: translateX(-100%);
+    transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Clear of the notch and the home indicator. */
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  }
+  .sidebar.is-open { transform: translateX(0); }
+
+  .nav-scrim {
+    display: block;
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(8, 17, 34, 0.55);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.24s ease;
+  }
+  .nav-scrim.is-open { opacity: 1; pointer-events: auto; }
+
+  /* The drawer slides; honour a request for less movement by cutting the
+     motion, not the drawer. */
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar, .nav-scrim { transition: none; }
+  }
+
+  /* The topbar is the only thing above the notch now that the rail is gone. */
+  .topbar {
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    gap: 10px;
+  }
+  .topbar h1, .topbar-company h1 { font-size: 17px; }
+  .topbar-sub { display: none; }        /* the strapline costs a line it cannot spare */
+  .topbar-actions { margin-left: auto; min-width: 0; }
+
+  .content {
+    padding: 14px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Filters stack rather than squeezing four controls onto one line. */
+  .filters .field, .filters .field.grow { min-width: 0; flex: 1 1 100%; }
+
+  /* Tables are the one thing allowed to scroll sideways, and only inside their
+     own box — never by taking the page with them. */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .card-head { padding: 12px 14px; }
+  .card-body { padding: 12px 14px; }
+
+  /* Native controls under 16px make iOS Safari zoom the whole page on focus,
+     and it does not zoom back out. */
+  input, select, textarea { font-size: 16px; }
+
+  /* Comfortable rather than dense: a row is a tap target here. */
+  td, th { padding: 11px 10px; }
+  .btn, button, .btn-sm { min-height: 40px; }
+  .btn-sm { min-height: 36px; }
+}
+
+@media (max-width: 820px) {
+  /* A safety net against sideways page scroll, the commonest way a desktop
+     layout feels broken on a phone. Tables opt out via .table-wrap.
+     Deliberately body-only and inside the breakpoint: on `html` this makes the
+     root a scroll container, which is a documented way to break `position:
+     sticky` descendants — and the topbar and sidebar are both sticky above
+     this width. */
+  body { overflow-x: hidden; }
+}
+
+@media (max-width: 480px) {
+  .content { padding: 12px; }
+  .topbar-company-mark { display: none; }
+  .card-head h2 { font-size: 15px; }
+}
