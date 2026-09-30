@@ -950,7 +950,7 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   background: var(--brand-gradient);
   color: #fff;
   display: flex;
-  align-items: flex-start;
+  align-items: safe center;
   padding: 56px clamp(32px, 5vw, 72px);
 }
 /* Two soft light sources, so the flat gradient gains some depth without
@@ -1146,23 +1146,33 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 .trial-foot { margin: 11px 0 0; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.86); }
 
 /* ── the form side ───────────────────────────────────────────────────── */
-/* Both columns start at the top, on all four signed-out pages.
+/* The two columns always share one vertical alignment, and which one depends
+ * on how tall the page is.
  *
- * Centring each one independently drifts them apart: a column centres its own
- * content in its own height, and the two columns never hold the same amount,
- * so the wordmark lands at one height and the form's heading at another. Top
- * alignment is the only rule under which they agree — and it is also what a
- * form taller than the viewport needs, so it scrolls rather than sitting
- * centred with its heading pushed off the top edge.
+ * Sign-in, forgotten password and reset are short, so both columns centre and
+ * the whole composition sits in the middle of the screen. Enrolment is taller
+ * than most viewports, so both columns start at the top instead: centred, its
+ * heading would be pushed off the top edge with no way to scroll back to it.
  *
- * Horizontal centring is kept: it is the vertical axis that has to match. */
+ * What must not happen is the two disagreeing. Each column centres its own
+ * content in its own height and the two never hold the same amount, so one
+ * centred beside one topped puts the wordmark ~100px below the form's heading.
+ * Every rule below therefore sets both sides together.
+ *
+ * `safe center` rather than plain `center`: when content does overflow, plain
+ * centring pushes the top of it above the scroll origin where it can never be
+ * reached. `safe` falls back to start alignment at exactly that point. */
 .auth-main {
   display: grid;
   justify-items: center;
-  align-items: start;
-  padding: var(--auth-top) 24px 48px;
+  align-items: safe center;
+  /* Symmetric, so centring actually centres — 40px top against 48px bottom
+     would sit the form 4px high. Enrolment overrides it below, where the top
+     value has to match the panel's instead. */
+  padding: 48px 24px;
   background: var(--surface);
 }
+.auth-split.wide .auth-main { align-items: start; padding-block: var(--auth-top) 48px; }
 /* The panel is identical on all four signed-out pages — same width, same
  * sticky behaviour — so moving between sign-in and enrolment never resizes it.
  * It pins so a long form scrolls past rather than dragging it away.
@@ -1174,10 +1184,10 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
  *   overflow-y: auto  — the panel scrolls instead of clipping. `overflow-x`
  *                       stays hidden so the decorative radials are still
  *                       cropped to the panel.
- *   align-items: flex-start — content starts at the scroll origin, so nothing
- *                       can end up above it and out of reach. This replaced
- *                       `safe center`, which only fell back to start once the
- *                       content already overflowed.
+ *   align-items: safe center — matching the form column beside it. `safe` is
+ *                       what keeps a pinned 100vh box honest: once the content
+ *                       is taller than the panel, alignment falls back to start
+ *                       so nothing sits above the scroll origin.
  */
 .auth-aside {
   position: sticky;
@@ -1186,10 +1196,13 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
-  align-items: flex-start;
+  align-items: safe center;
   padding-block: var(--auth-top);
+  /* Enrolment tops out; see the note on .auth-main. Compounded so it outranks
+     the plain .auth-aside rules rather than relying on line order. */
   scrollbar-width: none;
 }
+.auth-split.wide .auth-aside { align-items: flex-start; }
 .auth-aside::-webkit-scrollbar { width: 0; }
 
 /* Short viewports — a 1280x800 or 1440x810 laptop — tighten the panel so it
