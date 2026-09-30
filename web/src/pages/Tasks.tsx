@@ -72,6 +72,27 @@ export function Tasks() {
     { assignee: { id: string; name: string } | null; counts: Record<string, number>; total: number }[]
   >(`/tasks/workload${qs({ companyId: selectedId ?? undefined })}`, [selectedId]);
 
+  /**
+   * Open work per owner, for the Owner options.
+   *
+   * This used to be a card of its own above the filters — a row of buttons that
+   * set exactly the state the Owner select sets. Two controls for one filter is
+   * one too many, so the counts moved into the control that was already there
+   * and the card went. A select also holds its shape as a team grows, where a
+   * row of chips does not.
+   */
+  const openCounts = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const w of workload ?? []) out.set(w.assignee?.id ?? 'none', w.total);
+    return out;
+  }, [workload]);
+
+  /** " (3)", or nothing at all for an owner with no open work. */
+  const openBy = (id: string) => {
+    const n = openCounts.get(id);
+    return n ? ` (${n})` : '';
+  };
+
   async function change(task: Task, body: Record<string, unknown>) {
     setSavingId(task.id);
     setGateError(null);
@@ -109,23 +130,6 @@ export function Tasks() {
 
   return (
     <>
-      {workload && workload.length > 0 && (
-        <Card title="Open work by owner">
-          <div className="card-body row row-wrap" style={{ gap: 10 }}>
-            {workload.map((w) => (
-              <button
-                key={w.assignee?.id ?? 'none'}
-                className={assignee === (w.assignee?.id ?? 'none') ? 'btn-primary' : ''}
-                onClick={() => setAssignee(assignee === (w.assignee?.id ?? 'none') ? '' : (w.assignee?.id ?? 'none'))}
-              >
-                {w.assignee?.name ?? 'Unassigned'}
-                <span className="nav-count" style={{ marginLeft: 2 }}>{w.total}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      )}
-
       <div className="card">
         <div className="card-body filters">
           <div className="field grow">
@@ -142,11 +146,17 @@ export function Tasks() {
             </select>
           </div>
           <div className="field">
-            <label>Owner</label>
+            {/* The counts are open work, which is not always what the list below
+                shows — Status can be set to All. The label says so, because the
+                card these came from said it in its title and a bare number in a
+                dropdown would otherwise read as "how many rows you will get". */}
+            <label>Owner <span className="dim">· open</span></label>
             <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
               <option value="">Anyone</option>
-              <option value="none">Unassigned</option>
-              {(people ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="none">Unassigned{openBy('none')}</option>
+              {(people ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}{openBy(p.id)}</option>
+              ))}
             </select>
           </div>
           <div className="field" style={{ justifyContent: 'flex-end' }}>
