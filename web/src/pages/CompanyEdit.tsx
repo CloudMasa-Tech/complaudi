@@ -209,7 +209,7 @@ function DocumentSlotCard({ companyId, docType, title, note, documents, onReload
           <div style={{ padding: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--foreground)' }}>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>
                   📄 {existingDoc.fileName}
                 </div>
                 <div className="tiny muted" style={{ marginTop: 2 }}>

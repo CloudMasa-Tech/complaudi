@@ -592,22 +592,22 @@ function PortfolioOverview({ companies }: { companies: Company[] }) {
     <Card title="Portfolio Analytics">
       <div className="card-body">
         <div className="grid grid-4" style={{ gap: 16 }}>
-          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+          <div className="card stat" style={{ border: 'none', background: 'var(--surface-2)' }}>
             <span className="stat-label">Total Companies</span>
             <span className="stat-value">{companies.length}</span>
             <span className="stat-foot">{activeCount} active · {companies.length - activeCount} archived</span>
           </div>
-          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+          <div className="card stat" style={{ border: 'none', background: 'var(--surface-2)' }}>
             <span className="stat-label">Total Directors</span>
             <span className="stat-value">{totalDirectors}</span>
             <span className="stat-foot">Across all entities</span>
           </div>
-          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+          <div className="card stat" style={{ border: 'none', background: 'var(--surface-2)' }}>
             <span className="stat-label">GST Registered</span>
             <span className="stat-value">{withGst}</span>
             <span className="stat-foot">{Math.round((withGst / companies.length) * 100)}% coverage</span>
           </div>
-          <div className="card stat" style={{ border: 'none', background: 'var(--bg-2)' }}>
+          <div className="card stat" style={{ border: 'none', background: 'var(--surface-2)' }}>
             <span className="stat-label">MSME Registered</span>
             <span className="stat-value">{withMsme}</span>
             <span className="stat-foot">{Math.round((withMsme / companies.length) * 100)}% coverage</span>
@@ -618,7 +618,7 @@ function PortfolioOverview({ companies }: { companies: Company[] }) {
           <span className="label" style={{ marginBottom: 12, display: 'block' }}>Entity Types Breakdown</span>
           <div className="grid grid-4" style={{ gap: 12 }}>
             {Object.entries(entityTypes).map(([type, count]) => (
-              <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-1)' }}>
+              <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)' }}>
                 <span style={{ fontSize: 14 }}>{ENTITY_LABEL[type] || titleise(type)}</span>
                 <span style={{ fontWeight: 600 }}>{count}</span>
               </div>
@@ -732,7 +732,7 @@ export function Dashboard() {
               display: 'inline-block',
               marginTop: 8,
               padding: '6px 12px',
-              background: 'var(--primary)',
+              background: 'var(--accent)',
               color: 'white',
               borderRadius: '4px',
               fontSize: '12px',

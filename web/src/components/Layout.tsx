@@ -115,7 +115,7 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
         onClick={() => setOpen(!open)}
       >
         <span className="truncate">{selectedName}</span>
-        <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>▼</span>
+        <span style={{ fontSize: 10, color: 'var(--text-3)' }}>▼</span>
       </button>
 
       {open && (
@@ -139,7 +139,7 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
             {userRole === 'SUPER_ADMIN' && (!search || "all companies".includes(search.toLowerCase())) && (
               <div 
                 onClick={() => { select(null); setOpen(false); setSearch(''); }} 
-                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === null ? 'var(--bg-card-alt)' : 'transparent' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === null ? 'var(--surface-2)' : 'transparent' }}
               >
                 <span style={{ width: 16, display: 'inline-block' }}>{selectedId === null ? '✓' : ''}</span>
                 <span className="truncate">All companies ({companies.length})</span>
@@ -149,14 +149,14 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
               <div 
                 key={c.id}
                 onClick={() => { select(c.id); setOpen(false); setSearch(''); }} 
-                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === c.id ? 'var(--bg-card-alt)' : 'transparent' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === c.id ? 'var(--surface-2)' : 'transparent' }}
               >
                 <span style={{ width: 16, display: 'inline-block' }}>{selectedId === c.id ? '✓' : ''}</span>
                 <span className="truncate" title={c.legalName}>{c.legalName}</span>
               </div>
             ))}
             {filtered.length === 0 && (
-              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
                 No matches found
               </div>
             )}
