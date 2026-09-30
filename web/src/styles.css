@@ -396,7 +396,23 @@ a { color: inherit; }
 .tiny { font-size: 12.5px; }
 .mono { font-size: 13px; letter-spacing: 0.2px; }
 .right { text-align: right; }
-.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* `display` is the load-bearing part, and it was missing.
+ *
+ * overflow and text-overflow do nothing on an inline box, and eight of this
+ * utility's nine uses are on a <span>. So the text never truncated — it just
+ * stayed at full width and pushed the layout out. On the Companies page one
+ * such span had a min-content width of 307px, which on a 390px phone forced
+ * the whole layout viewport open to 539px.
+ *
+ * min-width: 0 lets it shrink when it is a flex item, which is how most of
+ * these are used. A table cell is already a block container, so ellipsis works
+ * there without the change — and blockifying it would break the row. */
+.truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+td.truncate, th.truncate { display: table-cell; }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 button, .btn {
@@ -1392,7 +1408,14 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   .auth-main { order: 1; padding: 36px 20px 28px; }
   .auth-aside {
     order: 2; padding: 34px 20px 44px;
-    position: static; height: auto; overflow: hidden;
+    /* `relative`, not `static`. Both undo the sticky positioning above, but
+       `overflow: hidden` cannot clip an absolutely-positioned descendant whose
+       containing block lies outside the clipping element — and the decorative
+       radials are absolute. Under `static` this element stopped being their
+       containing block, ::before escaped to x=560 on a 390px screen, and the
+       page gained 170px of horizontal overflow that body's overflow-x
+       then hid rather than fixed. */
+    position: relative; height: auto; overflow: hidden;
   }
   .auth-form-brand { display: inline-flex; align-self: center; margin-bottom: 6px; }
   .brand-lockup.auth-aside-lockup { --logo-h: 52px; margin-bottom: 24px; }
@@ -1596,4 +1619,39 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   .content { padding: 12px; }
   .topbar-company-mark { display: none; }
   .card-head h2 { font-size: 15px; }
+}
+
+/* ── the team block on a company ─────────────────────────────────────────
+ * These classes were used in Companies.tsx with no rules behind them at all —
+ * the row's whole layout came from inline styles. It gets the rules it was
+ * already assuming, plus the ability to reflow when the screen is narrow: a
+ * long role label ("Chartered accountant" measures 141px and cannot wrap) sat
+ * beside a 307px identity block and pushed the row past a phone's width.
+ */
+.team-row { min-width: 0; }
+.team-row > .stack { min-width: 0; }
+/* A flex container's default min-width is auto, so a .row nested in the stack
+   blocks its own children from shrinking however much room they are given. */
+.team-row .row { min-width: 0; }
+
+@media (max-width: 560px) {
+  /* The role moves under the name rather than competing with it for a width
+     neither can have.
+     `flex-basis: 100%` rather than relying on flex-wrap alone: now that
+     .truncate works, the identity block shrinks instead of pushing the badge
+     onto a second line, so the name ellipsed to "Aru…" while a 141px role
+     label sat beside it. Given its own row, the name gets the width back. */
+  .team-row { flex-wrap: wrap; row-gap: 6px; }
+  /* Indent with padding, not margin: a 100% basis plus a 42px margin is wider
+     than the row, which is worth 15px of page overflow. Padding is inside the
+     basis under border-box. */
+  .team-row > .badge { flex: 0 0 100%; margin-left: 0; padding-left: 42px; text-align: left; }
+}
+
+/* A .row is a flex row, and on a phone two of anything side by side is one too
+   many. This is the generic page-intro row — prose beside a search box — which
+   otherwise squeezed six lines of text into a column a few words wide. */
+@media (max-width: 640px) {
+  .content > .row { flex-wrap: wrap; row-gap: 10px; }
+  .content > .row > * { flex: 1 1 100%; min-width: 0; }
 }
