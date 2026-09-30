@@ -212,11 +212,13 @@ export const Empty = ({ children }: { children: ReactNode }) => <div className="
 
 export const ErrorNote = ({ error }: { error: string }) => <div className="alert alert-error">{error}</div>;
 
-export function Card({ title, action, children, note }: {
+export function Card({ title, action, children, note, id }: {
   title?: string; action?: ReactNode; children: ReactNode; note?: string;
+  /** Anchor target, so another part of the page can link straight to this card. */
+  id?: string;
 }) {
   return (
-    <section className="card">
+    <section className="card" id={id}>
       {title && (
         <header className="card-head">
           <h2>{title}</h2>

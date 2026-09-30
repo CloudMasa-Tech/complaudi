@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { post, ApiError } from '../api/client';
 import { useResource } from '../api/useResource';
 import { ErrorNote, Card, Empty, Loading, PaymentStatusBadge, Badge, fmtDate } from '../components/ui';
-import type { BillingView, OnboardedCompany } from '../api/types';
+import type { BillingPaymentRow, BillingView, OnboardedCompany, PlanOption } from '../api/types';
 
 // ----------------------------------------------------------- Razorpay checkout
 
@@ -37,91 +37,89 @@ function loadRazorpayCheckout(): Promise<void> {
 
 // ------------------------------------------------------------------ owner view
 
+interface CreateOrderResponse extends PlanOption {
+  orderId: string;
+  currency: string;
+  planName: string;
+  keyId: string | null;
+  paymentId: string;
+  /** Set by the server when it holds no Razorpay credentials, which it only
+   *  does outside production. The page never decides this for itself. */
+  isMockOrder: boolean;
+}
+
 function WorkspaceBilling() {
   const { user } = useAuth();
   const { data, error, initial } = useResource<BillingView>('/billing');
-  const [busy, setBusy] = useState(false);
+  /** Which plan's checkout is in flight, so only that button shows a spinner. */
+  const [busy, setBusy] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
-  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<BillingPaymentRow | null>(null);
 
   if (!user) return null;
   const me = user;
 
-  async function startCheckout() {
-    setBusy(true);
+  async function startCheckout(plan: PlanOption) {
+    setBusy(plan.key);
     setPayError(null);
     try {
-      // Order created server-side; the secret never leaves it.
-      const order = await post<{
-        orderId: string; amountPaise: number; currency: string; amountLabel: string;
-        periodLabel: string; planName: string; keyId: string; isMockOrder?: boolean;
-      }>('/billing/create-order', {});
+      // Only the plan key travels. The amount is looked up server-side from the
+      // catalog, so the page cannot ask to be charged a different number.
+      const order = await post<CreateOrderResponse>('/billing/create-order', { planKey: plan.key });
 
-      // Fallback for test mode or mock keys
-      if (order.isMockOrder || order.keyId === 'rzp_test_mockkey12345') {
-        try {
-          await post('/billing/verify', {
-            orderId: order.orderId,
-            rzpPaymentId: `pay_mock_${Date.now()}`,
-            rzpSignature: 'rzp_mock_signature',
-            method: 'card',
-          });
-          window.location.reload();
-          return;
-        } catch (verr) {
-          setPayError(verr instanceof ApiError ? verr.message : 'Test payment verification failed.');
-          setBusy(false);
-          return;
-        }
-      }
-
-      try {
-        await loadRazorpayCheckout();
-
-        const rzp = new window.Razorpay({
-          key: order.keyId,
-          amount: order.amountPaise,
-          currency: order.currency,
-          name: 'Complaudi',
-          description: `${order.planName} — ${order.amountLabel}/${order.periodLabel}`,
-          order_id: order.orderId,
-          prefill: {
-            name: me.name,
-            email: me.email,
-          },
-          handler: async (response: { razorpay_payment_id: string; razorpay_signature: string }) => {
-            try {
-              await post('/billing/verify', {
-                orderId: order.orderId,
-                rzpPaymentId: response.razorpay_payment_id,
-                rzpSignature: response.razorpay_signature,
-              });
-              window.location.reload();
-            } catch (err) {
-              setPayError(err instanceof ApiError ? err.message : 'Payment could not be confirmed. Please retry.');
-            }
-          },
-          modal: {
-            ondismiss: () => setBusy(false),
-          },
-        });
-
-        rzp.open();
-        setBusy(false);
-      } catch (sdkErr) {
-        // Fallback if Razorpay SDK popup is blocked or unavailable
-        console.warn('Razorpay SDK load fallback:', sdkErr);
+      // A server running without Razorpay credentials — local development —
+      // answers with a simulated order and credits it without a real payment.
+      // Whether that is allowed is the server's decision; these placeholders
+      // carry no authority and are rejected by any server that has keys.
+      if (order.isMockOrder) {
         await post('/billing/verify', {
           orderId: order.orderId,
-          rzpPaymentId: `pay_mock_${Date.now()}`,
-          rzpSignature: 'rzp_mock_signature',
-          method: 'upi',
+          rzpPaymentId: 'simulated',
+          rzpSignature: 'simulated',
         });
         window.location.reload();
+        return;
       }
+
+      await loadRazorpayCheckout();
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        name: 'Complaudi',
+        description: `${order.name} — ${order.baseLabel} + ${order.taxPercent}% GST`,
+        order_id: order.orderId,
+        prefill: { name: me.name, email: me.email },
+        notes: { plan: order.name },
+        theme: { color: '#1b3a6b' },
+        handler: async (response: { razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            await post('/billing/verify', {
+              orderId: order.orderId,
+              rzpPaymentId: response.razorpay_payment_id,
+              rzpSignature: response.razorpay_signature,
+            });
+            window.location.reload();
+          } catch (err) {
+            // The money may well have left their account — Razorpay's webhook
+            // is the backstop that credits it — so this must not read as "your
+            // payment failed".
+            setPayError(
+              err instanceof ApiError
+                ? err.message
+                : 'We could not confirm the payment. If your account was debited it will be credited shortly; refresh in a minute.',
+            );
+            setBusy(null);
+          }
+        },
+        modal: { ondismiss: () => setBusy(null) },
+      });
+
+      rzp.open();
     } catch (err) {
       setPayError(err instanceof ApiError ? err.message : 'Could not start the payment. Please retry.');
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -133,70 +131,76 @@ function WorkspaceBilling() {
     return <Loading label="Loading billing" />;
   }
 
-  const { plan, subscription, payments, canPurchase } = data;
+  const { plans, subscription, payments, canPurchase } = data;
   const onTrial = subscription.status === 'TRIAL';
   const trialDaysLeft = subscription.trialDaysLeft;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <Card title="Current Plan">
+      <Card title="Subscription" id="subscription">
         <div style={{ padding: 16 }}>
-          <div
-            style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
-              background: 'var(--surface-2)', padding: 16, borderRadius: 6,
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600 }}>{plan.name}</div>
-              <div className="dim tiny">{plan.periodLabel} · one-time, renewed on renewal day</div>
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>
-              {plan.amountLabel}
-              <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--text-3)' }}>/{plan.periodLabel.toLowerCase()}</span>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 16, display: 'flex', gap: 24, fontSize: 14, flexWrap: 'wrap' }}>
+          <div className="sub-state">
             {onTrial ? (
               <>
-                <span className="badge badge-DUE" style={{ fontSize: 14, padding: '4px 8px' }}>Free Trial</span>
+                <span className="badge badge-DUE">Free trial</span>
                 <div>
-                  <span className="dim">Trial ends:</span>{' '}
+                  <span className="dim">Trial ends</span>{' '}
                   <strong>{fmtDate(subscription.trialEndsAt)}</strong>
                   {trialDaysLeft !== null && (
-                    <span className="dim"> · {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''} left</span>
+                    <span className={trialDaysLeft <= 3 ? 'sub-urgent' : 'dim'}>
+                      {' · '}{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''} left
+                    </span>
                   )}
                 </div>
               </>
             ) : (
               <>
-                <span className="badge badge-COMPLETED" style={{ fontSize: 14, padding: '4px 8px' }}>Paid plan</span>
+                <span className="badge badge-COMPLETED">Active subscription</span>
                 <div>
-                  <span className="dim">Paid until:</span>{' '}
-                  <strong>{fmtDate(subscription.validUntil)}</strong>
+                  <span className="dim">Paid until</span> <strong>{fmtDate(subscription.validUntil)}</strong>
+                  {subscription.currentPlanName && (
+                    <span className="dim"> · {subscription.currentPlanName} plan</span>
+                  )}
                 </div>
                 {subscription.paymentCount > 0 && (
-                  <div className="dim">{subscription.paymentCount} confirmed payment{subscription.paymentCount !== 1 ? 's' : ''}</div>
+                  <span className="dim tiny">
+                    {subscription.paymentCount} confirmed payment{subscription.paymentCount !== 1 ? 's' : ''}
+                  </span>
                 )}
               </>
             )}
           </div>
 
           {canPurchase && (
-            <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <button className="btn btn-primary" disabled={busy} onClick={startCheckout}>
-                {busy
-                  ? 'Preparing payment…'
-                  : onTrial
-                    ? `Upgrade to Paid Plan — ${plan.amountLabel}/${plan.periodLabel.toLowerCase()}`
-                    : `Renew Paid Plan — ${plan.amountLabel}/${plan.periodLabel.toLowerCase()}`}
-              </button>
-              {payError && <ErrorNote error={payError} />}
-              <p className="dim tiny" style={{ marginTop: 12 }}>
-                Payments are processed securely by Razorpay. You will be taken to the Razorpay checkout to pay for the {plan.amountLabel} {plan.name.toLowerCase()}.
+            <>
+              <h3 className="plan-pick-head">
+                {onTrial ? 'Choose a plan' : 'Extend your subscription'}
+              </h3>
+              <p className="dim tiny plan-pick-sub">
+                {onTrial
+                  ? 'Everything in the trial, kept running. Prices exclude GST, which is shown on each plan.'
+                  : 'Paying again extends from your current end date — no days are lost.'}
               </p>
-            </div>
+
+              <div className="plan-grid">
+                {plans.map((plan) => (
+                  <PlanCard
+                    key={plan.key}
+                    plan={plan}
+                    current={subscription.currentPlanKey === plan.key}
+                    busy={busy === plan.key}
+                    disabled={busy !== null}
+                    onChoose={() => startCheckout(plan)}
+                  />
+                ))}
+              </div>
+
+              {payError && <ErrorNote error={payError} />}
+              <p className="dim tiny plan-foot">
+                Payments are processed by Razorpay. Cards, UPI, net banking and wallets are accepted.
+                Your subscription starts the moment the payment is confirmed.
+              </p>
+            </>
           )}
         </div>
       </Card>
@@ -257,7 +261,7 @@ function WorkspaceBilling() {
         >
           <div
             style={{
-              background: 'var(--surface-1)', borderRadius: 8, padding: 24, maxWidth: 520, width: '100%',
+              background: 'var(--surface)', borderRadius: 8, padding: 24, maxWidth: 520, width: '100%',
               border: '1px solid var(--border)', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)',
             }}
             onClick={(e) => e.stopPropagation()}
@@ -291,6 +295,18 @@ function WorkspaceBilling() {
                 <span className="dim">Payment Method:</span>
                 <strong>{(selectedReceipt.method || 'CARD').toUpperCase()}</strong>
               </div>
+              {selectedReceipt.taxAmountPaise > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="dim">Plan charge:</span>
+                    <strong>{selectedReceipt.baseLabel}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="dim">GST @ {selectedReceipt.taxPercent}%:</span>
+                    <strong>{selectedReceipt.taxLabel}</strong>
+                  </div>
+                </>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: 10, fontSize: 16 }}>
                 <span>Total Amount Paid:</span>
                 <strong style={{ color: 'var(--accent)' }}>{selectedReceipt.amountLabel} INR</strong>
@@ -308,10 +324,64 @@ function WorkspaceBilling() {
   );
 }
 
+/**
+ * One purchasable term.
+ *
+ * Every figure here is printed from the server's plan catalog — the base, the
+ * GST line and the total all arrive computed. The page deliberately does no
+ * arithmetic: a total worked out in the browser is one that can disagree with
+ * the amount the order was created for.
+ */
+function PlanCard({
+  plan, current, busy, disabled, onChoose,
+}: {
+  plan: PlanOption;
+  current: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onChoose: () => void;
+}) {
+  return (
+    <div className={`plan-card${plan.recommended ? ' is-recommended' : ''}`}>
+      {plan.recommended && <span className="plan-flag">Best value</span>}
+
+      <div className="plan-term">{plan.name}</div>
+
+      <div className="plan-price">
+        <span className="plan-price-main">{plan.baseLabel}</span>
+        <span className="plan-price-unit">+ GST</span>
+      </div>
+
+      <dl className="plan-split">
+        <div><dt>Plan</dt><dd>{plan.baseLabel}</dd></div>
+        <div><dt>GST @ {plan.taxPercent}%</dt><dd>{plan.taxLabel}</dd></div>
+        <div className="plan-total"><dt>Total payable</dt><dd>{plan.amountLabel}</dd></div>
+      </dl>
+
+      {plan.periodDays > 365 && (
+        <p className="plan-saving">Works out at {plan.perYearLabel} a year</p>
+      )}
+
+      <button
+        className={`btn ${plan.recommended ? 'btn-primary' : 'btn-secondary'} plan-btn`}
+        disabled={disabled}
+        onClick={onChoose}
+      >
+        {busy ? 'Opening checkout…' : current ? `Extend ${plan.periodLabel}` : `Get ${plan.periodLabel}`}
+      </button>
+
+      {current && <p className="plan-current">Your current plan</p>}
+    </div>
+  );
+}
+
 // ------------------------------------------------------ super admin overview
 
 function SuperAdminBilling() {
+  const { user } = useAuth();
   const { data: companies, error } = useResource<OnboardedCompany[]>('/companies/onboarded-overview');
+  if (!user) return null;
+  const me = user;
 
   if (error) {
     return (
@@ -340,19 +410,21 @@ function SuperAdminBilling() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-        <div style={{ background: 'var(--surface-1)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
           <div className="dim tiny">Total Onboarded Companies</div>
           <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{companies.length}</div>
         </div>
-        <div style={{ background: 'var(--surface-1)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
           <div className="dim tiny">Upgraded Paid Companies</div>
-          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: 'var(--completed)' }}>{upgradedCount}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: 'var(--good)' }}>{upgradedCount}</div>
         </div>
-        <div style={{ background: 'var(--surface-1)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
           <div className="dim tiny">Free Trial Companies</div>
-          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: 'var(--due)' }}>{trialCount}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: 'var(--high)' }}>{trialCount}</div>
         </div>
       </div>
+
+      <WorkspaceBilling />
 
       <Card title="Subscriptions & Upgrades" action={<Link className="btn btn-sm btn-ghost" to="/analytics">Platform Analytics →</Link>}>
         {companies.length === 0 ? (
@@ -372,6 +444,7 @@ function SuperAdminBilling() {
               <tbody>
                 {companies.map((c) => {
                   const isTrial = c.organization.trialEndsAt !== null;
+                  const ownOrg = c.organization.id === me.organizationId;
                   const trialEndsAt = c.organization.trialEndsAt;
                   let daysLeft = null;
                   if (isTrial && trialEndsAt) {
@@ -387,9 +460,21 @@ function SuperAdminBilling() {
                       <td style={{ padding: '12px 8px' }}>{c.organization.name}</td>
                       <td style={{ padding: '12px 8px' }}>{fmtDate(c.onboardedAt)}</td>
                       <td style={{ padding: '12px 8px' }}>
-                        <Badge value={c.status === 'ACTIVE' ? 'COMPLETED' : 'WAIVED'}>
-                          {c.status}
-                        </Badge>
+                        <div className="sub-cell">
+                          <Badge value={c.status === 'ACTIVE' ? 'COMPLETED' : 'WAIVED'}>
+                            {c.status}
+                          </Badge>
+                          {isTrial && (ownOrg ? (
+                            // Purchasing is organisation-scoped on the server:
+                            // an order is always created against the buyer's own
+                            // organisation. So this offers the upgrade where it
+                            // can actually be completed, and says who has to do
+                            // it everywhere else.
+                            <a className="btn btn-sm btn-primary" href="#subscription">Upgrade</a>
+                          ) : (
+                            <span className="dim tiny">Owner upgrades from their own workspace</span>
+                          ))}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 8px' }}>
                         {isTrial ? (

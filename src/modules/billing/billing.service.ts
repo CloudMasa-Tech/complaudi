@@ -2,30 +2,23 @@ import type { Actor } from '../../lib/access';
 import { companyScope, seesEveryCompany } from '../../lib/access';
 import { env } from '../../config/env';
 import { addDays, financialYearOf, monthName, utcDate } from '../../lib/dates';
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../lib/errors';
+import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import {
   assertRazorpayMode,
   clientVerificationHmac,
-  planConfig,
+  planCurrency,
   razorpayClient,
+  simulatedBillingAllowed,
   verifyRzpSignature,
   webhookVerificationHmac,
 } from './razorpay';
+import { DEFAULT_PLAN_KEY, PLANS, findPlan, inrLabel, planView } from './plans';
 import { webhookEventSchema } from './billing.schemas';
 
 const PURCHASER_ROLES = new Set(['COMPANY_OWNER', 'SUPER_ADMIN']);
 
-/** ₹ from paise, computed server-side so the UI never formats a made-up number. */
-function inrLabel(paise: number): string {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(paise / 100);
-}
-
-/** "₹699" — the amount string the owner actually pays for a configured plan. */
-export function planLabel(): { amountLabel: string; periodLabel: string } {
-  return { amountLabel: inrLabel(env.RAZORPAY_PLAN_AMOUNT_PAISE), periodLabel: planConfig().periodLabel };
-}
 
 // ---------------------------------------------------------- workspace view
 
@@ -54,6 +47,11 @@ export async function getBillingView(actor: Actor) {
       amountPaise: true,
       currency: true,
       planName: true,
+      planKey: true,
+      baseAmountPaise: true,
+      taxPercent: true,
+      taxAmountPaise: true,
+      periodDays: true,
       status: true,
       method: true,
       paidAt: true,
@@ -67,7 +65,11 @@ export async function getBillingView(actor: Actor) {
   const inTrial = trialEndsAt !== null && trialEndsAt.getTime() > now.getTime();
 
   return {
-    plan: { ...planConfig(), ...planLabel() },
+    // The whole catalog, priced and labelled here. The page renders these
+    // numbers; it never computes one, so what is shown cannot disagree with
+    // what is charged.
+    plans: PLANS.map(planView),
+    currency: planCurrency(),
     subscription: {
       // An expired trial never reaches this endpoint (auth refuses it), so a
       // trial still running or a cleared trial / full account are the states.
@@ -75,6 +77,10 @@ export async function getBillingView(actor: Actor) {
       trialEndsAt,
       trialDaysLeft: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt.getTime() - now.getTime()) / 86_400_000)) : null,
       validUntil: latestValid?.validUntil ?? null,
+      /** What they are currently on, so the picker can mark it and offer the
+       *  other term as an upgrade rather than a duplicate purchase. */
+      currentPlanKey: latestValid?.planKey ?? null,
+      currentPlanName: latestValid?.planName ?? null,
       paymentCount: payments.filter((p) => p.status === 'SUCCESS').length,
     },
     payments: payments.map((p) => ({
@@ -83,8 +89,16 @@ export async function getBillingView(actor: Actor) {
       rzxOrderId: p.rzxOrderId,
       amountPaise: p.amountPaise,
       amountLabel: inrLabel(p.amountPaise),
+      // The invoice split, as charged. Legacy rows predate the tax columns and
+      // carry a zero tax line, which is what actually happened to them.
+      baseAmountPaise: p.baseAmountPaise,
+      baseLabel: inrLabel(p.baseAmountPaise),
+      taxPercent: p.taxPercent,
+      taxAmountPaise: p.taxAmountPaise,
+      taxLabel: inrLabel(p.taxAmountPaise),
       currency: p.currency,
       planName: p.planName,
+      planKey: p.planKey,
       status: p.status,
       method: p.method,
       paidAt: p.paidAt,
@@ -111,6 +125,7 @@ async function resolveAttributedCompany(actor: Actor, companyId: string | undefi
 
 export interface CreateOrderInput {
   companyId?: string;
+  planKey?: string;
 }
 
 /** Creates the Razorpay order server-side and records the CREATED row. Only
@@ -119,46 +134,40 @@ export async function createOrder(actor: Actor, input: CreateOrderInput) {
   if (!PURCHASER_ROLES.has(actor.role)) {
     throw new ForbiddenError('Only a company owner can upgrade the plan.');
   }
-  const plan = planConfig();
+  // The live-keys-in-test-mode guard. Its own comment said it was checked at
+  // request time as well as at boot, but nothing had ever called it — the
+  // import was dead. Boot alone cannot catch a key rotated under a running
+  // process, which is exactly the case it exists for.
+  assertRazorpayMode();
+
+  const plan = findPlan(input.planKey ?? DEFAULT_PLAN_KEY);
+  if (!plan) throw new BadRequestError('Unknown plan.');
+  const currency = planCurrency();
   const companyId = await resolveAttributedCompany(actor, input.companyId);
 
-  let orderId = '';
+  // Three outcomes, and no path from one to another. Previously a thrown
+  // Razorpay error fell through to a mock order, which verify would then credit
+  // for free — so a few seconds of API trouble gave the product away.
+  let orderId: string;
   let isMockOrder = false;
-  const keyId = env.RAZORPAY_KEY_ID || 'rzp_test_mockkey12345';
 
-  if (!env.razorpayEnabled || keyId.startsWith('rzp_test_mock') || keyId.startsWith('rzp_live_')) {
-    try {
-      if (env.razorpayEnabled) {
-        const client = razorpayClient();
-        const order = await client.orders.create({
-          amount: plan.amountPaise,
-          currency: plan.currency,
-          receipt: `org_${actor.organizationId}`,
-          notes: { organizationId: actor.organizationId, companyId: companyId ?? '' },
-        });
-        orderId = order.id;
-      } else {
-        isMockOrder = true;
-        orderId = `order_mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      }
-    } catch {
-      isMockOrder = true;
-      orderId = `order_mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    }
+  if (env.razorpayEnabled) {
+    const order = await razorpayClient().orders.create({
+      amount: plan.amountPaise,
+      currency,
+      receipt: `org_${actor.organizationId}`.slice(0, 40),
+      notes: {
+        organizationId: actor.organizationId,
+        companyId: companyId ?? '',
+        planKey: plan.key,
+      },
+    });
+    orderId = order.id;
+  } else if (simulatedBillingAllowed()) {
+    isMockOrder = true;
+    orderId = `order_mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   } else {
-    try {
-      const client = razorpayClient();
-      const order = await client.orders.create({
-        amount: plan.amountPaise,
-        currency: plan.currency,
-        receipt: `org_${actor.organizationId}`,
-        notes: { organizationId: actor.organizationId, companyId: companyId ?? '' },
-      });
-      orderId = order.id;
-    } catch {
-      isMockOrder = true;
-      orderId = `order_mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    }
+    throw new AppError('Razorpay billing is not configured on this server.', 503, 'BILLING_NOT_CONFIGURED');
   }
 
   const payment = await prisma.payment.create({
@@ -168,8 +177,13 @@ export async function createOrder(actor: Actor, input: CreateOrderInput) {
       createdByUserId: actor.userId,
       rzxOrderId: orderId,
       amountPaise: plan.amountPaise,
-      currency: plan.currency,
+      currency,
       planName: plan.name,
+      planKey: plan.key,
+      baseAmountPaise: plan.baseAmountPaise,
+      taxPercent: plan.taxPercent,
+      taxAmountPaise: plan.taxAmountPaise,
+      periodDays: plan.periodDays,
       status: 'CREATED',
     },
     select: { id: true },
@@ -177,12 +191,11 @@ export async function createOrder(actor: Actor, input: CreateOrderInput) {
 
   return {
     orderId,
-    amountPaise: plan.amountPaise,
-    currency: plan.currency,
+    ...planView(plan),
+    currency,
     planName: plan.name,
-    amountLabel: inrLabel(plan.amountPaise),
-    periodLabel: plan.periodLabel,
-    keyId: isMockOrder ? 'rzp_test_mockkey12345' : keyId,
+    // Public key id only — the secret never leaves this process.
+    keyId: env.RAZORPAY_KEY_ID ?? null,
     paymentId: payment.id,
     isMockOrder,
   };
@@ -205,36 +218,52 @@ export async function verifyPayment(actor: Actor, input: VerifyPaymentInput) {
     return { status: 'SUCCESS', validUntil: payment.validUntil, planName: payment.planName, alreadyProcessed: true };
   }
 
-  const isMock = input.orderId.startsWith('order_mock_') || input.rzpPaymentId.startsWith('pay_mock_') || input.rzpSignature === 'rzp_mock_signature';
-
-  if (!isMock && env.razorpayEnabled) {
-    try {
-      const expected = clientVerificationHmac(input.orderId, input.rzpPaymentId);
-      if (!verifyRzpSignature(expected, input.rzpSignature)) {
-        throw new BadRequestError('Payment signature could not be verified.');
-      }
-
-      const client = razorpayClient();
-      const rzpPayment = await client.payments.fetch(input.rzpPaymentId);
-      if (rzpPayment.status !== 'captured') {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            rzxPaymentId: rzpPayment.id,
-            rzxSignature: input.rzpSignature,
-            method: typeof rzpPayment.method === 'string' ? rzpPayment.method : null,
-          },
-        });
-        throw new BadRequestError('The payment has not been captured yet. Please try again.');
-      }
-
-      await creditCapturedPayment(payment, rzpPayment.id, rzpPayment.method, input.rzpSignature);
-    } catch (err: any) {
-      if (err instanceof BadRequestError) throw err;
-      await creditCapturedPayment(payment, input.rzpPaymentId || `pay_mock_${Date.now()}`, 'card', input.rzpSignature || 'rzp_mock_signature');
+  // Whether a payment counts is decided here, from this server's configuration
+  // and Razorpay's own answer. Nothing in `input` can steer it.
+  //
+  // What this replaced treated `rzpPaymentId` starting "pay_mock_" or
+  // `rzpSignature` equal to "rzp_mock_signature" as proof of a simulated
+  // payment and credited it. Both values come from the request body, so any
+  // signed-in user could post them against their own CREATED order and receive
+  // a paid subscription having paid nothing. The real branch was no safer: its
+  // catch credited the payment on *any* non-BadRequest error, so a failed
+  // lookup at Razorpay also granted the entitlement.
+  if (env.razorpayEnabled) {
+    const expected = clientVerificationHmac(input.orderId, input.rzpPaymentId);
+    if (!verifyRzpSignature(expected, input.rzpSignature)) {
+      throw new BadRequestError('Payment signature could not be verified.');
     }
+
+    // The signature proves the ids were paired by someone holding the key
+    // secret. It does not prove money moved, so the capture is confirmed with
+    // Razorpay directly. A failure here is an error, never a credit.
+    const rzpPayment = await razorpayClient().payments.fetch(input.rzpPaymentId);
+
+    if (rzpPayment.order_id !== input.orderId) {
+      // Defence against replaying a signature from a different order.
+      throw new BadRequestError('That payment belongs to a different order.');
+    }
+    if (rzpPayment.status !== 'captured') {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          rzxPaymentId: rzpPayment.id,
+          rzxSignature: input.rzpSignature,
+          method: typeof rzpPayment.method === 'string' ? rzpPayment.method : null,
+        },
+      });
+      throw new BadRequestError('The payment has not been captured yet. Please try again.');
+    }
+
+    await creditCapturedPayment(payment, rzpPayment.id, rzpPayment.method, input.rzpSignature);
+  } else if (simulatedBillingAllowed()) {
+    logger.warn(
+      { paymentId: payment.id, organizationId: payment.organizationId },
+      'crediting a simulated payment — Razorpay is unconfigured and this is not production',
+    );
+    await creditCapturedPayment(payment, `pay_sim_${payment.id}`, 'simulated', null);
   } else {
-    await creditCapturedPayment(payment, input.rzpPaymentId || `pay_mock_${Date.now()}`, 'card', input.rzpSignature || 'rzp_mock_signature');
+    throw new AppError('Razorpay billing is not configured on this server.', 503, 'BILLING_NOT_CONFIGURED');
   }
 
   const credited = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -244,7 +273,7 @@ export async function verifyPayment(actor: Actor, input: VerifyPaymentInput) {
 /** Shared by /verify and the captured webhook: set the payment row, extend the
  *  entitlement window and clear the trial marker in one transaction. */
 async function creditCapturedPayment(
-  paymentRow: { id: string; organizationId: string; rzxSignature: string | null },
+  paymentRow: { id: string; organizationId: string; rzxSignature: string | null; periodDays: number },
   rzpPaymentId: string,
   method: string | null,
   signature: string | null,
@@ -264,7 +293,7 @@ async function creditCapturedPayment(
     select: { validUntil: true },
   });
   const base = current?.validUntil && current.validUntil.getTime() > now.getTime() ? current.validUntil : now;
-  const nextValidUntil = addDays(base, env.RAZORPAY_PLAN_PERIOD_DAYS);
+  const nextValidUntil = addDays(base, paymentRow.periodDays);
 
   await prisma.$transaction([
     prisma.payment.update({

@@ -41,9 +41,6 @@ function configuredEnv(overrides: Record<string, unknown> = {}) {
     RAZORPAY_KEY_SECRET: SECRET_KEY,
     RAZORPAY_WEBHOOK_SECRET: 'webhook_secret',
     RAZORPAY_TEST_MODE: true,
-    RAZORPAY_PLAN_AMOUNT_PAISE: 69900,
-    RAZORPAY_PLAN_NAME: 'Annual plan',
-    RAZORPAY_PLAN_PERIOD_DAYS: 365,
     RAZORPAY_CURRENCY: 'INR',
     razorpayEnabled: true,
     razorpayKeyEnv: 'test',
@@ -109,22 +106,28 @@ describe('createOrder — who may start a purchase', () => {
 
     const result = await createOrder(actor('COMPANY_OWNER'), {});
 
-    expect(mockOrdersCreate).toHaveBeenCalledWith(expect.objectContaining({ amount: 69900, currency: 'INR' }));
+    // The default plan, priced from the catalog rather than from env.
+    expect(mockOrdersCreate).toHaveBeenCalledWith(expect.objectContaining({ amount: 235_882, currency: 'INR' }));
     expect(mockPrisma.payment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           organizationId: 'org-1',
           createdByUserId: 'user-1',
           rzxOrderId: 'order_test',
-          amountPaise: 69900,
+          amountPaise: 235_882,
+          baseAmountPaise: 199_900,
+          taxPercent: 18,
+          taxAmountPaise: 35_982,
+          planKey: 'ANNUAL',
+          periodDays: 365,
           status: 'CREATED',
         }),
       }),
     );
 
     expect(result.orderId).toBe('order_test');
-    expect(result.amountPaise).toBe(69900);
-    expect(result.amountLabel).toBe('₹699');
+    expect(result.amountPaise).toBe(235_882);
+    expect(result.amountLabel).toBe('₹2,358.82');
     expect(result.keyId).toBe(TEST_KEY_ID);
     // The key secret is server-only: it must appear nowhere in the response.
     expect(JSON.stringify(result)).not.toContain(SECRET_KEY);
@@ -160,7 +163,9 @@ describe('verifyPayment — the popup callback alone is never trusted', () => {
     organizationId: 'org-1',
     rzxSignature: null as string | null,
     status: 'CREATED',
-    planName: 'Annual plan',
+    planName: '1 Year',
+    planKey: 'ANNUAL',
+    periodDays: 365,
     validUntil: null as Date | null,
   };
 
@@ -200,11 +205,92 @@ describe('verifyPayment — the popup callback alone is never trusted', () => {
     expect(mockPaymentsFetch).not.toHaveBeenCalled();
   });
 
+  /**
+   * The bypass these cover:
+   *
+   * verifyPayment used to decide a payment was "simulated" from the request
+   * body — an id beginning "pay_mock_", or the literal signature string
+   * "rzp_mock_signature" — and credit it. Both come from the browser, so any
+   * signed-in user could post them against their own CREATED order and receive
+   * a paid subscription having paid nothing. A second path credited on any
+   * error thrown while confirming with Razorpay.
+   *
+   * With credentials configured there is now exactly one way to be credited:
+   * a valid HMAC, and Razorpay itself reporting the payment captured against
+   * this order.
+   */
+  it('refuses the signature string that used to wave a payment through', async () => {
+    mockPrisma.payment.findUnique.mockResolvedValue({ ...ownedOrder, rzxSignature: null });
+    vi.resetModules();
+    const { verifyPayment } = await import('../src/modules/billing/billing.service');
+
+    await expect(
+      verifyPayment(actor('COMPANY_OWNER'), {
+        orderId: 'order_test',
+        rzpPaymentId: 'pay_mock_999',
+        rzpSignature: 'rzp_mock_signature',
+      }),
+    ).rejects.toThrow(/signature could not be verified/i);
+
+    expect(mockPrisma.payment.update).not.toHaveBeenCalled();
+    expect(mockPrisma.organization.update).not.toHaveBeenCalled();
+  });
+
+  it('does not credit when Razorpay cannot be reached', async () => {
+    mockPrisma.payment.findUnique.mockResolvedValue({ ...ownedOrder, rzxSignature: null });
+    mockPaymentsFetch.mockRejectedValue(new Error('ECONNRESET'));
+    vi.resetModules();
+    const { verifyPayment } = await import('../src/modules/billing/billing.service');
+    const { clientVerificationHmac } = await import('../src/modules/billing/razorpay');
+
+    const sig = clientVerificationHmac('order_test', 'pay_123');
+    await expect(
+      verifyPayment(actor('COMPANY_OWNER'), { orderId: 'order_test', rzpPaymentId: 'pay_123', rzpSignature: sig }),
+    ).rejects.toThrow('ECONNRESET');
+
+    // The old catch credited the entitlement here.
+    expect(mockPrisma.organization.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a signature replayed from another order', async () => {
+    mockPrisma.payment.findUnique.mockResolvedValue({ ...ownedOrder, rzxSignature: null });
+    mockPaymentsFetch.mockResolvedValue({ id: 'pay_123', order_id: 'order_somebody_else', status: 'captured', method: 'card' });
+    vi.resetModules();
+    const { verifyPayment } = await import('../src/modules/billing/billing.service');
+    const { clientVerificationHmac } = await import('../src/modules/billing/razorpay');
+
+    const sig = clientVerificationHmac('order_test', 'pay_123');
+    await expect(
+      verifyPayment(actor('COMPANY_OWNER'), { orderId: 'order_test', rzpPaymentId: 'pay_123', rzpSignature: sig }),
+    ).rejects.toThrow(/different order/i);
+    expect(mockPrisma.organization.update).not.toHaveBeenCalled();
+  });
+
+  it('honours the term that was bought, not a configured default', async () => {
+    // A three-year purchase must credit three years. The window used to come
+    // from RAZORPAY_PLAN_PERIOD_DAYS, which would have given it one.
+    mockPrisma.payment.findUnique.mockResolvedValue({
+      ...ownedOrder, rzxSignature: null, planKey: 'TRIENNIAL', planName: '3 Years', periodDays: 1095,
+    });
+    mockPaymentsFetch.mockResolvedValue({ id: 'pay_123', order_id: 'order_test', status: 'captured', method: 'card' });
+    mockPrisma.payment.findUniqueOrThrow.mockResolvedValue({ id: 'pmt-1', validUntil: new Date(), planName: '3 Years' });
+    vi.resetModules();
+    const { verifyPayment } = await import('../src/modules/billing/billing.service');
+    const { clientVerificationHmac } = await import('../src/modules/billing/razorpay');
+
+    const sig = clientVerificationHmac('order_test', 'pay_123');
+    await verifyPayment(actor('COMPANY_OWNER'), { orderId: 'order_test', rzpPaymentId: 'pay_123', rzpSignature: sig });
+
+    const call = mockPrisma.payment.update.mock.calls.at(-1)![0];
+    const days = Math.round((call.data.validUntil.getTime() - Date.now()) / 86_400_000);
+    expect(days).toBe(1095);
+  });
+
   it('credits only a payment Razorpay reports as captured, and clears the trial marker', async () => {
     mockPrisma.payment.findUnique.mockResolvedValue({ ...ownedOrder, rzxSignature: null });
-    mockPaymentsFetch.mockResolvedValue({ id: 'pay_123', status: 'captured', method: 'card' });
+    mockPaymentsFetch.mockResolvedValue({ id: 'pay_123', order_id: 'order_test', status: 'captured', method: 'card' });
     const nextValidUntil = addDays(new Date(), 365);
-    mockPrisma.payment.findUniqueOrThrow.mockResolvedValue({ id: 'pmt-1', validUntil: nextValidUntil, planName: 'Annual plan' });
+    mockPrisma.payment.findUniqueOrThrow.mockResolvedValue({ id: 'pmt-1', validUntil: nextValidUntil, planName: '1 Year' });
     vi.resetModules();
     const { verifyPayment } = await import('../src/modules/billing/billing.service');
     const { clientVerificationHmac } = await import('../src/modules/billing/razorpay');

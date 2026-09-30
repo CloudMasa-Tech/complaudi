@@ -13,17 +13,32 @@ import { AppError, ForbiddenError } from '../../lib/errors';
 
 let client: Razorpay | null = null;
 
-/** The configured single product, straight from env: display and charge share
- *  this one source, so the price shown can never disagree with the order. */
-export function planConfig() {
-  return {
-    name: env.RAZORPAY_PLAN_NAME,
-    amountPaise: env.RAZORPAY_PLAN_AMOUNT_PAISE,
-    currency: env.RAZORPAY_CURRENCY,
-    periodDays: env.RAZORPAY_PLAN_PERIOD_DAYS,
-    /** "Yearly" — what the UI prints under the price. */
-    periodLabel: 'Yearly',
-  };
+/** The currency every plan is charged in. Prices themselves live in plans.ts. */
+export function planCurrency(): string {
+  return env.RAZORPAY_CURRENCY;
+}
+
+/**
+ * Whether this server may credit a payment that nobody actually made.
+ *
+ * Simulated billing exists so the app can be developed and demonstrated with no
+ * Razorpay credentials. Whether it is on is decided entirely by this server's
+ * own configuration — no request body, header, order id or signature can reach
+ * it.
+ *
+ * That distinction is the whole point. The previous implementation decided it
+ * from the request: `rzpSignature === 'rzp_mock_signature'` (or an id starting
+ * `pay_mock_`) marked a payment as simulated and credited it. Those strings
+ * come from the browser, so any signed-in user could post them against their
+ * own pending order and receive a paid subscription without paying. Both the
+ * Express service and the edge function carried it.
+ *
+ * Production is excluded outright even when Razorpay is unconfigured: there,
+ * missing credentials are an outage to be fixed, never a reason to give the
+ * product away.
+ */
+export function simulatedBillingAllowed(): boolean {
+  return !env.isProd && !env.razorpayEnabled;
 }
 
 export function razorpayEnabled(): boolean {

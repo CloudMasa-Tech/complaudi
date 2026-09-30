@@ -100,6 +100,26 @@ Rules governing this layer:
 - Always use `npm run prisma:migrate` for schema changes.
 - `.env` is gitignored (holds the Supabase service_role key and JWT signing secrets); `.env.example` is the committed template.
 
+### Billing (Razorpay)
+- Two purchasable terms, defined in `src/modules/billing/plans.ts`: **1 year
+  ₹1,999** and **3 years ₹4,999**, each **+ 18% GST added on top** (₹2,358.82
+  and ₹5,898.82 charged). Prices live in code, not env, and the file is mirrored
+  verbatim into `supabase/functions/_shared/plans.ts`; `tests/plans.test.ts`
+  fails if the two drift.
+- **A payment is credited only by the server's own evidence.** With credentials
+  configured that means a valid HMAC over `order_id|payment_id` *and* Razorpay
+  reporting the payment `captured` against that same order. Nothing in the
+  request body may influence the decision — an earlier version treated the
+  client-supplied string `rzp_mock_signature` as proof of a simulated payment
+  and credited it, which handed out free subscriptions.
+- Simulated billing (no credentials) is server-gated and default-deny:
+  `!isProd && !razorpayEnabled` on Express, `ALLOW_SIMULATED_BILLING=true` on
+  the edge functions. Never infer it from a request.
+- The entitlement term is read from `Payment.periodDays`, recorded when the
+  order was created — never from config, or a 3-year purchase credits 1 year.
+- `Payment` stores the invoice split (`baseAmountPaise`, `taxPercent`,
+  `taxAmountPaise`) as charged. Do not re-derive it from a rounded total.
+
 ### Storage
 - Both `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` must be set to use Supabase Storage; if either is missing it falls back to local disk (`./storage`) with a boot warning.
 - Bucket: `compliance-evidence` (private, 25 MB limit). Create with `npm run supabase:bootstrap`.

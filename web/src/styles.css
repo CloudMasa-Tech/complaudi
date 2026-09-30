@@ -1419,3 +1419,62 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   border-radius: 12px; 
   padding: 4px;
 }
+
+/* ── billing: the plan picker ────────────────────────────────────────────
+ * Two terms side by side, each showing the listed price, the GST added to it
+ * and the total actually charged. All three arrive computed from the server's
+ * catalog; nothing here is derived in the browser, so what the buyer reads
+ * cannot disagree with what the Razorpay order was created for.
+ */
+.sub-state {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px;
+  font-size: 14px;
+  padding: 14px 16px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.sub-urgent { color: var(--critical); font-weight: 650; }
+
+.plan-pick-head { margin: 26px 0 3px; font-size: 16px; font-weight: 650; }
+.plan-pick-sub { margin: 0 0 16px; }
+
+.plan-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+}
+.plan-card {
+  position: relative;
+  display: flex; flex-direction: column;
+  padding: 20px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+/* The recommended term is marked by weight, not colour alone — the flag and
+   the filled button both say it, so it survives a greyscale print. */
+.plan-card.is-recommended { border-color: var(--brand-orange-deep); box-shadow: 0 6px 22px -14px rgba(234, 88, 12, 0.85); }
+.plan-flag {
+  position: absolute; top: -10px; left: 20px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: #fff; background: var(--brand-orange-gradient);
+}
+.plan-term { font-size: 13px; font-weight: 650; letter-spacing: 0.02em; color: var(--text-3); text-transform: uppercase; }
+.plan-price { display: flex; align-items: baseline; gap: 6px; margin: 6px 0 14px; }
+.plan-price-main { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.plan-price-unit { font-size: 13px; color: var(--text-3); }
+
+.plan-split { margin: 0 0 14px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.plan-split > div { display: flex; justify-content: space-between; gap: 12px; }
+.plan-split dt { color: var(--text-3); }
+.plan-split dd { margin: 0; font-variant-numeric: tabular-nums; }
+.plan-split .plan-total {
+  margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+.plan-split .plan-total dt { color: var(--text); }
+
+.plan-saving { margin: 0 0 14px; font-size: 12.5px; font-weight: 600; color: var(--good); }
+.plan-btn { margin-top: auto; width: 100%; justify-content: center; }
+.plan-current { margin: 9px 0 0; text-align: center; font-size: 12px; color: var(--text-3); }
+.plan-foot { margin-top: 14px; }
+
+/* The subscription cell in the SUPER_ADMIN table: state on top, action under. */
+.sub-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }

@@ -46,9 +46,10 @@ const schema = z.object({
   RAZORPAY_TEST_MODE: boolish(false),
   /// Single product today: annual plan, price in paise. Not hardcoded anywhere
   /// in the app — served to the frontend from here and used to create orders.
-  RAZORPAY_PLAN_AMOUNT_PAISE: z.coerce.number().int().positive().default(69900),
-  RAZORPAY_PLAN_NAME: z.string().min(1).default('Annual plan'),
-  RAZORPAY_PLAN_PERIOD_DAYS: z.coerce.number().int().positive().default(365),
+  // Prices and terms live in src/modules/billing/plans.ts, not here: they must
+  // match what the Supabase edge function charges, and two runtimes reading two
+  // env files is how that drifts. RAZORPAY_PLAN_AMOUNT_PAISE, _NAME and
+  // _PERIOD_DAYS were removed with the single-plan catalog.
   RAZORPAY_CURRENCY: z.string().min(3).default('INR'),
 
   // Defaults to OFF. In-process cron is a development convenience; every
