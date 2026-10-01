@@ -13,6 +13,7 @@
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#1b3a6b" />
+<<<<<<< HEAD
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- ── SEO ──────────────────────────────────────────────────────────────
@@ -37,6 +38,20 @@
     <meta property="og:description" content="Verify your business, manage registrations, track compliance, and keep business information organized — from one platform built for Indian businesses." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://complaudi.in/" />
+=======
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS ignores the manifest's display mode; these are how an installed
+         icon on the home screen opens without Safari's chrome. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Complaudi" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to
+         anything but 0 on a notched phone. Without it the layout is padded
+         against a notch that CSS reports as having no size. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Static, so it cannot read BRAND_TAGLINE from Layout.tsx — keep the two in step by hand. -->
+    <title>Complaudi — An AI Platform for compliance Audit</title>
+>>>>>>> origin/main_cloudmasa
   </head>
   <body>
     <div id="root"></div>

@@ -20,7 +20,7 @@ import { env } from '../../config/env';
 import { generateTemporaryPassword } from '../../lib/jwt';
 import { sendMail } from '../../lib/mailer';
 import { inviteHtml, inviteSubject, inviteText } from '../notifications/templates';
-import { canInviteAs, INVITER_ROLES } from './company-invite';
+import { canInviteAs, INVITER_ROLES, INVITE_TARGET_ROLES } from './company-invite';
 import { syncCompany } from '../../modules/compliance/compliance.service';
 import type { CreateCompanyInput, UpdateCompanyInput } from './companies.schemas';
 
@@ -239,6 +239,52 @@ export async function listSuperAdminCompanies(actor: Actor) {
  * reach the org-wide `users.manage` path — a COMPANY_OWNER added to a shared
  * organisation later will still only shape their own company's team.
  */
+/**
+ * Whether this actor may invite into this company, and which roles they may
+ * grant.
+ *
+ * One function so the button, the role picker and the invite itself cannot
+ * disagree. The UI used to decide for itself: it offered "Admin" to everyone,
+ * including practitioners who are not allowed to grant it, so choosing it
+ * produced a 403 from a dropdown that should never have contained it. It also
+ * never offered Viewer, which has always been allowed.
+ */
+export async function invitePermission(
+  actor: Actor,
+  companyId: string,
+): Promise<{ canInvite: boolean; roles: UserRole[]; reason: string; inviterRole: UserRole | null }> {
+  await getCompanyOrThrow(actor, companyId);
+
+  // Growing the team is a paid feature: a running self-service trial has no
+  // room for it, and this is checked before any user is created.
+  const organization = await prisma.organization.findUnique({
+    where: { id: actor.organizationId },
+    select: { trialEndsAt: true },
+  });
+  const trialEndsAt = organization?.trialEndsAt ?? null;
+  if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
+    return {
+      canInvite: false,
+      roles: [],
+      reason: 'Inviting team members is available after upgrading from the trial.',
+      inviterRole: null,
+    };
+  }
+
+  const inviterRole = await effectiveRole(actor, companyId);
+  if (!inviterRole || !INVITER_ROLES.includes(inviterRole)) {
+    return {
+      canInvite: false,
+      roles: [],
+      reason: 'You do not have permission to invite people into this company.',
+      inviterRole: inviterRole ?? null,
+    };
+  }
+
+  const roles = INVITE_TARGET_ROLES.filter((r) => canInviteAs(inviterRole, r));
+  return { canInvite: roles.length > 0, roles, reason: '', inviterRole };
+}
+
 export async function inviteToCompany(
   actor: Actor,
   companyId: string,
@@ -246,29 +292,17 @@ export async function inviteToCompany(
 ): Promise<{
   user: { id: string; name: string; email: string; role: string };
   companies: string[];
+  /** Generated here, shown to the inviter once, and spent on first use. */
+  temporaryPassword: string;
 }> {
   // Resolves only a company the inviter can see — org + membership scoped.
   const company = await getCompanyOrThrow(actor, companyId);
 
-  // Inviting a team is a full-account feature. The organisation's trial status
-  // is authoritative — while a self-service trial is running there is no room
-  // to grow the team, so refuse before any user is created.
-  const organization = await prisma.organization.findUnique({
-    where: { id: actor.organizationId },
-    select: { trialEndsAt: true },
-  });
-  const trialEndsAt = organization?.trialEndsAt ?? null;
-  if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
-    throw new ForbiddenError('Inviting team members is available after upgrading from the trial.');
-  }
-
-  const inviterRole = await effectiveRole(actor, companyId);
-  if (!inviterRole || !INVITER_ROLES.includes(inviterRole)) {
-    throw new ForbiddenError('You do not have permission to invite people into this company.');
-  }
-  if (!canInviteAs(inviterRole, input.role)) {
+  const permitted = await invitePermission(actor, companyId);
+  if (!permitted.canInvite) throw new ForbiddenError(permitted.reason);
+  if (!permitted.roles.includes(input.role)) {
     throw new ForbiddenError(
-      `A ${inviterRole} cannot grant the ${input.role} role in this company.`,
+      `A ${permitted.inviterRole} cannot grant the ${input.role} role in this company.`,
     );
   }
 
@@ -288,6 +322,9 @@ export async function inviteToCompany(
       name: input.name,
       passwordHash,
       role: input.role,
+      // Somebody else chose this password, so it buys exactly one thing: the
+      // ability to set a real one.
+      mustChangePassword: true,
       memberships: {
         // Unique (userId, companyId), so re-inviting the same person/company can
         // never create a duplicate grant.
@@ -297,13 +334,16 @@ export async function inviteToCompany(
     select: { id: true, name: true, email: true, role: true },
   });
 
-  // Deliver the invite out of band: email the signup link rather than printing
-  // the temporary password on any screen. The password itself is never shown.
+  // The email used to carry a /register link, which could not work: the account
+  // already exists, so registering with that address conflicts. It now points
+  // at sign-in, and the temporary password is handed to the inviter to pass on
+  // by whatever channel they trust — email delivery is not guaranteed here, and
+  // an invite nobody can act on is worse than one delivered by hand.
   const inviter = await prisma.user.findUnique({
     where: { id: actor.userId },
     select: { name: true },
   });
-  const signupUrl = `${env.APP_BASE_URL}/register?invite=${encodeURIComponent(created.email)}`;
+  const signupUrl = `${env.APP_BASE_URL}/login`;
   const inviteData = {
     inviterName: inviter?.name || 'A colleague',
     companyName: company.legalName,
@@ -323,7 +363,22 @@ export async function inviteToCompany(
     logger.error({ err, invitationEmail: created.email }, 'failed to send company invite email');
   }
 
-  return { user: created, companies: [company.id] };
+  return {
+    user: created,
+    companies: [company.id],
+    /**
+     * Shown to the inviter once, so they can pass it on.
+     *
+     * Returning a password anywhere deserves justification: this one is
+     * generated, belongs to an account the inviter just created, and is
+     * spent the first time it is used — mustChangePassword above means it
+     * cannot do anything except set a real password. The inviter already
+     * decided this person should have access; withholding the credential only
+     * guaranteed that nobody could act on the invite when mail was not
+     * configured.
+     */
+    temporaryPassword: password,
+  };
 }
 
 /** People already inside a company — the inviter's own team views. */

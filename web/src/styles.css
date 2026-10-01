@@ -386,7 +386,7 @@ a { color: inherit; }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1180px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 820px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } }
+@media (max-width: 820px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } }
 
 .row { display: flex; align-items: center; gap: 9px; }
 .row-wrap { flex-wrap: wrap; }
@@ -396,7 +396,23 @@ a { color: inherit; }
 .tiny { font-size: 12.5px; }
 .mono { font-size: 13px; letter-spacing: 0.2px; }
 .right { text-align: right; }
-.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* `display` is the load-bearing part, and it was missing.
+ *
+ * overflow and text-overflow do nothing on an inline box, and eight of this
+ * utility's nine uses are on a <span>. So the text never truncated — it just
+ * stayed at full width and pushed the layout out. On the Companies page one
+ * such span had a min-content width of 307px, which on a 390px phone forced
+ * the whole layout viewport open to 539px.
+ *
+ * min-width: 0 lets it shrink when it is a flex item, which is how most of
+ * these are used. A table cell is already a block container, so ellipsis works
+ * there without the change — and blockifying it would break the row. */
+.truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+td.truncate, th.truncate { display: table-cell; }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 button, .btn {
@@ -1392,7 +1408,14 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
   .auth-main { order: 1; padding: 36px 20px 28px; }
   .auth-aside {
     order: 2; padding: 34px 20px 44px;
-    position: static; height: auto; overflow: hidden;
+    /* `relative`, not `static`. Both undo the sticky positioning above, but
+       `overflow: hidden` cannot clip an absolutely-positioned descendant whose
+       containing block lies outside the clipping element — and the decorative
+       radials are absolute. Under `static` this element stopped being their
+       containing block, ::before escaped to x=560 on a 390px screen, and the
+       page gained 170px of horizontal overflow that body's overflow-x
+       then hid rather than fixed. */
+    position: relative; height: auto; overflow: hidden;
   }
   .auth-form-brand { display: inline-flex; align-self: center; margin-bottom: 6px; }
   .brand-lockup.auth-aside-lockup { --logo-h: 52px; margin-bottom: 24px; }
@@ -1491,3 +1514,171 @@ tbody tr.clickable:hover { background: var(--accent-soft); }
 
 /* The subscription cell in the SUPER_ADMIN table: state on top, action under. */
 .sub-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+
+/* ── mobile: the navigation drawer ───────────────────────────────────────
+ * Above 820px none of this applies and the rail is an ordinary grid column.
+ * Below it the rail comes off the flow entirely: it used to become a
+ * full-width block stacked above the page, so reaching content on a phone
+ * meant scrolling past the brand, ten nav items, the profile and sign-out.
+ */
+.nav-toggle { display: none; }
+.nav-scrim { display: none; }
+
+@media (max-width: 820px) {
+  .nav-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    /* 44px: the minimum touch target both Apple and Google publish. Anything
+       smaller is a control people miss and tap twice. */
+    width: 44px; height: 44px; flex: none;
+    margin-left: -8px;
+    padding: 0; border: 0; border-radius: 10px;
+    background: transparent; color: var(--text);
+    cursor: pointer;
+  }
+  .nav-toggle:hover { background: var(--surface-2); }
+  .nav-toggle:active { transform: scale(0.94); }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(84vw, 320px);
+    height: 100dvh;           /* dvh, so the bar of mobile Safari cannot clip it */
+    transform: translateX(-100%);
+    transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Clear of the notch and the home indicator. */
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  }
+  .sidebar.is-open { transform: translateX(0); }
+
+  .nav-scrim {
+    display: block;
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(8, 17, 34, 0.55);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.24s ease;
+  }
+  .nav-scrim.is-open { opacity: 1; pointer-events: auto; }
+
+  /* The drawer slides; honour a request for less movement by cutting the
+     motion, not the drawer. */
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar, .nav-scrim { transition: none; }
+  }
+
+  /* The topbar is the only thing above the notch now that the rail is gone. */
+  .topbar {
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    gap: 10px;
+  }
+  .topbar h1, .topbar-company h1 { font-size: 17px; }
+  .topbar-sub { display: none; }        /* the strapline costs a line it cannot spare */
+  .topbar-actions { margin-left: auto; min-width: 0; }
+
+  .content {
+    padding: 14px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Filters stack rather than squeezing four controls onto one line. */
+  .filters .field, .filters .field.grow { min-width: 0; flex: 1 1 100%; }
+
+  /* Tables are the one thing allowed to scroll sideways, and only inside their
+     own box — never by taking the page with them. */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .card-head { padding: 12px 14px; }
+  .card-body { padding: 12px 14px; }
+
+  /* Native controls under 16px make iOS Safari zoom the whole page on focus,
+     and it does not zoom back out. */
+  input, select, textarea { font-size: 16px; }
+
+  /* Comfortable rather than dense: a row is a tap target here. */
+  td, th { padding: 11px 10px; }
+  .btn, button, .btn-sm { min-height: 40px; }
+  .btn-sm { min-height: 36px; }
+}
+
+@media (max-width: 820px) {
+  /* A safety net against sideways page scroll, the commonest way a desktop
+     layout feels broken on a phone. Tables opt out via .table-wrap.
+     Deliberately body-only and inside the breakpoint: on `html` this makes the
+     root a scroll container, which is a documented way to break `position:
+     sticky` descendants — and the topbar and sidebar are both sticky above
+     this width. */
+  body { overflow-x: hidden; }
+}
+
+@media (max-width: 480px) {
+  .content { padding: 12px; }
+  .topbar-company-mark { display: none; }
+  .card-head h2 { font-size: 15px; }
+}
+
+/* ── the team block on a company ─────────────────────────────────────────
+ * These classes were used in Companies.tsx with no rules behind them at all —
+ * the row's whole layout came from inline styles. It gets the rules it was
+ * already assuming, plus the ability to reflow when the screen is narrow: a
+ * long role label ("Chartered accountant" measures 141px and cannot wrap) sat
+ * beside a 307px identity block and pushed the row past a phone's width.
+ */
+.team-row { min-width: 0; }
+.team-row > .stack { min-width: 0; }
+/* A flex container's default min-width is auto, so a .row nested in the stack
+   blocks its own children from shrinking however much room they are given. */
+.team-row .row { min-width: 0; }
+
+@media (max-width: 560px) {
+  /* The role moves under the name rather than competing with it for a width
+     neither can have.
+     `flex-basis: 100%` rather than relying on flex-wrap alone: now that
+     .truncate works, the identity block shrinks instead of pushing the badge
+     onto a second line, so the name ellipsed to "Aru…" while a 141px role
+     label sat beside it. Given its own row, the name gets the width back. */
+  .team-row { flex-wrap: wrap; row-gap: 6px; }
+  /* Indent with padding, not margin: a 100% basis plus a 42px margin is wider
+     than the row, which is worth 15px of page overflow. Padding is inside the
+     basis under border-box. */
+  .team-row > .badge { flex: 0 0 100%; margin-left: 0; padding-left: 42px; text-align: left; }
+}
+
+/* A .row is a flex row, and on a phone two of anything side by side is one too
+   many. This is the generic page-intro row — prose beside a search box — which
+   otherwise squeezed six lines of text into a column a few words wide. */
+@media (max-width: 640px) {
+  .content > .row { flex-wrap: wrap; row-gap: 10px; }
+  .content > .row > * { flex: 1 1 100%; min-width: 0; }
+}
+
+/* ── company documents: one card, one row per document ───────────────────
+ * Each document slot used to be a Card of its own, with its own heading and
+ * the same "Persistent document management" subtitle repeated underneath. A
+ * company page carrying seven of them read as the same block over and over and
+ * ran to a screen and a half for what is a short list.
+ */
+.doc-slots { display: flex; flex-direction: column; gap: 0; }
+.doc-slot + .doc-slot { border-top: 1px solid var(--border); }
+.doc-slot { padding: 12px 0; }
+.doc-slot:first-child { padding-top: 0; }
+.doc-slot:last-child { padding-bottom: 0; }
+
+.doc-slot-head {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 8px;
+}
+.doc-slot-title { font-size: 13.5px; font-weight: 650; letter-spacing: -0.005em; }
+.doc-slot-body { display: flex; flex-direction: column; gap: 10px; }
+
+/* The empty state is the common one, so it stays quiet: a line of text and the
+   control, not a bordered panel competing with the rows around it. */
+.doc-slot-body > div:last-of-type { min-width: 0; }
+
+@media (max-width: 560px) {
+  .doc-slot-head { gap: 6px; }
+}

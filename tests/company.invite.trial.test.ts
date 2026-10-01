@@ -70,13 +70,10 @@ describe('company invite — trial gating', () => {
 });
 
 describe('company invite — role constraints', () => {
-  it('never allows COMPANY_OWNER or SUPER_ADMIN to be granted', async () => {
+  it('never allows SUPER_ADMIN to be granted', async () => {
     vi.mocked(prisma.company.findFirst).mockResolvedValue({ id: company.id, legalName: company.legalName } as never);
     vi.mocked(prisma.organization.findUnique).mockResolvedValue({ trialEndsAt: null } as never);
 
-    await expect(
-      inviteToCompany(ownerActor, company.id, { email: 'x@acme.com', name: 'X', role: 'COMPANY_OWNER' }),
-    ).rejects.toThrow(ForbiddenError);
     await expect(
       inviteToCompany(ownerActor, company.id, { email: 'x@acme.com', name: 'X', role: 'SUPER_ADMIN' }),
     ).rejects.toThrow(ForbiddenError);

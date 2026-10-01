@@ -9,6 +9,9 @@ export interface AccessTokenPayload {
   email: string;
   name: string;
   role: string;
+  /** The session this token belongs to, matched against users.activeSessionId
+   *  on every request so one account cannot be live on two devices. */
+  sid: string;
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {
@@ -28,15 +31,15 @@ export function verifyAccessToken(token: string): VerifiedAccessToken {
   }
 }
 
-export function signRefreshToken(userId: string): string {
-  return jwt.sign({ sub: userId, jti: crypto.randomUUID() }, env.JWT_REFRESH_SECRET, {
+export function signRefreshToken(userId: string, sid: string): string {
+  return jwt.sign({ sub: userId, sid, jti: crypto.randomUUID() }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_TTL,
   } as SignOptions);
 }
 
-export function verifyRefreshToken(token: string): { sub: string; jti: string; exp: number } {
+export function verifyRefreshToken(token: string): { sub: string; sid?: string; jti: string; exp: number } {
   try {
-    return jwt.verify(token, env.JWT_REFRESH_SECRET) as { sub: string; jti: string; exp: number };
+    return jwt.verify(token, env.JWT_REFRESH_SECRET) as { sub: string; sid?: string; jti: string; exp: number };
   } catch {
     throw new UnauthorizedError('Refresh token is invalid or has expired');
   }

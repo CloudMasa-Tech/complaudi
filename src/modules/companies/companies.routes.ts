@@ -207,7 +207,7 @@ companiesRouter.post(
     z.object({
       email: z.string().email().toLowerCase(),
       name: z.string().min(2).max(120),
-      role: z.enum(['ADMIN', 'CA', 'VIEWER']).default('CA'),
+      role: z.enum(['ADMIN', 'COMPANY_OWNER', 'CA', 'VIEWER']).default('CA'),
     }),
   ),
   asyncHandler(async (req, res) => {
@@ -236,6 +236,19 @@ companiesRouter.get(
   validateParams(idParamSchema),
   asyncHandler(async (req, res) => {
     res.json(await service.listCompanyMembers(auth(req), req.params.id!));
+  }),
+);
+
+/**
+ * Whether this user may invite into this company, and which roles they may
+ * grant. The invite form asks rather than deciding for itself, so it cannot
+ * offer a role the server will refuse.
+ */
+companiesRouter.get(
+  '/:id/invite-permission',
+  validateParams(idParamSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await service.invitePermission(auth(req), req.params.id!));
   }),
 );
 

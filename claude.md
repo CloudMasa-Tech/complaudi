@@ -142,6 +142,26 @@ Rules governing this layer:
 ### AI Copilot
 The AI copilot relies on `retrieveRules()` to perform text search over the rule catalog and formulates answers deterministically based on whether a rule applies to the active company context.
 
+### Mobile, PWA and the native shells
+One codebase serves all three targets — there is no second frontend.
+
+- **Responsive**: below 820px the sidebar is an off-canvas drawer (`.sidebar.is-open`
+  + `.nav-scrim`), not a stacked block. Safe-area insets are honoured, which
+  needs `viewport-fit=cover` on the viewport meta or `env(safe-area-inset-*)`
+  resolves to 0. Inputs are 16px on mobile because anything smaller makes iOS
+  Safari zoom the page on focus and never zoom back.
+- **PWA**: `web/public/manifest.webmanifest` + `web/public/sw.js`, registered in
+  `main.tsx` in production only. **The service worker never caches API
+  responses** — a cache is per-origin, not per-user, so caching them would serve
+  one user's compliance data to the next person signing in on a shared device.
+  Only the shell is cached.
+- **Native**: Capacitor. `npm run android` / `npm run ios` build and open the
+  IDE; `npm run build:native` pins `VITE_API_MODE=SUPABASE` and syncs. That mode
+  matters: inside the shell the webview origin has no server behind it, so a
+  relative `/api/v1/...` resolves to nothing and only absolute URLs work.
+- `appId` is `in.cloudmasa.complaudi` and is permanent once published.
+- Building Android needs the Android SDK; iOS needs full Xcode.
+
 ## 5. Scripts Reference
 - `npm run dev`: Starts both backend (port 4000) and frontend (port 5173) with a startup banner showing both URLs. Uses `concurrently` for `dev:api` + `dev:web`.
 - `npm run dev:api`: Runs the API with `tsx watch src/index.ts`.
@@ -150,6 +170,27 @@ The AI copilot relies on `retrieveRules()` to perform text search over the rule 
 - `npm run prisma:migrate`: Apply database schema changes.
 - `npm run prisma:deploy`: Apply migrations in production.
 - `npm test`: Run backend unit tests using Vitest (crucial for engine validations).
+- **Both probes below sign in, and signing in ends that account's session
+  everywhere else.** They require `PROBE_EMAIL`/`PROBE_PASSWORD` and refuse to
+  guess, because defaulting to a seeded login threw a person out of the browser
+  mid-session with a message blaming a device that did not exist. Point them at
+  an account nobody is using.
+- `npm run security:probe`: Black-box security probe against a **running** API —
+  authentication, token forgery, single-session enforcement, tenant isolation and
+  user enumeration. Not part of `npm test` (it needs a server, a database and a
+  seeded login) and it signs in as a real user, so run it against dev or staging.
+  `API=… PROBE_EMAIL=… PROBE_PASSWORD=…` to point it elsewhere; exits non-zero on
+  any failure. It exists because two real gaps — single-session missing from the
+  Express API, and a displaced refresh token still working — typechecked and
+  passed the unit suite while being wrong.
+- `npm run audit:mobile`: Renders the app at phone widths in real Chrome and
+  fails on horizontal overflow, naming the element that cannot shrink. Also
+  checks the navigation drawer (44px trigger, off-canvas, scrim). Needs the web
+  dev server running; `WEB=…` to point it elsewhere. Drives the installed
+  Chrome via puppeteer-core rather than downloading one — `CHROME=…` to
+  override. It exists because three real overflows shipped once, each hidden by
+  the `body { overflow-x: hidden }` guard, which clips overflow rather than
+  fixing it: they built, typechecked and passed every test while being wrong.
 - `npm run seed`: Seed demo organizations and companies.
 - `npm run supabase:bootstrap`: Create the Supabase storage bucket.
 - `npm run migrate:prod` / `migrate:prod:check`: Production migration helpers.

@@ -13,6 +13,10 @@ interface Profile extends User {
   trialDaysLeft: number | null;
   phone?: string;
   createdAt: string;
+  /** The account is holding a password somebody else chose. Until it sets its
+   *  own, the API refuses everything but /me, /logout and /change-password, so
+   *  the app must send it straight to the change screen. */
+  mustChangePassword?: boolean;
 }
 
 /**
@@ -34,6 +38,9 @@ interface AuthState {
   /** Set when the server signed this device out because the account was claimed elsewhere. */
   displacedReason: string | null;
   clearDisplaced: () => void;
+  /** Re-read /auth/me. Used after setting a password, so the flag that gated
+   *  the app is cleared without making the user sign in again. */
+  refresh: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -72,6 +79,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setReady(true));
   }, []);
 
+  const refresh = useCallback(async () => {
+    try {
+      setUser(await get<Profile>('/auth/me'));
+    } catch {
+      // A failure here leaves the previous profile in place; the next request
+      // that matters will surface the real problem.
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string): Promise<LoginOutcome> => {
     const result = await post<{
       accessToken?: string;
@@ -108,8 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, ready, can, login, verifyTwoFactor, logout, displacedReason, clearDisplaced }),
-    [user, ready, can, login, verifyTwoFactor, logout, displacedReason, clearDisplaced],
+    () => ({ user, ready, can, login, verifyTwoFactor, logout, displacedReason, clearDisplaced, refresh }),
+    [user, ready, can, login, verifyTwoFactor, logout, displacedReason, clearDisplaced, refresh],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

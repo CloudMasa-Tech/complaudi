@@ -1,8 +1,24 @@
 // supabase/functions/companies-api/index.ts
 import { handleCors } from '../_shared/cors.ts';
-import { assertCan, getAuthContext, requireCapability, seesEveryCompany } from '../_shared/auth.ts';
+import { assertCan, getAuthContext, isSuperAdmin, requireCapability, seesEveryCompany } from '../_shared/auth.ts';
 import { getSupabaseAdminClient, serialiseBigInt } from '../_shared/database.ts';
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../_shared/errors.ts';
+import { canInviteAs, grantableRoles, type InviteRole } from '../_shared/company-invite.ts';
+// @ts-ignore — same pinned build auth-api verifies passwords with.
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
+
+/**
+ * A temporary password worth generating.
+ *
+ * The previous one was `Temp@` plus eight hex characters of a UUID — a fixed
+ * prefix and 32 bits of entropy, in a known format. This is 12 characters from
+ * a 62-character alphabet drawn from the CSPRNG.
+ */
+function generateTemporaryPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(14));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+}
 import { errorResponse, jsonResponse } from '../_shared/response.ts';
 import { parseJsonBody } from '../_shared/validation.ts';
 import { resyncAfterProfileChange } from '../_shared/sync.ts';
@@ -374,18 +390,62 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(rows);
     }
 
+    // GET /companies/:id/invite-permission
+    const permMatch = path.match(/^\/([a-f0-9-]+)\/invite-permission$/);
+    if (req.method === 'GET' && permMatch) {
+      const companyId = permMatch[1];
+      // Resolves only a company this actor holds — the 404 is the tenant check.
+      const { data: company } = await client.from('companies').select('id').eq('id', companyId).maybeSingle();
+      if (!company) throw new NotFoundError('Company');
+
+      const { data: org } = await admin
+        .from('organizations').select('trialEndsAt').eq('id', authCtx.organizationId).maybeSingle();
+      const trialEndsAt = org?.trialEndsAt ? new Date(org.trialEndsAt) : null;
+      if (trialEndsAt && trialEndsAt.getTime() > Date.now()) {
+        return jsonResponse({
+          canInvite: false, roles: [], inviterRole: null,
+          reason: 'Inviting team members is available after upgrading from the trial.',
+        });
+      }
+
+      const { data: membership } = await admin
+        .from('company_memberships').select('role')
+        .eq('companyId', companyId).eq('userId', authCtx.userId).maybeSingle();
+      // An organisation-wide role stands in for a per-company grant.
+      const inviterRole = (membership?.role ?? (isSuperAdmin(authCtx.role) ? 'SUPER_ADMIN' : null)) as InviteRole | null;
+      const roles = grantableRoles(inviterRole);
+
+      return jsonResponse({
+        canInvite: roles.length > 0,
+        roles,
+        inviterRole,
+        reason: roles.length ? '' : 'You do not have permission to invite people into this company.',
+      });
+    }
+
     // POST /companies/:id/invite
     const inviteMatch = path.match(/^\/([a-f0-9-]+)\/invite$/);
     if (req.method === 'POST' && inviteMatch) {
       const companyId = inviteMatch[1];
       await assertCan(authCtx, companyId, 'company.edit');
 
+      // SUPER_ADMIN is absent: it is organisation-wide, not a company grant.
       const schema = z.object({
         name: z.string().min(2).max(120),
         email: z.string().email().toLowerCase(),
-        role: z.enum(['ADMIN', 'CA', 'COMPANY_OWNER', 'VIEWER']).default('CA'),
+        role: z.enum(['ADMIN', 'COMPANY_OWNER', 'CA', 'VIEWER']).default('CA'),
       });
       const body = await parseJsonBody(req, schema);
+
+      // Authorise on the same matrix the Express API uses, rather than on the
+      // 'company.edit' capability alone — which let a practitioner grant ADMIN.
+      const { data: inviterMembership } = await admin
+        .from('company_memberships').select('role')
+        .eq('companyId', companyId).eq('userId', authCtx.userId).maybeSingle();
+      const inviterRole = (inviterMembership?.role ?? (isSuperAdmin(authCtx.role) ? 'SUPER_ADMIN' : null)) as InviteRole | null;
+      if (!inviterRole || !canInviteAs(inviterRole, body.role as InviteRole)) {
+        throw new ForbiddenError(`A ${inviterRole ?? 'user'} cannot grant the ${body.role} role in this company.`);
+      }
 
       let { data: targetUser } = await supabase
         .from('users')
@@ -393,29 +453,31 @@ Deno.serve(async (req: Request) => {
         .eq('email', body.email)
         .maybeSingle();
 
+      // Returned to the inviter when this call creates the account, so they
+      // have something to pass on. Null when the person already existed.
+      let temporaryPassword: string | null = null;
+
       if (!targetUser) {
-        const tempPassword = `Temp@${crypto.randomUUID().slice(0, 8)}`;
-        const { data: newAuthUser, error: authErr } = await supabase.auth.admin.createUser({
-          email: body.email,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: { name: body.name },
-        });
+        temporaryPassword = generateTemporaryPassword();
 
-        if (authErr || !newAuthUser.user) {
-          throw new AppError(`User invitation failed: ${authErr?.message || 'User creation error'}`, 400);
-        }
-
+        // A real bcrypt hash. This wrote the literal string
+        // 'SUPABASE_AUTH_MANAGED' and created a Supabase Auth user instead —
+        // but sign-in runs bcrypt.compareSync against this column, so every
+        // account invited through this function could never sign in at all.
         const { data: newUser, error: dbErr } = await supabase
           .from('users')
           .insert({
-            id: newAuthUser.user.id,
+            id: crypto.randomUUID(),
             organizationId: authCtx.organizationId,
             email: body.email,
-            passwordHash: 'SUPABASE_AUTH_MANAGED',
+            passwordHash: bcrypt.hashSync(temporaryPassword, 12),
             name: body.name,
             role: body.role,
             isActive: true,
+            // Somebody else chose this password, so it may do one thing: be
+            // replaced. Every route but /me, /logout and /change-password is
+            // refused until it is.
+            mustChangePassword: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           })
@@ -442,7 +504,20 @@ Deno.serve(async (req: Request) => {
 
       if (memErr) throw new AppError(memErr.message, 400);
 
+      // The same shape the Express API returns. These had diverged completely —
+      // Express answers { user, companies, temporaryPassword } and this answered
+      // a member record, so the form read result.user.role off undefined and
+      // died with a TypeError on a request that had in fact succeeded.
       const result = {
+        user: {
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          role: body.role,
+        },
+        companies: [companyId],
+        temporaryPassword,
+        // Kept so anything already reading the member shape still works.
         role: body.role,
         since: membership.createdAt || new Date().toISOString(),
         member: {
@@ -451,10 +526,7 @@ Deno.serve(async (req: Request) => {
           email: targetUser.email,
           isActive: targetUser.isActive,
         },
-        invitedBy: {
-          id: authCtx.userId,
-          name: authCtx.name,
-        },
+        invitedBy: { id: authCtx.userId, name: authCtx.name },
         invitationStatus: targetUser.isActive ? 'ACTIVE' : 'PENDING',
       };
 

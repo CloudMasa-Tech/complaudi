@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import { CAPABILITY_LABEL, can, type Actor, type Capability } from '../lib/access';
-import { ForbiddenError, TrialExpiredError, UnauthorizedError } from '../lib/errors';
+import { ForbiddenError, PasswordChangeRequiredError, TrialExpiredError, UnauthorizedError } from '../lib/errors';
 import { verifyAccessToken } from '../lib/jwt';
+import { SessionDisplacedError, checkSession } from '../lib/session';
 import { prisma } from '../lib/prisma';
 
 /**
@@ -27,10 +28,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   let userId: string;
   let issuedAt: number;
+  let sessionId: string | undefined;
   try {
     const payload = verifyAccessToken(header.slice(7).trim());
     userId = payload.sub;
     issuedAt = payload.iat;
+    sessionId = payload.sid;
   } catch (err) {
     next(err);
     return;
@@ -42,6 +45,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       select: {
         id: true, organizationId: true, email: true, name: true,
         role: true, isActive: true, passwordChangedAt: true,
+        activeSessionId: true, sessionStartedAt: true, sessionUserAgent: true,
+        mustChangePassword: true,
         organization: { select: { trialEndsAt: true } },
       },
     })
@@ -54,6 +59,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         throw new UnauthorizedError('The password for this account has changed. Sign in again.');
       }
 
+      // One session per account, checked here rather than at sign-in: a second
+      // sign-in is allowed and displaces this one, so a displaced device stops
+      // on its next request instead of running on for the rest of its token's
+      // fifteen minutes. The database read this needs is the one already being
+      // made for the role.
+      const session = checkSession(user, sessionId);
+      if (!session.ok) throw new SessionDisplacedError(session.message);
+
       // An expired trial keeps its data and its login — it simply cannot reach
       // the application. These two routes stay open so the front end can render
       // the expiry rather than a bare error, and so people can still sign out.
@@ -61,6 +74,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       const alwaysOpen = req.path === '/me' || req.path === '/logout' || req.path === '/change-password';
       if (trialEndsAt && trialEndsAt.getTime() < Date.now() && !alwaysOpen) {
         throw new TrialExpiredError(trialEndsAt);
+      }
+
+      // A temporary password buys one thing: setting a real one. Enforced here
+      // rather than in the UI, because a credential handed over by hand is only
+      // safe if it genuinely cannot be used to work the account.
+      if (user.mustChangePassword && !alwaysOpen) {
+        throw new PasswordChangeRequiredError();
       }
 
       req.auth = {

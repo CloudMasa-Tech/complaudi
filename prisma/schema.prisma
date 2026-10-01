@@ -44,6 +44,12 @@ model User {
   /// Access tokens issued before this are refused. Without it a password reset
   /// would leave any live session working until its token expired.
   passwordChangedAt DateTime             @default(now())
+  /// Set when an account is created with a password somebody else chose — an
+  /// invite, or an administrative reset. Until it is cleared the account can
+  /// sign in and do nothing else but set its own password, so a temporary
+  /// password that was read aloud or pasted into a chat cannot be used to work
+  /// the account.
+  mustChangePassword Boolean            @default(false)
   /// Contact number captured at self-service signup.
   phone             String?
   /// ── single active session ───────────────────────────────────────────────

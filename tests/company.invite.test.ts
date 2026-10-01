@@ -29,12 +29,21 @@ describe('company-scoped invite — who may grant which role', () => {
     }
   });
 
-  it('never lets anyone grant SUPER_ADMIN or a second COMPANY_OWNER', () => {
+  it('never lets anyone grant SUPER_ADMIN', () => {
+    // SUPER_ADMIN spans the organisation rather than one company, so it is not
+    // something a company-scoped invite can hand out.
     expect(INVITE_TARGET_ROLES).not.toContain('SUPER_ADMIN');
-    expect(INVITE_TARGET_ROLES).not.toContain('COMPANY_OWNER');
-    expect(canInviteAs('SUPER_ADMIN', 'COMPANY_OWNER')).toBe(false);
     expect(canInviteAs('SUPER_ADMIN', 'SUPER_ADMIN')).toBe(false);
-    expect(canInviteAs('COMPANY_OWNER', 'COMPANY_OWNER')).toBe(false);
+    expect(canInviteAs('COMPANY_OWNER', 'SUPER_ADMIN')).toBe(false);
+    expect(canInviteAs('CA', 'SUPER_ADMIN')).toBe(false);
+  });
+
+  it('does allow a business owner to be granted', () => {
+    // Handing a client their own login is the ordinary way a practice onboards
+    // one. It grants full control of that company, deliberately.
+    expect(INVITE_TARGET_ROLES).toContain('COMPANY_OWNER');
+    expect(canInviteAs('COMPANY_OWNER', 'COMPANY_OWNER')).toBe(true);
+    expect(canInviteAs('CA', 'COMPANY_OWNER')).toBe(true);
   });
 });
 

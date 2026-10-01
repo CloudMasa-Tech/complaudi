@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { CompanyProvider } from './auth/CompanyContext';
 import { Layout } from './components/Layout';
+import { SetYourPassword } from './pages/SetYourPassword';
 import { Loading } from './components/ui';
 import { Calendar } from './pages/Calendar';
 import { Companies } from './pages/Companies';
@@ -87,7 +88,7 @@ function TrialEnded({ endedAt, organization, onSignOut }: {
 }
 
 export default function App() {
-  const { user, ready, logout } = useAuth();
+  const { user, ready, logout, refresh } = useAuth();
   const { pathname } = useLocation();
 
   // Signed out, the marketing page is the front door and the two account pages
@@ -122,6 +123,13 @@ export default function App() {
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
+  }
+
+  // An invited account holds a password its inviter generated. The API refuses
+  // everything but /me, /logout and /change-password until it is replaced, so
+  // routing anywhere else would only produce a screen full of failed requests.
+  if (user.mustChangePassword) {
+    return <SetYourPassword email={user.email} onDone={refresh} onSignOut={logout} />;
   }
 
   // An expired trial keeps its data and its login; it simply cannot reach the

@@ -115,7 +115,7 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
         onClick={() => setOpen(!open)}
       >
         <span className="truncate">{selectedName}</span>
-        <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>▼</span>
+        <span style={{ fontSize: 10, color: 'var(--text-3)' }}>▼</span>
       </button>
 
       {open && (
@@ -139,7 +139,7 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
             {userRole === 'SUPER_ADMIN' && (!search || "all companies".includes(search.toLowerCase())) && (
               <div 
                 onClick={() => { select(null); setOpen(false); setSearch(''); }} 
-                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === null ? 'var(--bg-card-alt)' : 'transparent' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === null ? 'var(--surface-2)' : 'transparent' }}
               >
                 <span style={{ width: 16, display: 'inline-block' }}>{selectedId === null ? '✓' : ''}</span>
                 <span className="truncate">All companies ({companies.length})</span>
@@ -149,14 +149,14 @@ function CompanySwitcher({ companies, selectedId, select, userRole }: { companie
               <div 
                 key={c.id}
                 onClick={() => { select(c.id); setOpen(false); setSearch(''); }} 
-                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === c.id ? 'var(--bg-card-alt)' : 'transparent' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', gap: 8, background: selectedId === c.id ? 'var(--surface-2)' : 'transparent' }}
               >
                 <span style={{ width: 16, display: 'inline-block' }}>{selectedId === c.id ? '✓' : ''}</span>
                 <span className="truncate" title={c.legalName}>{c.legalName}</span>
               </div>
             ))}
             {filtered.length === 0 && (
-              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
                 No matches found
               </div>
             )}
@@ -211,9 +211,44 @@ export function Layout() {
    */
   const showCompanySwitcher = !pathname.startsWith('/companies');
 
+  /**
+   * The navigation drawer, on phones only.
+   *
+   * Below 820px the sidebar used to become a full-width static block stacked
+   * above the page, so reaching any content meant scrolling past the brand, ten
+   * nav items, the profile and the sign-out button. It is now off-canvas: the
+   * page starts at the top, and the nav slides over it when asked for.
+   */
+  const [navOpen, setNavOpen] = useState(false);
+
+  // Navigating is the end of the drawer's job. Without this it stays open over
+  // the page somebody just asked for.
+  useEffect(() => setNavOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false); };
+    document.addEventListener('keydown', onKey);
+    // Stop the page behind the drawer scrolling under the finger.
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [navOpen]);
+
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {/* Only ever visible under the breakpoint; hidden from assistive tech
+          above it so a desktop reader is not told about a dialog that is not
+          there. */}
+      <div
+        className={navOpen ? 'nav-scrim is-open' : 'nav-scrim'}
+        onClick={() => setNavOpen(false)}
+        aria-hidden="true"
+      />
+      <aside className={navOpen ? 'sidebar is-open' : 'sidebar'} id="app-nav">
         <div className="brand">
           {/* The same lockup the signed-out pages use, so the mark does not
               change shape the moment somebody logs in. One image, not a themed
@@ -275,6 +310,23 @@ export function Layout() {
 
       <div className="main">
         <header className="topbar">
+          {/* 44px square: Apple's and Google's minimum for a touch target, and
+              the reason this is a button with padding rather than a bare icon. */}
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={navOpen}
+            aria-controls="app-nav"
+            onClick={() => setNavOpen((v) => !v)}
+          >
+            <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor"
+                 strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              {navOpen
+                ? <><path d="M6 6l12 12" /><path d="M18 6L6 18" /></>
+                : <><path d="M3.5 6.5h17" /><path d="M3.5 12h17" /><path d="M3.5 17.5h17" /></>}
+            </svg>
+          </button>
           <div className="topbar-title">
             {headerCompany ? (
               <div className="topbar-company">
